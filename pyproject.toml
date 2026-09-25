@@ -1,0 +1,93 @@
+[project]
+# "tablewatch" over the metaphor names (assay, litmus, touchstone) because
+# it states the product in one read: the unit a data quality check runs
+# against is a table. The metaphors were all squatted on PyPI anyway.
+# "datawatch" was the first choice and was dropped — DATAWATCH is a live
+# Altair trademark for data-prep software, the same goods class as this.
+name = "tablewatch"
+version = "0.0.1"
+description = "Data quality checks for your tables: assert, monitor, and alert on the state of your data"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Geoffrey Koh" }]
+requires-python = ">=3.13"
+keywords = ["data-quality", "data-validation", "monitoring", "testing", "observability"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "click>=8.1",
+    "pydantic>=2.0",
+]
+
+[project.urls]
+Repository = "https://github.com/geoffkoh/tablewatch"
+
+[project.scripts]
+tablewatch = "tablewatch.cli.main:cli"
+# Short alias: this is the command typed daily, and c4studio's `c4` set the
+# precedent. Both entry points target the same group.
+tw = "tablewatch.cli.main:cli"
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "tablewatch"
+
+[tool.ruff.lint]
+# Stated outright rather than inherited from ruff's defaults, so that a
+# ruff upgrade is an upgrade and not a silent change of contract. This set
+# is the one c4studio arrived at after adopting 0.16's findings family by
+# family; it starts here already chosen rather than being re-derived.
+select = [
+    # ruff 0.15's default selection, written down.
+    "E4", "E7", "E9", "F",
+    # Import ordering: stdlib / third-party / local.
+    "I",
+    # Modern syntax on a codebase that requires 3.13 (`X | None` etc).
+    "UP",
+    # flake8-bugbear.
+    "B",
+    # Small, real cleanups: collapsible ifs, manual comprehensions,
+    # os.path calls with a pathlib equivalent, naming slips.
+    "SIM", "FURB", "ISC", "PERF", "N", "PTH",
+    # Catches `subprocess.run` with no `check=`, among others.
+    "PLW",
+    # Guard rails that cost nothing on a new codebase: dead comprehension
+    # work, real errors, unreachable `else` after `return`.
+    "C4", "PLE", "RET",
+    # Two specific RUF rules rather than all of it — RUF001/RUF002 would
+    # flag em dashes used deliberately in prose.
+    "RUF015", "RUF022",
+]
+
+[tool.ruff.format]
+# Prose snippets in Markdown are written to be read, not to satisfy a
+# formatter. Formatting stays on real source files.
+exclude = ["*.md"]
+
+[tool.mypy]
+# Strict by default, so that `uv run mypy .` is the strict one and
+# strictness cannot regress unnoticed.
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    # The project's own gate tools are project dependencies: left
+    # undeclared, `uv run mypy` / `uv run ruff` resolve to an ephemeral
+    # install that drifts per machine and is absent in CI.
+    "mypy>=1.11",
+    "ruff>=0.15.22,<0.17",
+]
