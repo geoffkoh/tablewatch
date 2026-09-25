@@ -1,5 +1,8 @@
-"""Check definitions.
+"""Resolved checks: what a YAML check becomes once it has been parsed,
+validated, given its inherited defaults, and assigned a stable identity."""
 
-Empty until the check authoring format is decided — YAML, a Python API, or
-SQL-native. See the project CLAUDE.md for what that decision turns on.
-"""
+from __future__ import annotations
+
+from tablewatch.checks.model import Check, Dataset, Outcome
+
+__all__ = ["Check", "Dataset", "Outcome"]

@@ -1,0 +1,11 @@
+dataset: inventory.products
+tags: [catalogue]
+
+checks:
+  - row_count between 1 and 10000
+  - duplicate_count(sku) = 0
+  - min(price) > 0
+  - freshness(updated_at):
+      name: Price feed freshness
+      warn: when > 1d
+      fail: when > 7d

@@ -1,0 +1,13 @@
+# Example project. Build its database first:
+#   uv run python examples/retail/build.py
+# then run it:
+#   uv run tablewatch --project-dir examples/retail run
+name: retail-example
+
+datasources:
+  lake:
+    type: duckdb
+    path: retail.duckdb
+
+results:
+  url: sqlite:///.tablewatch/results.db
