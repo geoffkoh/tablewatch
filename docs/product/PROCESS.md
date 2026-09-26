@@ -17,6 +17,7 @@ lead and through files.
 | `data-steward` | judge / domain expert | `examples/**`, fixtures, user docs |
 | `qa-engineer` | judge | `tests/**` |
 | `security-reviewer` | judge, read-only | nothing |
+| `architect` | judge, read-only | nothing |
 | `ui-engineer` | builder | `frontend/**`, `docs/UI_SPECIFICATION.md`, static bundle |
 | `platform-engineer` | builder | `src/tablewatch/datasources/**`, extras, `deploy/**`, `benchmarks/**` |
 
@@ -30,9 +31,9 @@ reviewable in one sitting.
 | Step | Who | Does | Produces |
 | --- | --- | --- | --- |
 | 1 PLAN | product-manager | Picks the top-scoring `proposed` or `ready` item whose dependencies are met, and writes its spec — which makes it ready | `docs/product/specs/NNN-slug.md` |
-| 2 REFINE | data-steward (+ ui-engineer for UI) | Adds concrete acceptance scenarios; finds semantic traps; the PM settles disagreements | Updated spec |
+| 2 REFINE | data-steward (+ ui-engineer for UI; + architect when the spec adds a seam or public API) | Adds concrete acceptance scenarios; finds semantic traps; the PM settles disagreements | Updated spec |
 | 3 BUILD | tech lead, ui-engineer, platform-engineer | Implements on branch `iter/NNN-slug`; acceptance scenarios become tests first | Commits |
-| 4 VERIFY | tech lead, qa-engineer, security-reviewer (if flagged), data-steward | Gates and the example; adversarial review; security review; acceptance | Verdicts; blocking findings fixed |
+| 4 VERIFY | tech lead, qa-engineer, architect (if `src/` changed), security-reviewer (if flagged), data-steward | Gates and the example; adversarial review; design review; security review; acceptance | Verdicts; blocking findings fixed |
 | 5 REVIEW | product-manager | On the iteration branch, before merge: logs the iteration, writes the CHANGELOG entry, re-ranks, names the next item | `ITERATIONS.md`, `CHANGELOG.md`, `BACKLOG.md` |
 | 6 SHIP | tech lead | PR linking the spec with evidence; merges under the policy below | Merged PR |
 
@@ -67,6 +68,11 @@ or outbound), writing files to a new place, or storing or exposing row data.
 Writing to the existing results store or to a user-named `--output-file` does
 not by itself trigger a review. qa-engineer and data-steward are always
 required.
+
+**architect is required** when the change touches `src/`. It reviews design
+against the rules in `CLAUDE.md`, the module boundaries and the extension
+seams; the tech lead builds the core, so it must not judge that design
+itself. It also reviews in REFINE when a spec adds a seam or public API.
 
 ## Definition of done
 

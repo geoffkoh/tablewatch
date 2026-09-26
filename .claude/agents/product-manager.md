@@ -51,7 +51,8 @@ outside your area is wrong, say so in your output.
      questions for the tech lead.
    - **Reviewers required** — qa-engineer always; data-steward always;
      security-reviewer if the change touches any trigger in PROCESS.md;
-     ui-engineer involvement for UI items.
+     architect if it touches `src/` (and in REFINE if it adds a seam or
+     public API); ui-engineer involvement for UI items.
    - **Size** — S / M / L.
 4. Set the item to `in-progress` in BACKLOG.md.
 
