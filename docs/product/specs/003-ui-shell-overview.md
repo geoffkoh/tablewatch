@@ -39,8 +39,11 @@ checks from the count.
   not keep its previous state. "Keep last state" is an opt-in, meant to
   stop flapping when a data source is briefly down.
   ([Grafana: No Data and Error states](https://grafana.com/docs/grafana/latest/alerting/fundamentals/alert-rule-evaluation/nodata-and-error-states/))
-  We adopt the default. An `error` ends a run of `fail`s, so "failing
-  since" never claims more than the recorded results show (decision D1).
+  PLAN adopted the default. *(REFINE, data-steward)* We adopt the other
+  behaviour for `since` instead: an `error` keeps the last evaluated state.
+  Grafana's "Keep last state" exists for exactly the case in question, a
+  data source that is briefly unreachable. The `error` still shows as the
+  check's latest outcome, and nothing is hidden (decision D1, revised).
 - **Elementary** puts a health summary first on its dashboard (tests run,
   failures, anomalies) and then the execution history, where frequently
   failing tests can be found. Its report is generated as static HTML
@@ -98,14 +101,14 @@ document becomes precise enough to generate TypeScript types from.
 | Part | Who builds it | Where |
 | --- | --- | --- |
 | OpenAPI fidelity fixes (C1–C3) | tech lead | `src/tablewatch/server/`, `docs/api/openapi.json` |
-| `latest.since` (P1–P4) | tech lead | `results/store.py`, `server/schemas.py`, `server/routes.py` |
+| `latest.since`, `last_evaluated` (P1–P7) | tech lead | `results/store.py`, `server/schemas.py`, `server/routes.py` |
 | Serving the bundle: static files, SPA fallback, CSP, `GET /` (W1–W6, X1–X5) | tech lead | `server/app.py`, new `src/tablewatch/webapp/` |
 | Startup line and the `serving()` harness (W7, H1) | tech lead, qa-engineer | `cli/main.py`, `tests/` |
 | Frontend: shell and overview (O1–O10), `docs/UI_SPECIFICATION.md` | ui-engineer | `frontend/**`, `src/tablewatch/webapp/static/` |
 | CI: frontend job, bundle and types drift, wheel contents (K1–K4) | tech lead | `.github/workflows/checks.yml` |
 | README "Serve results over HTTP" updated for the UI | data-steward | `README.md` |
 
-**Order inside BUILD.** C1–C3 and P1–P4 come first, then `openapi.json` is
+**Order inside BUILD.** C1–C3 and P1–P7 come first, then `openapi.json` is
 regenerated, and only then does the ui-engineer generate types from it.
 This carried requirement (I-03 (d)) exists so that generated types are
 never built from the imprecise document.
@@ -119,27 +122,66 @@ LatestResult { run_id, started_at, trigger, outcome, value, display_value, messa
                since: Timestamp }        # new, required, never null
 ```
 
-`since` is the `started_at` of the **oldest result in the unbroken run of
-this check's recorded results that share `latest.outcome`**, reading its
-history newest first. Consequences:
+*(REFINE, data-steward: this definition replaces PLAN's. D1 below records
+why.)* Outcomes split into **evaluated** ones (`pass`, `warn`, `fail`: a
+statement about the data) and **not evaluated** ones (`error`, `skipped`:
+no statement about the data). Read the check's history newest first.
+
+- **When `latest.outcome` is evaluated**, `since` is the `started_at` of
+  the oldest result in the leading streak of results with that outcome,
+  where `error` and `skipped` results are **passed over**: they neither end
+  the streak nor extend it. The first *evaluated* result with a different
+  outcome ends it.
+- **When `latest.outcome` is `error` or `skipped`**, `since` is the
+  `started_at` of the oldest result in the leading streak of that exact
+  outcome. Any other outcome ends it.
+
+Consequences:
 
 - Only results **for this check id in this project** count, the same
   scope as `latest` (spec 002). A run that did not select the check is not
-  in its history, so it neither breaks the run nor extends it.
-- **Any different outcome ends the run**: `error` ends a run of `fail`s,
-  and `warn` ends a run of `fail`s. The sequence `fail (A), fail (B),
-  error (E), fail (F)` gives `latest.outcome == "fail"` and
-  `since == F.started_at`, not A's. The honest claim is "failing
-  continuously, as far as the records show", and during E tablewatch did
-  not know (decision D1).
+  in its history, so it neither breaks the streak nor extends it.
+- **An `error` does not end a streak of `fail`s.** The sequence `fail (A),
+  fail (B), error (E), fail (F)` gives `latest.outcome == "fail"` and
+  `since == A.started_at`. The data failed the rule every time it was
+  evaluated from A to F. During E, tablewatch learned nothing about the
+  data, so E is not evidence that the problem went away.
+- **An `error` never hides a recovery.** `fail (A), error (E), pass (P),
+  fail (F)` gives `since == F.started_at`. `P` is evaluated and differs.
+- **Evaluated outcomes end one another**: `warn` ends a streak of `fail`s,
+  and `fail` ends a streak of `warn`s.
+- `since` is always the `started_at` of a result whose outcome is
+  `latest.outcome`, never the `started_at` of an `error` that was passed over.
 - `since` is present for every outcome, `pass` included, so a client does
   not have to special-case it. `since <= latest.started_at` always, with
-  equality when the latest result is the first of its run.
-- **An expression edit under an explicit `id:`** does not end the run: the
-  user chose the id to keep one history across edits (question Q3 for
-  REFINE).
+  equality when the latest result is the first of its streak.
+- **An expression edit under an explicit `id:`** does not end the streak.
+  The user chose the id to keep one history across edits. *(REFINE,
+  data-steward: Q3 is settled this way, scenario P6.)* A threshold edit is
+  how a steward records an accepted tolerance. If the check still fails
+  under the new rule, the problem is the same one. The history entries carry
+  `expression`, so I-05 can show where the rule changed.
 - Ties on `started_at` follow the order `/history` uses, so `since`
   always equals the `started_at` of an entry that `/history` returns (P4).
+
+### `LatestResult.last_evaluated` *(REFINE, data-steward; `should`, P7)*
+
+```text
+LatestResult { …, last_evaluated: { outcome, started_at, since } | null }
+```
+
+This is null when `latest.outcome` is evaluated (`pass`, `warn`, `fail`),
+and when the check has never been evaluated. When `latest.outcome` is
+`error` or `skipped`, it is the newest **evaluated** result in the history:
+its outcome and `started_at`, plus the `since` that result would have had
+as `latest`. It comes out of the same window as `since`.
+
+Why: without it, a database outage turns known failures into errors, and
+the overview's "failing" count **drops**. In `interrupted` before run F it
+goes from 6 to 4, and the two missing failures look like Dana's problem
+rather than Sam's. An error row that says "Last evaluated: Fail, failing
+since <A>" keeps the data problem in Sam's view while tablewatch cannot
+see it.
 
 ### OpenAPI fidelity
 
@@ -190,10 +232,34 @@ first):
 
 | id | check | history in `interrupted` | `since` in `interrupted` |
 | --- | --- | --- | --- |
-| `b1ceb8262d8b5441` | sales.customers `missing_percent(email) < 5%` | fail (F), error (E), fail (B), fail (A) | F |
+| `b1ceb8262d8b5441` | sales.customers `missing_percent(email) < 5%` | fail (F), error (E), fail (B), fail (A) | A *(REFINE: was F)* |
 | `fc9cc3088acaf77a` | sales.orders `missing_count(customer_id) = 0` | fail (F), fail (B), fail (A) | A |
-| `32c8f939b90f6367` | sales.customers `row_count > 0` | pass (F), error (E), pass (B), pass (A) | F |
+| `32c8f939b90f6367` | sales.customers `row_count > 0` | pass (F), error (E), pass (B), pass (A) | A *(REFINE: was F)* |
 | `41e58afff9c48a46` | inventory.products `Price feed freshness` | warn (F), warn (A) | A |
+
+*(REFINE, data-steward)* The data-steward reproduced every state on
+2026-09-26 in a scratch copy, using the CLI and the in-process app. The
+latest outcomes over the 18 loaded checks were:
+
+| state | pass | warn | fail | error | none | loaded |
+| --- | --- | --- | --- | --- | --- | --- |
+| `recorded` (A, B) | 10 | 2 | 6 | 0 | 0 | 18 |
+| A, B, E (`interrupted` before F) | 7 | 2 | 4 | 5 | 0 | 18 |
+| `interrupted` (A, B, E, F) | 10 | 2 | 6 | 0 | 0 | 18 |
+| `broken` | 10 | 2 | 5 | 0 | 0 | 17 |
+| `broken-yaml` (below) | 6 | 1 | 2 | 0 | 0 | 9 |
+
+In A, B, E the five `error`s are all of `sales.customers`. Before E, two of
+them (`b1ceb8262d8b5441` and `000f8d0048744bfb`) were `fail` and three
+were `pass`.
+
+- *(REFINE)* `broken-yaml` is `recorded` with a YAML syntax error appended
+  to `checks/sales/orders.yml` (`name: [unclosed` on a new last check).
+  The whole file drops: `ok` is false, with one diagnostic
+  `invalid YAML: expected ',' or ']', but got '<stream end>'` at
+  `checks/sales/orders.yml:24:1`, and 9 checks load. **Four** checks that
+  were failing leave the page. The UI cannot know how many checks the
+  broken file held.
 
 In `recorded` (runs A, B only), the latest outcomes over all 18 checks
 are 10 pass, 2 warn, 6 fail, 0 error. The four inventory checks' latest
@@ -250,32 +316,48 @@ data-steward also runs O1–O8 by hand against a real `serve` on
   `latest.since == latest.started_at == <run A started_at>`, even though
   run B is newer. B did not select it.
 
-**P2: an `error` ends a run of failures** `must`
+**P2: an `error` does not end a streak of failures** `must` *(REFINE:
+reversed from PLAN; see D1)*
 - Given `interrupted`
 - When `GET /api/v1/checks`
-- Then `b1ceb8262d8b5441` has `latest.outcome == "fail"` and
-  `latest.since == <run F started_at>`.
+- Then `b1ceb8262d8b5441` has `latest.outcome == "fail"`,
+  `latest.run_id == <run F id>`, and `latest.since == <run A started_at>`.
+  Run E's error is passed over.
 - And `fc9cc3088acaf77a` (not in run E) has `latest.since ==
   <run A started_at>`.
 - And `32c8f939b90f6367` has `latest.outcome == "pass"` and
-  `latest.since == <run F started_at>`.
+  `latest.since == <run A started_at>`.
 - And given only `recorded` plus run E (before F), `b1ceb8262d8b5441` has
   `latest.outcome == "error"` and `latest.since == <run E started_at>`.
+  A streak of errors is counted only from errors.
 
-**P3: a different outcome ends the run** `must`
-- Given a check `row_count` with `warn: when < 100` and `fail: when = 0`
-  (sales.orders `Order volume`, `32867fbe86f483f3`), and three runs of this
-  project written to the store in order with that check's outcomes
-  `fail`, `warn`, `warn`
-- Then `latest.outcome == "warn"` and `latest.since` is the second run's
-  `started_at`.
+**P3: a different evaluated outcome ends the streak** `must`
+- Given the check sales.orders `Order volume` (`32867fbe86f483f3`: `warn`
+  when `row_count < 100`, `fail` when `= 0`), and runs of this project
+  written to the store in the order given, with that check's outcomes as
+  listed
+- Then:
+
+  | outcomes, oldest first | `latest.outcome` | `latest.since` is run |
+  | --- | --- | --- |
+  | `fail`, `warn`, `warn` | `warn` | 2nd |
+  | `fail`, `error`, `pass`, `fail` | `fail` | 4th (an error never hides a recovery) |
+  | `warn`, `error`, `error`, `warn` | `warn` | 1st |
+  | `fail`, `error`, `error` | `error` | 2nd |
+  | `error`, `fail`, `error` | `error` | 3rd |
+  | `error`, `error`, `fail` | `fail` | 3rd (the errors before it never extend it) |
+  | `skipped`, `fail`, `skipped`, `fail` | `fail` | 2nd (`skipped` is passed over like `error`) |
 
 **P4: `since` agrees with `/history`** `must`
 - Given `interrupted`
 - Then for every check in `GET /api/v1/checks` whose `latest` is not null,
-  `latest.since` equals the `started_at` of the last item in the leading
-  run of `/checks/{id}/history` entries whose `outcome` equals
-  `latest.outcome`.
+  `latest.since` equals the value computed from `/checks/{id}/history`
+  by the rule in "`LatestResult.since`". Walk the entries newest first.
+  When `latest.outcome` is evaluated, pass over `error` and `skipped`
+  entries, stop at the first other entry whose outcome differs, and take
+  the `started_at` of the last entry passed whose outcome equals
+  `latest.outcome`. Otherwise take the leading streak of
+  `latest.outcome` itself. *(REFINE)*
 - And `GET /api/v1/checks/{id}` gives the same `since` as `/checks` for
   each of them.
 - And given two runs with an **identical** `started_at` (ids `…0001` and
@@ -290,6 +372,30 @@ data-steward also runs O1–O8 by hand against a real `serve` on
 - Then the number of SQL statements issued is independent of the number
   of checks (counted with a SQLAlchemy `before_cursor_execute` listener),
   and the request completes in under 2 s on SQLite in CI.
+
+**P6: an explicit `id:` keeps its streak across an expression edit**
+`should` *(REFINE, data-steward; settles Q3)*
+- Given `retail` with `id: customer-email-completeness` added to the
+  `missing_percent(email) < 5%` check in `checks/sales/customers.yml`,
+  then `tablewatch run` (run A, `fail`, value 20.0)
+- And the expression changed to `missing_percent(email) < 15%`, then
+  `tablewatch run` (run C, still `fail`)
+- When `GET /api/v1/checks/customer-email-completeness`
+- Then `latest.run_id == <run C id>` and `latest.since == <run A
+  started_at>`, and its `/history` lists C then A, with `expression`
+  `missing_percent(email) < 15%` and then `missing_percent(email) < 5%`.
+
+**P7: an error row still says what the data last showed** `should`
+*(REFINE, data-steward)*
+- Given A, B, E (`interrupted` before F)
+- When `GET /api/v1/checks`
+- Then `b1ceb8262d8b5441` has `latest.outcome == "error"` and
+  `latest.last_evaluated == {"outcome": "fail", "started_at": <run B
+  started_at>, "since": <run A started_at>}`.
+- And `32c8f939b90f6367` has `latest.last_evaluated.outcome == "pass"`.
+- And every check whose `latest.outcome` is `pass`, `warn` or `fail` has
+  `latest.last_evaluated == null`. So does a check whose every recorded
+  result is `error`.
 
 ### Serving the web UI
 
@@ -381,9 +487,22 @@ Where a scenario quotes text in quotation marks, the test asserts it.
   the label and the icon's accessible name, not the colour alone.
 - And an `error` row states that tablewatch could not evaluate the check
   (for example "Could not evaluate"), and shows `latest.message`
-  (`IO Error: Cannot open database …`) as text.
+  (`IO Error: Cannot open database …`) as text. It does not show
+  `display_value` (`"—"`) as if it were a measured value.
 - And the summary counts `error`s separately from `fail`s: "4 failing",
   "5 errors", never "9 failing".
+- *(REFINE)* And the summary's error count, and every error row, carry the
+  words "could not evaluate" (case-insensitive) as visible text or as the
+  accessible description. In a data team "5 errors" is easily read as
+  "5 errors in the data", which is the opposite of what it means. The
+  label stays "Error", the CLI's word, so that Sam and Dana use one
+  vocabulary.
+- *(REFINE, `should`, with P7)* And the error row for `b1ceb8262d8b5441`
+  says the last evaluated result was a failure, with its age ("Last
+  evaluated: Fail", "failing since" run A). The error row for
+  `32c8f939b90f6367` says it last passed. The summary does not move these
+  checks into the failing count, but the error count notes how many were
+  failing when last evaluated ("2 were failing").
 
 **O3: no result is unknown, never healthy** `must`
 - Given `recorded` with `checks/sales/customers.yml` line 6 changed to
@@ -396,6 +515,19 @@ Where a scenario quotes text in quotation marks, the test asserts it.
 - And no element of the page presents the project as healthy while any
   check has no result. A test asserts that the summary never shows an
   all-clear message when the no-result count is non-zero.
+- *(REFINE)* And the summary reads 5 failing, not 6. The old id
+  `b1ceb8262d8b5441` still has a `fail` in the store, but its check is no
+  longer in the files, so it is neither listed nor counted. The summary
+  counts only loaded checks, and says so: its heading or caption names the
+  scope, for example "Latest result of each of the 18 checks".
+- *(REFINE)* And an all-clear message (for example "All checks passing")
+  appears **only** when every loaded check's latest outcome is `pass`,
+  `ok` is true, and there is at least one check. A test covers each of
+  the three conditions failing on its own.
+- *(REFINE)* And a `skipped` latest result, which the engine does not
+  produce today, has its own label ("Skipped") and count. It never counts
+  as passing, and the summary's counts always add up to the number of
+  loaded checks.
 
 **O4: the age of every latest result** `must`
 - Given `recorded`, with the browser clock fixed at run B's `started_at`
@@ -407,21 +539,51 @@ Where a scenario quotes text in quotation marks, the test asserts it.
   focus.
 - And rows for checks whose `latest.run_id` is not the newest run's id
   (the 4 inventory checks) carry a note that they were **not in the
-  latest run**. *(`should`)*
+  latest run**. *(`should`)* *(REFINE: this note must be quiet, as
+  secondary text and not a status colour or icon. A project that runs its
+  folders on different schedules has it on most rows, all the time. The
+  row's age is the signal that must not be missed.)*
 - And a `started_at` in the future of the browser's clock (clock skew)
   shows as "just now", never as a negative age. *(`should`)*
+- *(REFINE)* **Ages are elapsed time, not calendar days.** They are computed
+  from the difference in epoch milliseconds and rounded **down**, so
+  "2 days" means at least 48 hours. A DST change or the viewer's time zone
+  never changes an age. The rounding rule and the unit boundaries (under
+  one minute "just now", then minutes, hours, days) are recorded in
+  `docs/UI_SPECIFICATION.md`. Tests put the clock a few seconds past an
+  exact multiple, so rounding down is what they assert.
+- *(REFINE)* **Absolute times are shown in the viewer's time zone, with the
+  zone stated.** With the test's time zone set to `Asia/Singapore`, a
+  `started_at` of `2026-09-26T06:56:12.000000+00:00` shows its hover or
+  focus text with `14:56` and an explicit zone marker (`GMT+8`, `SGT` or
+  `+08:00`), never a bare `14:56` or `06:56`. The `<time datetime>`
+  attribute carries the API's UTC string unchanged. Sam in Singapore and
+  Dana's server in UTC must not disagree about when a run happened, and
+  `tablewatch runs` already labels its column `STARTED (UTC)`.
 
 **O5: failing since** `must`
-- Given `interrupted`, with the clock fixed at run F's `started_at` plus 2
-  days
-- Then the `fail` row for `fc9cc3088acaf77a` shows "failing since" with an
-  age of 2 days (its `since` is run A), and the `fail` row for
-  `b1ceb8262d8b5441` shows 2 days as well (its `since` is run F), taken
-  from `latest.since`, not computed from `started_at`.
-- And given A, B, E, the `error` row for `b1ceb8262d8b5441` shows an
-  "erroring since" (or equivalent) age based on run E.
-- And `warn` rows show their `since`, while `pass` and no-result rows do
-  not show one.
+- *(REFINE: rewritten. In PLAN, A, B, E and F were seconds apart, so the
+  test could not tell `since` from `started_at`.)* Given a component
+  fixture of `/checks` where `fc9cc3088acaf77a` has `latest.started_at =
+  2026-09-26T06:00:00.000000+00:00` and `latest.since =
+  2026-09-19T06:00:00.000000+00:00`, with the clock fixed at
+  `2026-09-26T09:00:05Z`
+- Then its `fail` row shows that the latest result is 3 hours old **and**
+  that it has been failing for 7 days ("failing since" or "failing for",
+  the ui-engineer's choice), with the 7 days taken from `latest.since`.
+  Both ages are visible without hovering.
+- And for `interrupted` itself (values from the API), the `fail` rows for
+  `fc9cc3088acaf77a` and `b1ceb8262d8b5441` both show a "failing since"
+  age taken from run A's `started_at`.
+- And given A, B, E, the `error` row for `b1ceb8262d8b5441` shows a
+  "could not evaluate since" (or equivalent) age based on run E. It never
+  says "failing since" for the error itself.
+- And `warn` rows show their `since` ("warning since"), while `pass` and
+  no-result rows do not show one.
+- *(REFINE)* And the wording claims no more than the records show:
+  "failing since <age>" or "failing in every evaluation since <age>", never
+  "failing continuously". Runs happen at intervals, and passed-over errors
+  sit inside the streak. The history (I-05) shows the gaps.
 
 **O6: the project banner and an honest failure count** `must`
 - Given `broken`
@@ -433,6 +595,16 @@ Where a scenario quotes text in quotation marks, the test asserts it.
   it** saying it is incomplete, which links or points to the banner. Sam
   must not read "5 failing" as the whole truth when six checks are
   failing.
+- *(REFINE)* And the marker also covers the total and the passing count,
+  or the summary as a whole ("17 checks loaded, incomplete"). A missing
+  check could have been in any category, and "10 passing" is also not the
+  whole truth.
+- *(REFINE)* And given `broken-yaml`, the banner lists
+  `checks/sales/orders.yml:24:1` and its message, the list has 9 rows, the
+  failure count reads 2 with the marker, and neither the banner nor any
+  count states how many checks are missing. The UI cannot know how many
+  there are, so the banner says checks from that file **may** be missing,
+  not "1 check is missing".
 - And given `recorded` (where `ok` is true), neither the banner nor the
   marker is shown.
 - And warnings (severity `warning`) in `project.diagnostics` are listed in
@@ -453,6 +625,19 @@ Where a scenario quotes text in quotation marks, the test asserts it.
   outcome `fail`, its counts (14 checks: 7 pass, 1 warn, 6 fail, 0
   error), and its selection as "paths: checks/sales".
 - And for a run whose `selection` is `{}`, it says "all checks".
+- *(REFINE)* And the panel's counts are labelled as that run's, for
+  example "This run: 14 checks", and are visibly separate from the
+  summary, which covers every loaded check. In `recorded` the two
+  disagree: warn is 1 in the panel and 2 in the summary. Neither may be
+  captioned in a way that makes them read as the same thing.
+- *(REFINE)* And given A, B, E, the panel shows run E: outcome `error`,
+  5 checks with 5 errors, selection "paths: checks/sales/customers.yml".
+  It says the run could not evaluate its checks, and it does not say that
+  the run failed.
+- *(REFINE)* And when the selection has more than one key, every key is
+  shown ("paths: checks/sales; tags: pii"). A key the UI does not
+  recognise (C1, Q2) is shown with its raw name and values, never dropped.
+  A narrowed run must not look like "all checks".
 - And given a store with no runs for this project, the panel says no
   runs are recorded yet and names the command (`tablewatch run`). Every
   check row is "No result recorded", and nothing shows as passing.
@@ -643,7 +828,32 @@ Where a scenario quotes text in quotation marks, the test asserts it.
 
 ### Decisions made in PLAN
 
-- **D1: `since` is on the API, and an `error` ends the run.** Deriving it
+- **D1 (revised in REFINE by the data-steward): an `error` does not end
+  a streak of evaluated outcomes.** PLAN's rule reset "failing since" on
+  every error. Reasons for the change:
+  1. **Understating age is the dangerous direction.** A three-week defect
+     shown as "failing for 1 day" gets triaged as new, and Ravi's evidence
+     of how long a control has been breached is wrong. Overstating needs
+     the data to be fixed and then broken again inside an unobserved gap.
+     The data was bad on both sides of that gap, and any `pass` in it still
+     ends the streak.
+  2. **Outages are routine.** Maintenance windows, credential rotation and
+     timeouts all happen. With nightly runs and a weekly maintenance
+     window, PLAN's rule could never show more than a week.
+  3. **Honest outcomes cut the other way.** `error` is Dana's channel and
+     says nothing about the data. Letting it reset Sam's claim about the
+     data mixes the two channels that VISION keeps apart.
+  4. **Never cry wolf (I-06).** I-06 must share this definition. Under
+     PLAN's rule every blip would alert Sam to a "new" failure on
+     fail → error → fail. Under this one, the blip alerts Dana (→ error)
+     and then Sam hears nothing new.
+
+  The error stays fully visible. It is `latest` while it lasts (O2), it is
+  in `/history`, and P7's `last_evaluated` stops it from hiding a known
+  failure. The wording rule in O5 keeps "since" from claiming continuity.
+
+  *PLAN's text, kept for the record:* **`since` is on the API, and an
+  `error` ends the run.** Deriving it
   in the browser would cost one `/history` request per check on the page,
   18 today and hundreds in a real project. Priya's portal would also have
   to re-implement the rule. It is additive (spec 002 finding F-S). On the
@@ -677,6 +887,105 @@ Where a scenario quotes text in quotation marks, the test asserts it.
   (`linguist-generated`), so a PR's review shows the sources and collapses
   the build output.
 
+### Design decisions (settled in REFINE)
+
+Reviews: architect approve-with-followups; security-reviewer
+approve-with-followups; data-steward refined P2–P7 (an `error` or
+`skipped` result does not end a streak of evaluated outcomes); ui-engineer
+consulted. These supersede the open questions below and any scenario text
+they contradict.
+
+**Contract (tech lead)**
+
+1. **`since` and `last_evaluated` are computed in Python** from one query
+   that returns every result of the project, newest first per check, in
+   history order `(started_at, run id)` desc (rule 2: SQL fetches, Python
+   does the math). The data-steward's rule (P3, P4) needs "pass over
+   errors" logic that a portable window query cannot express cleanly. The
+   query count is constant in the number of checks (P5). The rule lives in
+   one pure function in `results/state.py`, which I-06's state-change
+   alerts will reuse. `/checks` and `/checks/{id}` both go through
+   `ResultStore.latest_results(project, check_id=None)` (one path, P4).
+   No index and no Alembic revision; `runs.project` indexing stays with
+   I-14.
+2. **Outcomes compare as recorded strings.** An outcome unknown to this
+   version is served as `error` (spec 002) and treated like `error` for
+   streaks.
+3. **`selection`** stays `dict[str, list[str]]` on the wire, documented
+   with the five named optional keys plus `additionalProperties` (array
+   of strings); unknown keys pass through (Q2: keep). Key names are
+   derived from `selection.Selection`.
+4. **Timestamps** serialise with six fractional digits and carry
+   `format: date-time`. The JSON report keeps its own format (its own
+   `schema_version`); aligning it is a backlog item.
+5. **Error statuses** 400, 403, 404, 405, 500, 503 are declared on every
+   operation from one table in `routes.py`.
+
+**Serving (architect DD6–DD9, security-reviewer)**
+
+6. The bundle lives in `src/tablewatch/webapp/static/`, entirely Vite
+   output (`emptyOutDir: true`); `webapp/` holds no Python. Read with
+   `importlib.resources`; uv_build already ships non-Python files.
+7. `server/ui.py` loads the bundle **once at startup** into an in-memory
+   map, URL path → (bytes, content type): regular files only, no
+   symlinks, no dotfiles, real path inside the directory, and only the
+   suffixes `.html .js .css .svg .png .ico .woff2 .txt` with fixed
+   content types. Requests are served by exact lookup; no filesystem
+   path is ever built from a request (X5 closed by construction).
+8. One `GET /{path:path}` route, registered last and out of the schema,
+   answers in order: an exact file; `/api` or `/api/*` → 404 envelope;
+   a last segment with an extension → 404; otherwise `index.html`. All
+   inside the existing app and `_Guard`. A side effect: non-GET requests
+   to **any** unmatched path, including unknown `/api/*` paths, are now
+   405 (spec 002 answered 404) — accepted, consistent with W6.
+9. `create_app(context, *, allowed_hosts=(), ui=None)`; the CLI loads the
+   bundle and logs W8's warning; with no bundle, `GET /` is the W8 404.
+10. **CSP on every response** (added to the security headers):
+    `default-src 'none'; script-src 'self'; style-src 'self'; img-src
+    'self'; font-src 'self'; connect-src 'self'; base-uri 'none';
+    form-action 'none'; frame-ancestors 'none'` — no `data:` because the
+    build sets `assetsInlineLimit: 0`. Plus `Cross-Origin-Opener-Policy:
+    same-origin`. No `upgrade-insecure-requests` (loopback is http).
+11. **`Cache-Control: no-store` everywhere**, assets included (Q5):
+    nothing measurable is gained on a loopback server. HEAD stays 405.
+
+**Frontend and supply chain (ui-engineer, security-reviewer)**
+
+12. Runtime dependencies are `react` and `react-dom` only. Dev: vite,
+    typescript 5.9, @types/react, @types/react-dom, vitest, jsdom,
+    @testing-library/react, @testing-library/dom, openapi-typescript. All
+    pinned exactly, lockfile committed, generated from a clean install
+    and checked for the Linux native optional packages.
+13. `frontend/.npmrc`: `ignore-scripts=true` and `engine-strict=true`
+    (`must`). `.nvmrc` pins an exact Node 24 version; local builds use
+    the conda env `tablewatch-node` (Node 24.13.0) — never c4studio's
+    `pystructurizr` env. The frontend is built in a shell without
+    warehouse credentials.
+14. Vite: `base: '/'`, `sourcemap: false`, `assetsInlineLimit: 0`,
+    `modulePreload.polyfill: false`, no `public/`, no plugin-legacy,
+    `emptyOutDir: true`. No PWA plugin, no service worker, no web storage
+    for API data (`must`). `@license` comments kept.
+15. **CI**: `permissions: contents: read` on the workflow. A separate
+    `frontend` job (setup-node from `.nvmrc`): `npm ci`, `npm audit
+    signatures`, `npm audit --audit-level=high`, types regenerated, `tsc`,
+    `vitest run`, `vite build`, then `git diff --exit-code` **and**
+    `git status --porcelain --untracked-files=all` on the static
+    directory and the generated types (K2, K3). CI never commits. The
+    Python job stays Node-free.
+16. Python-side checks over the committed bundle (pytest): K1 (the wheel
+    carries `index.html` and exactly the files it references, plus an
+    allowlist), X2 (no inline script or style, no remote URLs), X3 (no
+    `.map` files, no absolute build paths such as `/Users/` or
+    `/home/`), and a lockfile check (every `resolved` URL is
+    `https://registry.npmjs.org/…` and every package has an `integrity`).
+17. `frontend/node_modules/`, `frontend/.env*` and `*.tsbuildinfo` go in
+    `.gitignore`; `[tool.mypy]` excludes `^frontend/`. `.gitattributes`
+    marks the bundle `linguist-generated` with `eol=lf`.
+
+**Deferred to the backlog**: `immutable` caching for hashed assets; the
+JSON report's timestamp format; a save-time state table if history grows
+past one scan per request.
+
 ### Open questions for the tech lead and the architect (REFINE)
 
 1. **Q1: computing `since`.** One query for all checks, with window
@@ -692,7 +1001,8 @@ Where a scenario quotes text in quotation marks, the test asserts it.
    Does it end the run of outcomes for `since`? The PM's position is that
    it does not, because the id is the user's statement of continuity.
    The history entries carry `expression`, so the other rule is also
-   implementable.
+   implementable. *(REFINE, data-steward: agreed, it does not end the
+   streak. See P6.)*
 4. **Q4: mounting.** A static route inside the existing `_Guard`, so the
    host check, security headers and CSP apply to every file. SPA fallback
    applies only to `GET` requests whose path does not start with
@@ -765,7 +1075,7 @@ Where a scenario quotes text in quotation marks, the test asserts it.
 with CSP, and a harness fix. Frontend: scaffold, typed client, one page,
 and component tests. CI: one new job and two checks.
 
-**Pre-planned split, if BUILD runs long.** P1–P5 (`latest.since`) and O5
+**Pre-planned split, if BUILD runs long.** P1–P7 (`latest.since`, `last_evaluated`) and O5
 move to a new S item, **I-21 "Failing since"**, which ships next, ahead of
 I-05. The overview ships without "failing since" and still shows the age
 of every latest result (O4), which meets the carried requirement (4). The
