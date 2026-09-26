@@ -68,3 +68,5 @@ and how they were resolved, what was deferred, and what was learned.
   Phase 2, M; backlog item I-13 (unscored, at the end). Security review
   required. Correction to the brief: offline `validate` exits 3 on errors,
   not 2; the spec keeps the contract unchanged.
+  The owner confirmed that reading column metadata is allowed inside
+  `validate --connect` only, never in `run`.

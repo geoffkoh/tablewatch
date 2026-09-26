@@ -218,7 +218,8 @@ Notes:
     "could not do its job", i.e. 2. The spec confirms this with the tech lead.
   - Reads column metadata for datasets. Design rule 4 says tables are never
     reflected *to compare values*; this reflection happens only in
-    `--connect` and must not leak into `run`. Tech lead to confirm.
+    `--connect` and must not leak into `run`. Confirmed by the owner on
+    2026-09-26.
   - Differs from B5: B5 estimates cost; H6 checks correctness.
   - **Security review required:** uses credentials, and sends user-written
     SQL to the database (in prepared / `EXPLAIN` / zero-row form).
