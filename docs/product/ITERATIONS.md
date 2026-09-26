@@ -6,6 +6,122 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 2 — Read-only REST API and `tablewatch serve` (I-02), 2026-09-26
+
+- **Spec:** [002-read-only-api](specs/002-read-only-api.md). **Branch:**
+  `iter/002-read-only-api`. **PR:** #TBD.
+- **Shipped:** `tablewatch serve` and a read-only JSON API under `/api/v1`
+  (`project`, `checks`, `checks/{id}`, `checks/{id}/history`, `runs`,
+  `runs/{id}`, `openapi.json`), behind a new optional `server` extra
+  (FastAPI, uvicorn; Starlette and h11 floored for known CVEs). Loopback by
+  default; `--host` opts in with the no-authentication warning;
+  `--allowed-host` names host names past the DNS-rebinding guard, which is
+  on in every bind mode. The store is migrated once at startup and read
+  live; check files are read once. One error envelope for every status;
+  security headers on every response; no interactive docs, no CORS. Store
+  reads live on `ResultStore`, scoped by project; the server package holds
+  no SQL. The OpenAPI document is checked in at `docs/api/openapi.json`
+  with a drift test. README "Serve results over HTTP" (data-steward).
+  Found on the way: an explicit `id:` longer than 64 characters (the store
+  column's width) could not be recorded on Postgres; it is now a load
+  diagnostic.
+- **Acceptance:** data-steward ran 26/26 scenarios against the real `serve`
+  process; every `must` scenario is an automated test. Suite: 415 passed,
+  1 xfailed (strict; the known limitation below), including 80 adversarial
+  tests from qa-engineer (`tests/test_server_adversarial.py`). Gates:
+  pytest, ruff, ruff format, strict mypy.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — FAIL, one blocking finding, fixed.* An out-of-range
+    cursor (year 0001 with a `+05:00` offset) raised `OverflowError` and
+    returned 500. Cursors now decode strictly and every failure is 400
+    naming `cursor`. Also fixed: `HEAD` on `openapi.json` returned 200
+    (now 405, as decision 3 says); explicit ids over 64 characters are a
+    diagnostic; an outcome the running version does not know is served as
+    `error` with a note instead of failing every `/checks` request. Known
+    limitation, documented in the README and held as a strict xfail: past
+    `limit_concurrency=64`, uvicorn itself answers 503 in plain text,
+    without the envelope or the security headers (→ I-20). Not adopted:
+    OpenAPI `selection` is a free-form map rather than five named optional
+    keys; 403/405/500 are not declared; timestamps lack `format:
+    date-time` and drop the fractional part when microseconds are zero
+    (→ requirement on I-03, below); the test harness `serving()` stops
+    draining stderr and can hang a noisy process test (→ requirement on
+    I-03, the next item to add process tests).
+  - *architect — approve with follow-ups.* Adopted: stable OpenAPI
+    `operationId`s (the function names); an enum parity test between the
+    wire `Outcome`/`Unit` and the engine; unknown HTTP statuses map to
+    `internal_error`; one check's `latest` is the head of its history (so
+    L3 holds by construction); the results relationship is ordered by id;
+    `create_app` is typed `ASGIApp`; an `is_persistent()` helper. Not
+    adopted: there are two ways to open the store (`open_store` for the
+    CLI, `ResultStore.open` for the server) — folded in when I-19 moves
+    `runs` and `history` (→ requirement on I-19).
+  - *security-reviewer — approve with follow-ups.* Adopted: in `serve`, a
+    malformed results URL now exits 3 without echoing it (it was a
+    traceback, exit 1, and could echo a password written in the wrong
+    place; PM check in REVIEW: `tablewatch runs` still prints a
+    `ValueError` traceback and exits 1 on such a URL, without echoing the
+    password; `run` records it as a store error and exits 2 → I-17); `%` in
+    `Host` is refused; strict base64 cursors; `httpx2` capped below 3.
+    Noted: a store error during a request logs the driver's text (which
+    can name host and user) at WARNING — the deployment docs must say so
+    (→ requirement on I-14); `results.url` has no `${env:}` (already on
+    I-14).
+  - *data-steward — accept with follow-ups.* Adopted: the 403 message
+    points to `--allowed-host`, and the refused host is logged; every 400
+    message states the valid values. Not adopted (→ I-20): with `--host
+    0.0.0.0` the startup line prints a URL no client can use; two
+    plain-text stderr lines appear under `--log-format json`; error
+    messages served over the API can carry absolute server paths (already
+    deferred by decision 22).
+- **Spec correction:** decision 1 said check ids are at most 128
+  characters; the store column is 64, so VERIFY set both the loader and
+  the API to 64. Fixed in the spec.
+- **Dependency note:** Starlette 1.7's `TestClient` needs `httpx2` (it
+  deprecates `httpx`, and warnings are errors here), so the dev dependency
+  is `httpx2` (BSD-3), not `httpx` as decision 15 said. Dev group only; not
+  shipped to users.
+- **Deferred:** `latest.since` (decision 5 → I-03); `rules`, compiled SQL
+  and source endpoints (→ I-05); a shared `Check`→dict mapping for `list
+  --output json` and the API; a `(project, started_at)` index (→ I-14).
+- **Backlog:** I-02 done. New: I-20 `serve` polish (1.6). Requirements
+  carried on I-03 (OpenAPI fidelity, the test harness, `latest.since`),
+  I-14 (driver text in logs), I-17 (malformed store URL in `runs`) and
+  I-19 (one way to open the store). Re-scored: I-14 confidence 0.8 → 1.0
+  (1.6 → 2.0), because this iteration found a Postgres-only defect that
+  SQLite had hidden since Phase 1. C1 is `shipped` in FEATURES.md; C2's
+  `serve` half is built.
+- **Learned:**
+  - Iteration 1's prediction held: a long-lived server found another
+    class of bug the CLI never meets. The column width was a latent
+    Postgres-only defect since Phase 1 (SQLite does not enforce
+    `VARCHAR(64)`), surfaced only because the API had to validate ids.
+    Constraints that SQLite ignores deserve a test on Postgres — one more
+    reason for I-14.
+  - The blocking finding was an input the parser accepted and Python's
+    datetime could not represent. Opaque tokens that the server issues
+    should still be treated as hostile input; qa-engineer's fuzzing of the
+    cursor paid for itself.
+  - A spec that pins a dependency name (`httpx`) can be overtaken by the
+    ecosystem within the iteration. Specs should name the need ("a test
+    client for Starlette") and leave the package to BUILD, with security
+    review of whatever is chosen.
+  - M was the right size. The pre-planned split (history as its own S)
+    was not needed. Review cost was again high for a public surface — four
+    reviewers, 80 adversarial tests — which iteration 1 predicted.
+- **Next:** I-03, UI shell and overview — the owner's UI-first order, the
+  highest score in the chain (4.0), and its dependency (I-02) is now met.
+  Its spec must carry: (1) a decision on `latest.since` ("failing since"),
+  which Sam asks for in spec 002 and which the overview is the first
+  screen to show; (2) `project.ok == false` and its diagnostics shown next
+  to any failure count, since a broken check file drops its checks from
+  the count; (3) `not_run` shown as unknown, never as healthy; (4) the age
+  of each `latest` and when the check files were loaded; (5) CI builds the
+  wheel and checks that the UI bundle is inside it; (6) the OpenAPI
+  fidelity fixes, before the UI generates types from the document.
+  Security review is required (it serves static files from the same
+  listening socket and changes `GET /`), as are ui-engineer and architect.
+
 ## Iteration 1 — Python API (I-01), 2026-09-26
 
 - **Spec:** [001-python-api](specs/001-python-api.md). **Branch:**

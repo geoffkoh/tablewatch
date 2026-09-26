@@ -25,6 +25,35 @@ All notable changes to tablewatch. The format follows
   runs.
 - The package ships type information, so mypy and editors check your code
   against it.
+- `tablewatch serve` publishes a project's checks and recorded results as a
+  read-only JSON API at `/api/v1`, for dashboards, scripts and the web UI
+  that comes next. Ask it what is failing right now
+  (`/checks?outcome=fail&outcome=warn&outcome=error`), for one check's
+  history, or for recent runs and their results. It reads the results store
+  only: it never connects to a datasource, never starts a run, and needs no
+  credentials. See "Serve results over HTTP" in the README.
+- The API is described by an OpenAPI document, served at
+  `/api/v1/openapi.json` and published in `docs/api/openapi.json`.
+- `serve` needs the new optional `server` extra:
+  `pip install 'tablewatch[server]'`. Without it, `tablewatch` installs
+  nothing new, and `serve` says which extra is missing.
+- `serve` listens on `127.0.0.1` by default. `--host` serves the network and
+  warns that there is no authentication yet (it arrives in Phase 4). Host
+  names other than `localhost` and IP addresses are refused unless named
+  with `--allowed-host`, which guards against DNS rebinding.
+- `serve` exits `0` when stopped and `3` when it cannot start (missing
+  extra, unusable `tablewatch.yml`, results store that cannot be opened,
+  port in use), with a one-line message that never repeats the results
+  store's URL. A mistake in a check file does not stop it: it serves the
+  checks that loaded and reports `"ok": false`.
+
+### Changed
+
+- An explicit check `id:` can be at most 64 characters, the width of the
+  results store's column. A longer id is now reported at its `file:line:col`
+  when the project loads. Before, such a check ran but could not be recorded
+  on PostgreSQL. If you have one, shorten it; its history starts again under
+  the new id.
 
 ## 0.1.0 — not yet published
 

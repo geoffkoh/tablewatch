@@ -9,7 +9,7 @@
 | Depends on | I-01 ✓ (spec 001, `execute()` and the sink seam) |
 | Unblocks | I-03 UI shell and overview, then I-05, I-04, I-15 |
 | Branch | `iter/002-read-only-api` |
-| Status | in-progress (PLAN, iteration 2) |
+| Status | done (REVIEW, iteration 2) — see `ITERATIONS.md` |
 
 ## Problem and persona
 
@@ -844,8 +844,10 @@ contradict.
 **Contract changes**
 
 1. **Check ids are strings**, validated against the loader's id pattern
-   (`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`, at most 128 characters) — explicit
-   `id:` values are free text. **Run ids** are exactly 32 lowercase hex.
+   (`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`, at most ~~128~~ **64** characters) —
+   explicit `id:` values are free text. *(Corrected in VERIFY: the store's
+   `check_id` column is 64 wide, so the loader now rejects a longer
+   explicit `id:` with a Diagnostic, and the API uses the same cap.)* **Run ids** are exactly 32 lowercase hex.
    Anything else is 404 before any query. The API never uses a prefix or
    `LIKE` query.
 2. **`outcome` filter values** are `pass|warn|fail|error|skipped|not_run`.
@@ -908,7 +910,8 @@ contradict.
     `server_header=False`, `limit_concurrency=64`.
 15. **Dependencies**: extra `server = ["fastapi>=0.115,<1",
     "uvicorn>=0.30,<1", "starlette>=0.49.1", "h11>=0.16"]` — plain
-    packages, no `[standard]`. `httpx` in the dev group. The lock diff must
+    packages, no `[standard]`. `httpx` in the dev group *(changed in
+    BUILD: `httpx2>=2.13,<3`, which Starlette 1.7's TestClient requires)*. The lock diff must
     add nothing from uvloop, httptools, watchfiles, websockets,
     python-dotenv or python-multipart.
 
