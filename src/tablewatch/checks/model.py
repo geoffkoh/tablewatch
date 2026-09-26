@@ -64,7 +64,11 @@ class TableRef:
 
 @dataclass(eq=False)
 class Dataset:
-    """One check file: a table on a datasource, and the checks against it."""
+    """One check file: a table on a datasource, and the checks against it.
+
+    Public: `name`, `datasource`, `path`, `owner`, `tags`. Other attributes
+    are provisional and may change between releases.
+    """
 
     name: str
     datasource: str
@@ -87,6 +91,10 @@ class Check:
     Exactly one of `expectation` or the `warn`/`fail` triggers decides the
     outcome. An expectation states what should be true and fails when it is
     not; a trigger states a problem condition and fires when it is met.
+
+    Public: `id`, `short_id`, `name`, `canonical`, `location`, `dataset`.
+    Other attributes (`metric`, `expression`, `options`, ...) are provisional
+    and may change between releases.
     """
 
     id: str

@@ -6,7 +6,6 @@ upgrading tablewatch never needs a separate migration step on a server.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 from alembic import command
@@ -15,7 +14,7 @@ from sqlalchemy import URL, Engine, create_engine, make_url, select
 from sqlalchemy.orm import Session
 
 from tablewatch.checks.model import Outcome
-from tablewatch.engine.runner import RunResult
+from tablewatch.engine.runner import ResultSink, RunResult
 from tablewatch.results.models import CheckResultRow, RunRow
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
@@ -35,6 +34,8 @@ def resolve_store_url(url: str, project_root: Path) -> URL:
 
 
 class ResultStore:
+    """Run history in a SQL database, migrated to the current schema on open."""
+
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
         self._migrate()
@@ -55,20 +56,18 @@ class ResultStore:
     def _migrate(self) -> None:
         config = Config()
         config.set_main_option("script_location", str(MIGRATIONS_DIR))
-        # Alembic logs every revision at INFO; a routine run should be quiet.
-        logging.getLogger("alembic").setLevel(logging.WARNING)
         with self.engine.begin() as connection:
             config.attributes["connection"] = connection
             command.upgrade(config, "head")
 
-    def save(self, run: RunResult, exit_code: int) -> None:
+    def save(self, run: RunResult) -> None:
         row = RunRow(
             id=run.id,
             project=run.project,
             started_at=run.started_at,
             finished_at=run.finished_at,
             outcome=str(run.outcome),
-            exit_code=exit_code,
+            exit_code=run.exit_code(),
             trigger=run.trigger,
             hostname=run.hostname,
             username=run.username,
@@ -128,3 +127,17 @@ class ResultStore:
                 .limit(limit)
             )
             return [(result, run) for result, run in session.execute(statement)]
+
+
+def store_sink(url: str, project_root: Path) -> ResultSink:
+    """A sink that records each run it receives in the store at `url`.
+
+    The store is opened only when a run arrives, so a run that is never
+    recorded never touches it — not even to create its directory.
+    """
+
+    def record(run: RunResult) -> None:
+        with ResultStore.open(url, project_root) as store:
+            store.save(run)
+
+    return record

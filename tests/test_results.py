@@ -58,8 +58,8 @@ def test_save_and_read_history(workspace: Workspace) -> None:
     project = workspace.load()
     with ResultStore.open("sqlite:///.tablewatch/results.db", project.root) as store:
         for _ in range(3):
-            run = run_checks(project, project.checks, now=NOW)
-            store.save(run, run.exit_code())
+            run = run_checks(project, project.checks, trigger="test", now=NOW)
+            store.save(run)
         [latest, *_] = store.recent_runs(limit=5)
         failing = project.checks[1]
         matches = store.matching_check_ids(failing.id[:6])

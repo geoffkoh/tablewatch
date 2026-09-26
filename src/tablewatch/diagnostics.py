@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from tablewatch.errors import TablewatchError
+
 
 class Severity(StrEnum):
     ERROR = "error"
@@ -57,7 +59,7 @@ def has_errors(diagnostics: list[Diagnostic]) -> bool:
     return any(d.severity is Severity.ERROR for d in diagnostics)
 
 
-class ProjectError(Exception):
+class ProjectError(TablewatchError):
     """Raised when a project cannot be used at all; carries the reasons."""
 
     def __init__(self, diagnostics: list[Diagnostic]) -> None:

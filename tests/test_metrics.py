@@ -153,7 +153,7 @@ def test_schema_of_missing_table_is_an_error(
     project = workspace.load()
     from tablewatch.engine.runner import run_checks
 
-    [result] = run_checks(project, project.checks).results
+    [result] = run_checks(project, project.checks, trigger="test").results
     assert result.outcome is Outcome.ERROR
     assert "not found" in (result.message or "")
 

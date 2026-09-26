@@ -26,6 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from tablewatch import __version__, logs, templates
+from tablewatch.api import default_sinks, execute
 from tablewatch.checks.model import Check, Dataset
 from tablewatch.config import Project, find_project_root, load_project
 from tablewatch.config.jsonschema import check_file_schema, project_schema
@@ -39,7 +40,6 @@ from tablewatch.datasources import (
 from tablewatch.diagnostics import ProjectError, Severity
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.planner import plan_dataset, render
-from tablewatch.engine.runner import run_checks
 from tablewatch.output import REPORTERS, console
 from tablewatch.results import ResultStore
 from tablewatch.selection import Selection, SelectionError, select_checks
@@ -331,26 +331,23 @@ def run(
     """Run checks and record the results."""
     settings: _Settings = ctx.obj
     project = _project(ctx)
-    selection, checks = _select(project, **selectors)
-    if not checks:
-        _fail("no checks matched the selection — nothing ran")
-
-    result = run_checks(
-        project, checks, max_workers=concurrency, selection=selection.as_dict()
-    )
-    code = result.exit_code(fail_on)
-
-    if not no_store:
-        try:
-            with ResultStore.open(project.config.results.url, project.root) as store:
-                store.save(result, code)
-        except SQLAlchemyError as exc:
-            # The checks ran and their outcome stands, but history has a gap:
-            # that is tablewatch failing at part of its job.
-            click.echo(
-                f"tablewatch: could not record the run: {error_message(exc)}", err=True
-            )
-            code = max(code, EXIT_CHECK_ERROR)
+    try:
+        result = execute(
+            project,
+            Selection(**selectors),
+            sinks=default_sinks(project, record=not no_store),
+            fail_on="warn" if fail_on == "warn" else "fail",
+            concurrency=concurrency,
+            trigger="cli",
+            cwd=Path.cwd(),
+        )
+    except SelectionError as exc:
+        _fail(str(exc))
+    # The checks ran and their outcome stands, but a gap in history is
+    # tablewatch failing at part of its job: exit 2 (see RunResult.exit_code).
+    for reason in result.record_errors:
+        click.echo(f"tablewatch: could not record the run: {reason}", err=True)
+    code = result.exit_code()
 
     if output == "table" and output_file is None:
         if settings.quiet:
