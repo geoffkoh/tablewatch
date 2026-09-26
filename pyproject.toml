@@ -5,7 +5,7 @@
 # "datawatch" was the first choice and was dropped — DATAWATCH is a live
 # Altair trademark for data-prep software, the same goods class as this.
 name = "tablewatch"
-version = "0.0.1"
+version = "0.1.0"
 description = "Data quality checks for your tables: assert, monitor, and alert on the state of your data"
 readme = "README.md"
 license = "MIT"
@@ -14,15 +14,19 @@ authors = [{ name = "Geoffrey Koh" }]
 requires-python = ">=3.13"
 keywords = ["data-quality", "data-validation", "monitoring", "testing", "observability"]
 classifiers = [
-    "Development Status :: 1 - Planning",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3.13",
+    "Environment :: Console",
     "Topic :: Database",
     "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
+    "alembic>=1.13",
     "click>=8.1",
     "pydantic>=2.0",
+    "ruamel-yaml>=0.18",
+    "sqlalchemy>=2.0",
 ]
 
 [project.urls]
@@ -33,6 +37,15 @@ tablewatch = "tablewatch.cli.main:cli"
 # Short alias: this is the command typed daily, and c4studio's `c4` set the
 # precedent. Both entry points target the same group.
 tw = "tablewatch.cli.main:cli"
+
+[project.optional-dependencies]
+duckdb = [
+    "duckdb>=1.1",
+    "duckdb-engine>=0.13",
+]
+postgres = [
+    "psycopg[binary]>=3.2",
+]
 
 [build-system]
 requires = ["uv_build>=0.11.8,<0.13.0"]
@@ -80,6 +93,9 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Warnings fail the suite: an unclosed connection or a deprecated call is
+# caught the day it is introduced, not when it becomes an outage.
+filterwarnings = ["error"]
 
 [dependency-groups]
 dev = [
@@ -90,4 +106,9 @@ dev = [
     # install that drifts per machine and is absent in CI.
     "mypy>=1.11",
     "ruff>=0.15.22,<0.17",
+    "duckdb>=1.1",
+    "duckdb-engine>=0.13",
+    "jsonschema>=4.23",
+    "types-jsonschema>=4.23",
+    "psycopg[binary]>=3.2",
 ]

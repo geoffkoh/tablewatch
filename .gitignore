@@ -18,3 +18,6 @@ htmlcov/
 
 # macOS Finder metadata.
 .DS_Store
+
+# Local results stores (alembic.ini dev store, ad-hoc runs)
+.tablewatch/

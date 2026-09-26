@@ -1,0 +1,3 @@
+datasource: lake
+owner: data-platform@example.com
+tags: [example]
