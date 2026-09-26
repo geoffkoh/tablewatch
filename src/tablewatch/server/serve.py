@@ -19,10 +19,11 @@ import uvicorn
 # A tablewatch server is for a handful of readers; beyond this, uvicorn
 # answers 503 rather than queueing without bound.
 MAX_CONNECTIONS = 64
+BACKLOG = 128
 
 
 def bind(host: str, port: int) -> socket.socket:
-    """A listening-ready TCP socket on `host:port` (port 0 picks a free one)."""
+    """A listening TCP socket on `host:port` (port 0 picks a free one)."""
     family, kind, proto, _, address = socket.getaddrinfo(
         host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
     )[0]
@@ -30,6 +31,9 @@ def bind(host: str, port: int) -> socket.socket:
     try:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(address)
+        # Listen now, so connections made as soon as the startup line appears
+        # queue until uvicorn accepts them rather than being refused.
+        sock.listen(BACKLOG)
     except OSError:
         sock.close()
         raise
