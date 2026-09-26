@@ -1,6 +1,8 @@
 # Roadmap
 
 tablewatch grows in phases. Each phase ends as a shippable release.
+This is the summary; `docs/product/FEATURES.md` is the authoritative list of
+features and the phase each belongs to.
 
 ## Phase 1 — Core engine + CLI → `0.1.0` ✅
 
@@ -37,6 +39,11 @@ Runs from cron on a server, and the exit code can be trusted.
 - `reference(col)` referential integrity; schema-drift detection
 - Failed-row samples, off by default, with `exclude_columns`
 - Variables: `${var:run_date}` via `--var`
+- Python API: `tablewatch.run()` for pipelines and notebooks
+- Change-over-time checks against run history
+- Files (CSV, Parquet, JSON) as datasets
+- `tablewatch report`: a static HTML report
+- `validate --output sarif` for inline errors on pull requests
 
 ## Phase 3 — Operations at scale → `0.3.0`
 
