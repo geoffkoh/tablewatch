@@ -62,3 +62,9 @@ and how they were resolved, what was deferred, and what was learned.
   accepted (the spec settles details; the referenced dataset feeds check
   identity). A18 narrowed to row-level diff across datasources (Phase 5, L).
   Schema parity folded into A14 (S → M). A3 unchanged.
+- **H6 "validate against the database" added with the owner on 2026-09-26.**
+  `tablewatch validate --connect` checks datasets, columns, type suitability
+  and every compiled statement against the target without scanning data.
+  Phase 2, M; backlog item I-13 (unscored, at the end). Security review
+  required. Correction to the brief: offline `validate` exits 3 on errors,
+  not 2; the spec keeps the contract unchanged.

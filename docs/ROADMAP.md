@@ -47,6 +47,8 @@ See your data quality without a terminal, and hear about it when it changes.
 - Files (CSV, Parquet, JSON) as datasets (A8)
 - `tablewatch report`: a static HTML report (C8)
 - `validate --output sarif` for inline errors on pull requests (H3)
+- `validate --connect`: check files checked against the real database —
+  datasets, columns, types and SQL — without scanning data (H6)
 
 ## Phase 2b — Language depth → `0.3.0`
 

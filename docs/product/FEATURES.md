@@ -197,6 +197,31 @@ Notes:
 | H3 ★ | `validate --output sarif` | Errors shown inline on GitHub PRs | Dana | 2 | S | backlog |
 | H4 | OpenLineage, DataHub, OpenMetadata, Collibra, Unity Catalog | Quality visible where data is discovered | Alex | 5 | L | catalogue |
 | H5 | Documentation site | Adoption beyond the README | all | 3 | M | catalogue |
+| H6 | Validate against the database: `tablewatch validate --connect` checks that every dataset and column exists, that column types suit their metrics (no `avg` on text), and that every compiled statement — including user SQL in `filter`/`where`/`condition`/`query` — is valid on the target, without scanning data | Mistakes found in CI at `file:line:col`, not as `error` outcomes in the night's run | Dana, Priya | 2 | M | backlog |
+
+Notes:
+
+- **H6** — added with the owner on 2026-09-26. Phase 2 because it serves
+  Dana's "fast feedback, precise errors" and pairs with H3 (SARIF) for CI;
+  M because type suitability needs a per-dialect type mapping on top of
+  reading metadata and preparing statements.
+  - Plain `validate` stays offline and credential-free (rule 6); only
+    `--connect` resolves `${env:}` and connects.
+  - Statements are prepared, not run: the spec picks one portable method
+    (`EXPLAIN`, `LIMIT 0` or `WHERE 1=0`) that works on every supported
+    dialect and never scans a table.
+  - All problems are Diagnostics at `file:line:col`, reported in one pass
+    (rule 5); one unreachable datasource does not stop the others (rule 7).
+  - **Exit codes use the existing contract unchanged.** Today `validate`
+    exits 3 ("the project is invalid") on errors — not 2. So a problem found
+    in a check file should exit 3; a datasource that cannot be reached is
+    "could not do its job", i.e. 2. The spec confirms this with the tech lead.
+  - Reads column metadata for datasets. Design rule 4 says tables are never
+    reflected *to compare values*; this reflection happens only in
+    `--connect` and must not leak into `run`. Tech lead to confirm.
+  - Differs from B5: B5 estimates cost; H6 checks correctness.
+  - **Security review required:** uses credentials, and sends user-written
+    SQL to the database (in prepared / `EXPLAIN` / zero-row form).
 
 ## Modular seams
 

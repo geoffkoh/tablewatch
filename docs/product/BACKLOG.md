@@ -29,8 +29,9 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | 10 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | | proposed |
 | 11 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | | proposed |
 | 12 | I-12 | Configurable result recording: `record:` in `tablewatch.yml`, `_defaults.yml` and per check | E7 | I-01 | S | | proposed |
+| 13 | I-13 | `validate --connect`: datasets, columns, type suitability and every compiled statement checked against the target database without scanning; Diagnostics at `file:line:col` | H6 | — | M | | proposed |
 
-Ranks 11–12 were added with the owner on 2026-09-26 and placed at the end
+Ranks 11–13 were added with the owner on 2026-09-26 and placed at the end
 pending the re-score; they are not a judgement of priority.
 
 **Owner priority input (2026-09-26): UI first.** After I-01, the UI chain
@@ -51,6 +52,10 @@ these as acceptance scenarios.
   to stderr that there is no authentication until Phase 4 (F1, F2). API
   tokens are not pulled forward. Security review required (inbound
   network). Applies to I-03 onwards, which serve through the same command.
+- **I-13 — security review required** (credentials; user SQL sent to the
+  database in prepared form). Plain `validate` must stay credential-free;
+  exit codes follow the existing 0/1/2/3 contract unchanged (see the H6 note
+  in FEATURES.md).
 - **I-08 — dataset-source and executor seams.** A dataset's source (table
   today, file here; later an in-memory frame, a Spark DataFrame, a stream
   window) supplies its `FROM` clause and a stable name for check identity,
