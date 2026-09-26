@@ -9,7 +9,7 @@ and how they were resolved, what was deferred, and what was learned.
 ## Iteration 2 — Read-only REST API and `tablewatch serve` (I-02), 2026-09-26
 
 - **Spec:** [002-read-only-api](specs/002-read-only-api.md). **Branch:**
-  `iter/002-read-only-api`. **PR:** #TBD.
+  `iter/002-read-only-api`. **PR:** #6.
 - **Shipped:** `tablewatch serve` and a read-only JSON API under `/api/v1`
   (`project`, `checks`, `checks/{id}`, `checks/{id}/history`, `runs`,
   `runs/{id}`, `openapi.json`), behind a new optional `server` extra
