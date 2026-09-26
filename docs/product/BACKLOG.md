@@ -21,7 +21,7 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | Rank | ID | Increment | Features | Depends on | Size | R | I | C | Score | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | — | I-01 | Python API: `tablewatch.run()` / `load()` returning typed results; per-call `record=`; establishes the result-sink seam — [spec 001](specs/001-python-api.md) | B1, E7 (per call) | — | S | 2 | 2 | 1.0 | 5.0 | done (iteration 1) |
-| 1 | I-02 | Read-only REST API: runs, results, checks, history; `tablewatch serve` (API only) | C1 | I-01 ✓ | M | 3 | 1 | 0.8 | **1.5** | proposed |
+| 1 | I-02 | Read-only REST API: runs, results, checks, history; `tablewatch serve` (API only) — [spec 002](specs/002-read-only-api.md) | C1 | I-01 ✓ | M | 3 | 1 | 0.8 | **1.5** | in-progress (iteration 2) |
 | 2 | I-03 | UI shell + overview page, bundle shipped in the wheel | C2 | I-02 | M | 4 | 2 | 0.8 | **4.0** | proposed |
 | 3 | I-05 | Check detail: history chart against threshold, SQL, source | C4 | I-03 | M | 3 | 2 | 0.8 | **2.4** | proposed |
 | 4 | I-04 | Check explorer tree with filters and search | C3 | I-03 | M | 2 | 1 | 0.8 | **0.8** | proposed |
@@ -38,6 +38,7 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | 15 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | 2 | 1 | 0.8 | **0.8** | proposed |
 | 16 | I-15 | Run detail page and diff against the previous run ("what broke since yesterday") | C5 | I-02, I-03 | M | 2 | 1 | 0.8 | **0.8** | proposed |
 | 17 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
+| 18 | I-19 | CLI `runs` and `history` scoped to the project, as the server is (spec 002 R5): in a shared store they show every project's runs today | E5, E0 (hardening) | — | S | 2 | 1 | 0.8 | **1.6** | proposed |
 
 ### Why the rank departs from the score
 
@@ -65,6 +66,9 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
   I-14 makes the UI useful to a team on more than one server; I-07 is the
   first check that reads history (and with I-12 settles the "history needs
   recording" Diagnostic); I-13 pairs with I-09 for CI and goes with it.
+- **I-19 (1.6) sits last for now.** It was added in iteration 2 PLAN
+  (spec 002 R5) and is not re-ranked until the iteration 2 REVIEW. It
+  belongs next to I-14, the shared store that makes it matter.
 - **Scoring notes.** Reach counts personas materially helped *by the
   increment itself*. I-06 has impact 3 because without it a failure reaches
   nobody who is not looking. I-08 takes the unblocking bonus for the
@@ -99,6 +103,13 @@ these as acceptance scenarios.
 - **I-03 — from iteration 1.** CI builds the wheel and checks that the UI
   bundle is inside it. Today only a test builds the wheel (added by
   qa-engineer in iteration 1); CI does not.
+- **I-03 — from spec 002 (iteration 2 PLAN).** The overview shows
+  `project.ok == false` and its diagnostics as a banner, because `serve`
+  keeps serving the checks that loaded when a check file is broken. It
+  shows the age of each check's `latest` result (`latest.started_at`),
+  because a narrower run can leave it old. It says when the check files
+  were loaded (`loaded_at`), because serve reads them once. It builds
+  against the checked-in OpenAPI document.
 - **I-13 — security review required** (credentials; user SQL sent to the
   database in prepared form). Plain `validate` must stay credential-free;
   exit codes follow the existing 0/1/2/3 contract unchanged (see the H6 note
@@ -122,6 +133,13 @@ these as acceptance scenarios.
   at once must not race inside the migration (iteration 1 serialised
   migrations within one process only; the cross-process race exists on
   `main` as it did before). The spec includes that scenario on Postgres.
+- **I-14 — found in iteration 2 PLAN.** `results.url` is used as written:
+  `${env:}` references are not resolved in it (only datasource settings go
+  through `resolve_env`). A shared Postgres store therefore needs its
+  password written literally in `tablewatch.yml`. That breaks the intent
+  of rule 6, so security review is required. The spec either supports
+  `${env:}` in `results.url`, resolved only when the store is opened, or
+  says why not.
 - **I-16 — from iteration 1.** Spec 001 R12 is the starting scenario. A
   partial match (`tablewatch run checks/inventory checks/inventry`) runs
   today and exits 0; making it an error means a command that exits 0 today
