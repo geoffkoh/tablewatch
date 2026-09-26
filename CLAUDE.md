@@ -22,8 +22,9 @@ policy, and when to stop and ask the user.
   and opens and merges PRs.
 - Agents in `.claude/agents/`: `product-manager` (plans, specs, retro),
   `data-steward` (domain semantics, acceptance), `qa-engineer`
-  (adversarial tests), `security-reviewer` (read-only), `ui-engineer`
-  (frontend), `platform-engineer` (connectors, deployment, benchmarks).
+  (adversarial tests), `security-reviewer` (read-only), `architect`
+  (design review, read-only), `ui-engineer` (frontend), `platform-engineer`
+  (connectors, deployment, benchmarks).
   Builders never judge their own work.
 - Product documents live in `docs/product/`: `VISION.md`, `FEATURES.md`,
   `BACKLOG.md`, `specs/`, `ITERATIONS.md`, `PROCESS.md`.
