@@ -405,6 +405,7 @@ def serve(
         from tablewatch.server import serve as server
         from tablewatch.server.app import create_app
         from tablewatch.server.routes import ServerContext
+        from tablewatch.server.ui import load_bundle
     except ModuleNotFoundError as exc:
         if (exc.name or "").split(".")[0] not in SERVER_PACKAGES:
             raise
@@ -447,13 +448,21 @@ def serve(
             )
         shown = f"[{host}]" if ":" in host else host
         started = (
-            f"tablewatch serve: http://{shown}:{sock.getsockname()[1]}/api/v1 "
-            f"(project {project.config.name}, {len(project.checks)} checks)"
+            f"tablewatch serve: http://{shown}:{sock.getsockname()[1]}/ "
+            f"(project {project.config.name}, {len(project.checks)} checks; "
+            "API at /api/v1)"
         )
         context = ServerContext(
             project=project, store=store, loaded_at=datetime.now(UTC)
         )
-        app = create_app(context, allowed_hosts=allowed_hosts)
+        bundle = load_bundle()
+        if bundle is None:
+            click.echo(
+                "tablewatch: warning: web UI not found in this installation — "
+                "serving the API only",
+                err=True,
+            )
+        app = create_app(context, allowed_hosts=allowed_hosts, ui=bundle)
         server.run(
             app,
             sock,

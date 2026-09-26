@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only: CI checks the committed bundle, it never writes one.
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -18,3 +22,31 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy .
       - run: uv run pytest
+
+  # The web UI: the committed bundle and generated types must be exactly what
+  # a fresh build of frontend/ produces. No secrets are available here.
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm audit signatures
+      - run: npm audit --audit-level=high
+      - run: npm run gen:types
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: The committed bundle and types are the built ones
+        working-directory: .
+        run: |
+          git diff --exit-code -- src/tablewatch/webapp/static frontend/src/api/schema.gen.ts
+          untracked=$(git status --porcelain --untracked-files=all -- src/tablewatch/webapp/static frontend/src/api)
+          if [ -n "$untracked" ]; then echo "$untracked"; exit 1; fi

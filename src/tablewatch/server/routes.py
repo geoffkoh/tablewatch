@@ -26,10 +26,19 @@ OutcomeFilter = Literal["pass", "warn", "fail", "error", "skipped", "not_run"]
 RUN_ID = re.compile(r"^[0-9a-f]{32}$")
 MAX_CURSOR = 256
 
+# Every error the API answers, in one table: the codes the envelope carries,
+# and the responses each operation declares.
+STATUS_CODES: dict[int, schemas.ErrorCode] = {
+    400: "invalid_parameter",
+    403: "forbidden_host",
+    404: "not_found",
+    405: "method_not_allowed",
+    500: "internal_error",
+    503: "store_unavailable",
+}
 ERRORS = {
-    400: {"model": schemas.ErrorBody, "description": "Invalid parameter"},
-    404: {"model": schemas.ErrorBody, "description": "Not found"},
-    503: {"model": schemas.ErrorBody, "description": "Results store unavailable"},
+    status: {"model": schemas.ErrorBody, "description": code.replace("_", " ")}
+    for status, code in STATUS_CODES.items()
 }
 
 
@@ -105,7 +114,7 @@ def list_checks(
     items = []
     for check in context.project.checks:
         found = latest.get(check.id)
-        result = schemas.LatestResult.of(*found) if found else None
+        result = schemas.LatestResult.of(found) if found else None
         if wanted and (result.outcome if result else "not_run") not in wanted:
             continue
         items.append(schemas.CheckSummary.of(check, result))
@@ -117,10 +126,9 @@ def get_check(context: Context, check_id: str) -> schemas.CheckSummary:
     check = context.check(check_id) if _is_check_id(check_id) else None
     if check is None:
         raise _not_found("check")
-    # The head of its history is its latest result: same order, one row.
-    head = context.store.history_page(context.name, check.id, limit=1)
+    found = context.store.latest_results(context.name, check.id).get(check.id)
     return schemas.CheckSummary.of(
-        check, schemas.LatestResult.of(*head[0]) if head else None
+        check, schemas.LatestResult.of(found) if found else None
     )
 
 

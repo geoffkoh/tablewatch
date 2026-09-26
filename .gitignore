@@ -21,3 +21,8 @@ htmlcov/
 
 # Local results stores (alembic.ini dev store, ad-hoc runs)
 .tablewatch/
+
+# Frontend (the built bundle in src/tablewatch/webapp/static/ IS committed)
+frontend/node_modules/
+frontend/.env*
+*.tsbuildinfo

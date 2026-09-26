@@ -110,7 +110,7 @@ Notes:
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | C1 | Read-only REST API (runs, results, checks, history), OpenAPI | Contract for the UI and integrations | all | 2 | M | shipped (I-02) |
-| C2 | `tablewatch serve` (listens on 127.0.0.1 by default; `--host` opts in with a no-authentication warning), UI shell, overview (failing first) | Status at a glance, without a terminal | Sam, Alex | 2 | M | backlog (`serve` built in I-02; UI shell and overview are I-03) |
+| C2 | `tablewatch serve` (listens on 127.0.0.1 by default; `--host` opts in with a no-authentication warning), UI shell, overview (failing first) | Status at a glance, without a terminal | Sam, Alex | 2 | M | shipped (`serve` in I-02; UI shell and overview in I-03) |
 | C3 | Check explorer: tree mirroring `checks/`, filters, search | Find any check the way it was written | Sam | 2 | M | backlog |
 | C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | backlog |
 | C5 | Run detail and diff against the previous run | "What broke since yesterday" | Sam | 2 | M | backlog |

@@ -1,0 +1,32 @@
+{
+  "name": "tablewatch-ui",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The tablewatch web UI. Built into src/tablewatch/webapp/static/.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^24.13.0"
+  },
+  "scripts": {
+    "gen:types": "openapi-typescript ../docs/api/openapi.json --output src/api/schema.gen.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "jsdom": "29.1.1",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  }
+}

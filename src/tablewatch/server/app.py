@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -22,13 +22,21 @@ from tablewatch._version import __version__
 from tablewatch.results.store import StoreError
 from tablewatch.server import schemas
 from tablewatch.server.hosts import host_allowed
-from tablewatch.server.routes import ApiError, ServerContext, router
+from tablewatch.server.routes import STATUS_CODES, ApiError, ServerContext, router
+from tablewatch.server.ui import Bundle, is_api_path
 
 log = logging.getLogger(__name__)
 
 API = "/api/v1"
 OPENAPI_URL = f"{API}/openapi.json"
 
+# Everything the page loads comes from this server; nothing inline, nothing
+# evaluated. Harmless on JSON, so every response carries it.
+CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+    "font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; "
+    "frame-ancestors 'none'"
+)
 SECURITY_HEADERS = [
     (b"x-content-type-options", b"nosniff"),
     # Results can quote data values: keep them out of browser and proxy caches.
@@ -36,15 +44,10 @@ SECURITY_HEADERS = [
     (b"cross-origin-resource-policy", b"same-origin"),
     (b"referrer-policy", b"no-referrer"),
     (b"x-frame-options", b"DENY"),
+    (b"content-security-policy", CSP.encode()),
+    (b"cross-origin-opener-policy", b"same-origin"),
 ]
 
-STATUS_CODES: dict[int, schemas.ErrorCode] = {
-    400: "invalid_parameter",
-    403: "forbidden_host",
-    404: "not_found",
-    405: "method_not_allowed",
-    503: "store_unavailable",
-}
 INTERNAL_ERROR = "internal error — see the server log"
 FORBIDDEN_HOST = (
     "host not allowed — use an IP address or localhost, "
@@ -60,13 +63,16 @@ STORE_UNAVAILABLE = "results store: unavailable — see the server log"
 
 
 def create_app(
-    context: ServerContext, *, allowed_hosts: Collection[str] = ()
+    context: ServerContext,
+    *,
+    allowed_hosts: Collection[str] = (),
+    ui: Bundle | None = None,
 ) -> ASGIApp:
-    """The `/api/v1` application for one loaded project and its open store.
+    """The web UI and `/api/v1` for one loaded project and its open store.
 
     Internal: the contract is the HTTP API, not this factory. `allowed_hosts`
     are host names accepted in the `Host` header beyond `localhost` and IP
-    literals.
+    literals. Without a `ui` bundle, only the API is served.
     """
     app = FastAPI(
         title="tablewatch",
@@ -84,14 +90,11 @@ def create_app(
     def openapi() -> dict[str, Any]:
         return _openapi(app)
 
-    @app.get("/", include_in_schema=False)
-    def root() -> dict[str, str]:  # a placeholder until I-03 serves the UI here
-        return {
-            "name": "tablewatch",
-            "version": __version__,
-            "api": API,
-            "openapi": OPENAPI_URL,
-        }
+    # The web UI answers whatever no route above matched, so it must stay the
+    # last route registered: a router included after it would be shadowed.
+    @app.get("/{path:path}", include_in_schema=False)
+    def web_ui(path: str) -> Response:
+        return _ui_response(ui, path)
 
     @app.exception_handler(ApiError)
     def api_error(_: Request, exc: ApiError) -> JSONResponse:
@@ -128,6 +131,17 @@ def create_app(
     app.openapi = lambda: _openapi(app)  # type: ignore[method-assign]
     guard: ASGIApp = _Guard(app, allowed_hosts)
     return guard
+
+
+def _ui_response(ui: Bundle | None, path: str) -> Response:
+    if is_api_path(path):
+        raise ApiError(404, "not_found", "not found")
+    if ui is None:
+        raise ApiError(404, "not_found", f"web UI not installed — the API is at {API}")
+    asset = ui.lookup(path)
+    if asset is None:
+        raise ApiError(404, "not_found", "not found")
+    return Response(asset.body, media_type=asset.content_type)
 
 
 def error_response(

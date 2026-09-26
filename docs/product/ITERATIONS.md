@@ -6,6 +6,128 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 3 — Web UI shell and overview page (I-03), 2026-09-26
+
+- **Spec:** [003-ui-shell-overview](specs/003-ui-shell-overview.md).
+  **Branch:** `iter/003-ui-shell-overview`. **PR:** #7.
+- **Shipped:** the first web page. `tablewatch serve` now answers `GET /`
+  with an overview: the project header (version, when the check files were
+  loaded, a manual Refresh), a banner listing each broken check file at
+  `file:line:col` with the counts marked incomplete, the summary of every
+  loaded check's latest result, the latest run's own panel (trigger,
+  selection, "This run" counts), and every check with problems first.
+  Each row shows the age of its latest result and "failing since"; an
+  error row still says what the data last showed. The API gained
+  `latest.since` and `latest.last_evaluated` (additive; `v1` stays), and
+  the OpenAPI document now describes what the server sends: `selection`
+  with five named keys, 403/405/500 declared, timestamps as `date-time`
+  with six fractional digits. The streak rule lives in one pure function,
+  `results.state.current_state`, for I-06 to reuse. The React bundle is
+  built by Vite, committed to `src/tablewatch/webapp/static/`, loaded once
+  at startup into an in-memory map, and served with a strict CSP; no
+  filesystem path is built from a request. CI has a separate `frontend`
+  job (npm ci, audit signatures, audit, type generation, tsc, vitest,
+  build, and a drift check on the bundle and generated types) and checks
+  that the wheel carries the bundle. Python users need no Node. README
+  "Reading the overview" and the JSON API section (data-steward);
+  `docs/UI_SPECIFICATION.md` (ui-engineer).
+- **Acceptance:** 39 scenarios (34 `must`, 5 `should`). Every `must` is an
+  automated test or, for K2–K4, a CI step; W7 is covered by the existing
+  startup-line process tests. The data-steward ran 26/26 of the
+  user-visible scenarios against a real `serve` in six store states. Suite:
+  Python 528 passed, 1 xfailed (strict; the known uvicorn connection-limit
+  limitation, I-20); frontend 192 vitest tests; `tsc` clean. Gates:
+  pytest, ruff, ruff format, strict mypy; CI green on both jobs.
+- **Q7 settled without weakening K2:** the bundle built on Linux with Node
+  24.13.0 in CI is byte-identical to the macOS build. Local builds use a
+  new conda env, `tablewatch-node` (Node 24.13.0); the ui-engineer brief
+  and CLAUDE.md point at it, not c4studio's `pystructurizr`.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — FAIL, one blocking finding, fixed.* An outcome unknown
+    to this version broke an `error` streak (P4), although the API serves
+    such an outcome as `error` (decision 2). Unknown outcomes
+    are now folded to `error` inside `current_state`, so the page, the
+    API and I-06 agree. Also fixed: an asset path with a trailing slash
+    was served as the HTML page (now 404); a `//api/...` failure turned
+    out to be a test-client artifact, and the test was corrected. Added:
+    a CLI test for W8 (no bundle), P5 at 500 checks × 50 runs, an exact
+    CSP pin, security headers asserted on every error type, and frontend
+    edge-case tests.
+  - *architect — approve with follow-ups.* Adopted: the unknown-outcome
+    fold above; UI path resolution moved into `server/ui.py`
+    (`Bundle.lookup`, `is_api_path`); the catch-all route documented as
+    the last one registered; a `State` docstring. Not adopted (→ backlog):
+    BACKLOG's I-06 requirement still stated PLAN's superseded rule (fixed
+    in this REVIEW); the UI says `none` where the API says `not_run` (map
+    it in `frontend/src/api/api.ts` when I-04 adds filters); Overview's load/refresh state
+    should become a hook when I-05 needs the same (→ I-05).
+  - *security-reviewer — approve with follow-ups.* Adopted:
+    `.gitattributes` marks the binary bundle assets `binary`. Not adopted
+    (→ backlog): pin CI actions to commit SHAs before any publishing
+    workflow exists (→ I-22); an `npm audit` failure is fixed by
+    upgrading or by a time-boxed, documented exception, never by removing
+    the step (written into PROCESS.md in this REVIEW); `latest_results`
+    reads the project's whole history per request (→ I-23, with a
+    threshold, and a `(check_id, run_id)` index on I-14).
+  - *data-steward — accept with follow-ups.* README rewritten ("Reading
+    the overview"; the JSON API with `since` and `last_evaluated`). Not
+    adopted (→ I-21, I-24): the "incomplete" marker sits only on the fail
+    and pass counts; on a broken project the latest run's "6 fail" next to
+    the summary's "5 failing" is unexplained; "Failing since 7 days ago"
+    reads awkwardly; a passing schema check shows the value "0" and
+    freshness messages embed raw UTC ISO timestamps (engine formatting,
+    visible on every surface, not only the page).
+- **Contract note for users:** non-GET requests to any path the server
+  does not route, unknown `/api/*` paths included, now answer 405 instead
+  of 404 (decision 8). Read-only clients are unaffected. In the CHANGELOG.
+- **Deferred** (spec 003 said so): `immutable` caching for hashed assets
+  (→ I-20, `should`); the JSON report's timestamp format, which needs a
+  `schema_version` bump (→ I-25); a save-time state table (→ I-23, now
+  with a trigger threshold instead of "if history grows").
+- **Backlog:** I-03 done; C2 `shipped` in FEATURES.md. New: I-21 overview
+  wording and counts (0.8), I-22 CI actions pinned to SHAs (1.0), I-23
+  save-time check state (0.5, gated on a measured threshold), I-24
+  readable values and messages (2.4), I-25 JSON report timestamps (0.5).
+  Requirements added to I-04 (`none`/`not_run` mapping), I-05 (the
+  load/refresh hook; the chart must show where an expression edit changed
+  the rule), I-06 (corrected streak rule; reuse `current_state`), I-14
+  (index; measure `/checks` at the I-23 threshold) and I-20 (immutable
+  caching). Nothing re-scored except by adding items.
+- **Owner decisions still pending** (from iteration 1, carried): the exit
+  code for a selector that partly matches (I-16), and whether click usage
+  errors exit 3 instead of 2 (I-17). They do not block the UI chain; I-16
+  cannot be specified without them.
+- **Learned:**
+  - The REFINE reversal of D1 was the most valuable change in the
+    iteration: PLAN's rule would have understated how long a defect had
+    lasted after every routine outage. A domain reviewer challenging a
+    PM's semantic decision before BUILD is exactly what REFINE is for.
+    But the backlog kept PLAN's text, and only the architect caught it in
+    VERIFY. When REFINE supersedes a PLAN decision, the PM updates every
+    document that quoted it in the same step.
+  - The blocking finding was a second copy of a rule: the server's
+    "unknown outcome is `error`" lived outside the streak function. The
+    fix put the fold inside the one function. Where a normalisation
+    exists, every consumer should go through it; qa-engineer's P4
+    (`since` agrees with `/history`) is the kind of cross-check that
+    finds this.
+  - Committing a built bundle was safe only because CI rebuilds it and
+    compares bytes. Byte-identical builds across macOS and Linux were a
+    risk (Q7) that the pinned Node version and `emptyOutDir` settled.
+  - M was right again, but the diff was 12,000 lines across 66 files,
+    most of it generated or tests. The review cost is in the frontend's
+    first appearance (toolchain, supply chain, CI); I-05 and I-04 reuse
+    it and should be cheaper.
+- **Next:** I-05, check detail — the owner's UI-first order puts it next
+  (check detail before the explorer), its dependency I-03 is met, and it
+  scores 2.4. The overview already lists failing checks first and can
+  link each row to the detail page. Its spec must carry: new read-only
+  endpoints for a check's rules, compiled SQL and source, which change
+  what the server exposes over the network (security review required);
+  the first chart (history against the threshold, dataviz skill); the
+  rule changes under an explicit `id:` (spec 003 P6); and the
+  load/refresh hook.
+
 ## Iteration 2 — Read-only REST API and `tablewatch serve` (I-02), 2026-09-26
 
 - **Spec:** [002-read-only-api](specs/002-read-only-api.md). **Branch:**

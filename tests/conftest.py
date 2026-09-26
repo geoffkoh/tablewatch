@@ -7,6 +7,7 @@ fails here rather than in someone's warehouse.
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import sqlite3
 import textwrap
@@ -17,7 +18,9 @@ from typing import Any
 
 import duckdb
 import pytest
+from click.testing import CliRunner
 
+from tablewatch.cli.main import cli
 from tablewatch.config import Project, load_project
 from tablewatch.engine.runner import CheckResult, run_checks
 
@@ -119,3 +122,41 @@ def retail(tmp_path: Path) -> Path:
     spec.loader.exec_module(module)
     module.build(target / "retail.duckdb")
     return target
+
+
+# --- a project with two recorded CLI runs (specs 002 and 003) ------------------
+
+
+def invoke(project: Path, *args: str) -> tuple[int, str, str]:
+    outcome = CliRunner().invoke(cli, ["--project-dir", str(project), *args])
+    return outcome.exit_code, outcome.stdout, outcome.stderr
+
+
+@dataclass
+class Recorded:
+    root: Path
+    run_a: str
+    run_b: str
+    run_b_report: dict[str, Any]
+
+
+def run_ids(root: Path) -> list[str]:
+    """Run ids in the order they were recorded."""
+    db = sqlite3.connect(root / ".tablewatch" / "results.db")
+    try:
+        return [
+            r
+            for (r,) in db.execute("SELECT id FROM tablewatch_runs ORDER BY started_at")
+        ]
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def recorded(retail: Path, monkeypatch: pytest.MonkeyPatch) -> Recorded:
+    monkeypatch.chdir(retail)
+    assert invoke(retail, "run")[0] == 1
+    code, out, _ = invoke(retail, "run", "checks/sales", "--output", "json")
+    assert code == 1
+    run_a, run_b = run_ids(retail)
+    return Recorded(retail, run_a, run_b, json.loads(out))

@@ -35,8 +35,9 @@ WARN     sales.orders  row_count | warn when < 1000 | fail when = 0       7  war
 All of a table's aggregate checks run in **one table scan**, however many
 there are.
 
-> **Status: alpha (`0.1.0`).** The engine and CLI are complete. A web UI,
-> alerting, and scheduling come next — see the [roadmap](docs/ROADMAP.md).
+> **Status: alpha (`0.1.0`).** The engine and CLI are complete, and `serve`
+> has a first web page, the overview. More of the web UI, alerting, and
+> scheduling come next — see the [roadmap](docs/ROADMAP.md).
 
 ## Install
 
@@ -105,7 +106,7 @@ The full language — every metric, option and rule — is in
 | `tablewatch runs` | Show recent runs. |
 | `tablewatch history ID` | Show one check's outcomes over time. |
 | `tablewatch schema` | Print the JSON Schema for check files. |
-| `tablewatch serve` | Serve checks and results as a read-only JSON API ([below](#serve-results-over-http)). |
+| `tablewatch serve` | Serve checks and results as a web page and a read-only JSON API ([below](#serve-results-over-http)). |
 
 `list`, `compile` and `run` take selectors: paths (`checks/sales`), `--tag`,
 `--datasource`, `--exclude PATH_OR_GLOB`, and `--check ID`.
@@ -135,30 +136,101 @@ with the datasource's credentials.
 ## Serve results over HTTP
 
 `tablewatch serve` publishes one project's checks and recorded results as a
-read-only JSON API, for dashboards, scripts, and the web UI that comes next.
-It reads the results store only. It never connects to a datasource, never
+web page for people and a read-only JSON API for dashboards and scripts. It
+reads the results store only. It never connects to a datasource, never
 starts a run, and needs no credentials.
 
 ```bash
 pip install 'tablewatch[duckdb,server]'
 tablewatch --project-dir examples/retail run      # record a run first
 tablewatch --project-dir examples/retail serve
-# tablewatch serve: http://127.0.0.1:8765/api/v1 (project retail-example, 18 checks)
+# tablewatch serve: http://127.0.0.1:8765/ (project retail-example, 18 checks; API at /api/v1)
 ```
 
-To see what is failing right now, ask for every check whose most recent
-recorded result is `fail`, `warn` or `error`:
+Open `http://127.0.0.1:8765/` in a browser. The page is built into the
+package, so the server needs no Node and the page loads nothing from the
+internet.
+
+### Reading the overview
+
+The page answers "what is wrong with my tables, and since when?" From the
+top down, it shows:
+
+- **The header**: the project, the tablewatch version, and when the check
+  files were loaded. `serve` reads them once, at startup (see below).
+  **Refresh** fetches the results again. The page never refreshes itself.
+- **A banner, if a check file failed to load.** It lists each mistake
+  at `file:line:col`. That file's checks are missing from the page, so the
+  counts are marked **incomplete**. The page cannot tell how many checks the
+  broken file held, so a count marked incomplete, such as "5 failing",
+  covers only the checks the page can see. There may be more. Fix the file
+  and restart `serve`.
+- **Summary**: the latest result of every loaded check, counted as failing,
+  errors, warnings, no result, and passing.
+- **Latest run**: when the most recent run started, what triggered it, what
+  it selected ("all checks" or, for example, "paths: checks/sales"), and its
+  own counts under "This run". A run of one folder counts only that folder,
+  so its numbers can differ from the summary's. The summary is the state of
+  the project. The run panel says what the last run looked at.
+- **Every check, problems first**: failing, then could not evaluate, then
+  warning, then no result recorded, then passing.
+
+The status words mean different things and go to different people:
+
+| Row says | Meaning | Who acts |
+| --- | --- | --- |
+| **Fail** | The data broke the rule. The row shows the measured value and the rule. | The data owner |
+| **Error**, "Could not evaluate" | tablewatch could not measure the check: the database was unreachable, a query failed, or similar. The row shows the error message. It says nothing about the data. | Whoever runs tablewatch |
+| **Warn** | The data crossed a warning threshold but not the failure threshold. | The data owner, soon |
+| **No result recorded** | This check has never run, so its state is unknown. It is **not** a pass. A new or edited check shows this until the next `tablewatch run`. | Run it |
+| **Pass** | The data met the rule in the latest result. | — |
+
+"All checks passing" appears only when every loaded check's latest result
+is a pass and every check file loaded. Any check with no result recorded
+prevents it.
+
+The times on each row:
+
+- **The age of the latest result** ("3 hours ago"). Hover over or focus any
+  time to see it in full, in your own time zone. A row marked **Not in the
+  latest run** has an older result because the latest run selected other
+  checks. Check its age before you rely on it.
+- **"Failing since"** or **"Warning since"**: the oldest result in the
+  current streak of that outcome. Errors do not break a streak. A check that
+  failed, errored during a database outage, and failed again is "failing
+  since" the first failure, because the outage showed nothing about the
+  data. Any other evaluated result ends the streak: a pass, or a warn
+  between fails. "Since" means "in every evaluation since", not "every
+  minute since": runs happen at intervals, and the check's history
+  (`/api/v1/checks/{id}/history`, below) shows the gaps.
+- **"Could not evaluate since"** on an error row: how long tablewatch has
+  been unable to measure the check. Below the message, **"Last evaluated:
+  Fail, 4 days ago; failing since 7 days ago"** says what the data showed
+  the last time it could be measured. The error count in the summary adds
+  how many of those checks were failing then ("5 errors could not evaluate; 2
+  were failing"). They still need attention, but not in the failing count.
+
+### The JSON API
+
+To list what is failing right now, ask for every check whose latest
+recorded result is `fail`, `warn` or `error`. The same query shows how long
+each problem has lasted and, for errors, what the data last showed:
 
 ```console
 $ curl -s 'http://127.0.0.1:8765/api/v1/checks?outcome=fail&outcome=warn&outcome=error' \
-    | jq -r '.items[] | [.latest.outcome, .dataset, .name, .latest.display_value] | @tsv'
-warn    inventory.products  Price feed freshness            3d 2m
-fail    sales.customers     missing_percent(email) < 5%     20.00%
-fail    sales.customers     invalid_count(country) = 0      1
+    | jq -r '.items[] | [.latest.outcome, .latest.since, .latest.last_evaluated.outcome // "-", .dataset, .name] | @tsv'
+warn    2026-09-19T06:00:00.000000+00:00  -     inventory.products  Price feed freshness
+error   2026-09-25T06:00:00.000000+00:00  pass  sales.customers     row_count > 0
+error   2026-09-25T06:00:00.000000+00:00  pass  sales.customers     duplicate_count(customer_id) = 0
+error   2026-09-25T06:00:00.000000+00:00  fail  sales.customers     missing_percent(email) < 5%
+...
+fail    2026-09-19T06:00:00.000000+00:00  -     sales.orders        missing_count(customer_id) = 0
 ...
 $ curl -s http://127.0.0.1:8765/api/v1/checks/b1ceb8262d8b5441/history \
     | jq -r '.items[] | [.started_at, .outcome, .display_value] | @tsv'
-2026-09-26T07:21:55.862351+00:00    fail    20.00%
+2026-09-25T06:00:00.000000+00:00    error   —
+2026-09-22T06:00:00.000000+00:00    fail    20.00%
+2026-09-19T06:00:00.000000+00:00    fail    20.00%
 ```
 
 | `GET /api/v1/...` | Returns |
@@ -171,39 +243,52 @@ $ curl -s http://127.0.0.1:8765/api/v1/checks/b1ceb8262d8b5441/history \
 | `openapi.json` | The contract, also checked in at [docs/api/openapi.json](docs/api/openapi.json) |
 
 Every endpoint is `GET`. `runs` and `history` are paged with `?limit=` (1 to
-200, default 50) and the `next_cursor` from the previous page.
+200, default 50) and the `next_cursor` from the previous page. Timestamps
+are UTC, always with six fractional digits.
 
 How to read the results:
 
 - **`latest` is the check's most recent result, which is not always from the
   most recent run.** A run of `checks/sales` leaves the inventory checks'
   results as they were. `latest.started_at` says how old a result is.
-- **An `error` replaces the last pass or fail.** If tablewatch could not
-  evaluate a check last time, the API does not know the state of the data,
-  so the check appears under `?outcome=error` and not under `fail`. Ask for
-  `fail`, `warn` and `error` together.
+- **`latest.since` is when the current streak began**, by the rule the page
+  uses for "failing since": for `pass`, `warn` and `fail`, `error` and
+  `skipped` results are passed over, and a different evaluated outcome ends
+  the streak. For `error`, it is when the errors began. It is always set, and
+  it equals `latest.started_at` when the streak is one result long.
+- **An `error` replaces the last pass or fail as `latest`.** If tablewatch
+  could not evaluate a check last time, the check appears under
+  `?outcome=error` and not under `fail`. Ask for `fail`, `warn` and `error`
+  together. `latest.last_evaluated` then holds the last pass, warn or fail
+  (`outcome`, `started_at`, `since`). It is `null` when `latest` is itself
+  evaluated, or when the check has never been evaluated.
 - **`not_run` means no result is recorded for this check id.** Editing a
   check's expression gives it a new id, so it matches `not_run` until it runs
   again, and its old results stay under the old id's `history`. Treat
   `not_run` as unknown, not healthy. An explicit `id:` keeps one history
-  across edits ([check language](docs/check-language.md)).
+  across edits, and "failing since" with it
+  ([check language](docs/check-language.md)).
 - **`value` is in the metric's unit, which `unit` names**: `count`, `percent`
   (`20.0` means 20%), `duration` (seconds), or `number`. Show
   `display_value` to people.
 
-What `serve` reads, and when:
+### What `serve` reads, and when
 
 - **It reads check files once, at startup. It reads results live.** Restart
-  `serve` to pick up edited checks. A `tablewatch run` from cron appears on
-  the next request.
+  `serve` to pick up edited checks. The page header says how long ago they
+  were loaded. A `tablewatch run` from cron appears on the next request, or
+  when you press Refresh.
 - **A mistake in a check file does not stop `serve`.** It prints the
-  diagnostics and serves the checks that loaded, and `project` reports
-  `"ok": false`. The broken file's checks are missing from `checks`, so the
-  failure count can go down. Check `ok` before you trust a count.
+  diagnostics and serves the checks that loaded. `project` reports
+  `"ok": false`, and the page shows the banner. The broken file's checks are
+  missing from `checks`, so the failure count can go down. Check `ok` before
+  you trust a count.
 - **It serves one project per server.** In a results store shared by several
   projects, `serve` shows only runs recorded under this project's `name:`.
   If you rename the project, its earlier runs stay in the store but no longer
   appear. Run one `serve` per project, each on its own `--port`.
+- **If the results store cannot be read,** the page says so and shows no
+  counts, rather than an empty list that could pass for "nothing failing".
 
 ### Who can reach it
 
@@ -212,7 +297,7 @@ on `127.0.0.1` by default, so only the same machine can connect. From your
 laptop, the safest way in is an SSH tunnel:
 
 ```bash
-ssh -L 8765:127.0.0.1:8765 dq-host      # then open http://127.0.0.1:8765/api/v1/project
+ssh -L 8765:127.0.0.1:8765 dq-host      # then open http://127.0.0.1:8765/
 ```
 
 `--host 0.0.0.0` (or any address that is not loopback) serves the network and

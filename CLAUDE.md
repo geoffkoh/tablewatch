@@ -48,6 +48,11 @@ uv build               # wheel + sdist into dist/
 
 uv run python examples/retail/build.py                   # example database
 uv run tablewatch --project-dir examples/retail run      # exits 1: planted defects
+
+# Web UI (frontend/, owned by ui-engineer). Node comes from the conda env
+# tablewatch-node, pinned to frontend/.nvmrc; the built bundle is committed.
+export PATH="/opt/miniconda3/envs/tablewatch-node/bin:$PATH"
+npm --prefix frontend ci && npm --prefix frontend test && npm --prefix frontend run build
 ```
 
 Run all four gates before opening a PR. If the shell has another project's
@@ -80,7 +85,9 @@ load YAML tree ─► parse DSL ─► resolve ─► plan ─► execute ─►
 | `selection.py` | paths / tags / datasources / excludes / check ids |
 | `cli/main.py` | click commands and the exit-code contract |
 | `api.py` | the Python API (`load`, `run`) and `execute`, the one run path shared with the CLI |
-| `server/` | internal HTTP adapter for `serve`: read-only `/api/v1`, wire schemas, host guard; holds no SQL; FastAPI and uvicorn are imported only here, only when `serve` runs |
+| `server/` | internal HTTP adapter for `serve`: read-only `/api/v1`, wire schemas, host guard, and the web UI (`ui.py` serves the bundle from memory); holds no SQL; FastAPI and uvicorn are imported only here, only when `serve` runs |
+| `results/state.py` | a check's current state from its history ("failing since"); one rule shared by the API and, later, alerts |
+| `webapp/static/` | the built web UI — Vite output from `frontend/`, committed so the server needs no Node. Never edit by hand; CI checks it is the fresh build |
 
 ### Rules the design depends on — keep them
 

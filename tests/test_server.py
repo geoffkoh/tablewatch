@@ -5,35 +5,34 @@ from __future__ import annotations
 import json
 import os
 import re
-import select
 import shutil
 import signal
 import sqlite3
 import subprocess
 import sys
-import time
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 from zoneinfo import ZoneInfo
 
 import httpx2 as httpx
 import jsonschema
 import pytest
-from click.testing import CliRunner
 from fastapi.testclient import TestClient
 
 import tablewatch as tw
-from tablewatch.cli.main import cli
 from tablewatch.output.json_report import as_dict
 from tablewatch.results.store import ResultStore, StoreError, open_store
 from tablewatch.server import schemas
 from tablewatch.server.app import create_app
 from tablewatch.server.hosts import host_allowed, is_loopback
 from tablewatch.server.routes import ServerContext
+from tablewatch.server.ui import Asset, Bundle
+from tests.conftest import Recorded, invoke, run_ids
 from tests.test_api import demo
 
 REPO = Path(__file__).parent.parent
@@ -46,6 +45,16 @@ CUSTOMERS_COUNTRY = "000f8d0048744bfb"
 ORDERS_STATUS = "a30dacf7316eef07"
 EDITED_EMAIL = "e41cf32f07f328c3"
 
+# In-process tests don't depend on the committed bundle being built.
+FAKE_BUNDLE = Bundle(
+    {
+        "index.html": Asset(
+            b"<!doctype html><title>t</title>", "text/html; charset=utf-8"
+        ),
+        "assets/app-abc123.js": Asset(b"export {};", "text/javascript; charset=utf-8"),
+    }
+)
+
 SECURITY_HEADERS = {
     "x-content-type-options": "nosniff",
     "cache-control": "no-store",
@@ -55,47 +64,14 @@ SECURITY_HEADERS = {
 }
 
 
-def invoke(project: Path, *args: str) -> tuple[int, str, str]:
-    outcome = CliRunner().invoke(cli, ["--project-dir", str(project), *args])
-    return outcome.exit_code, outcome.stdout, outcome.stderr
-
-
-@dataclass
-class Recorded:
-    root: Path
-    run_a: str
-    run_b: str
-    run_b_report: dict[str, Any]
-
-
-def run_ids(root: Path) -> list[str]:
-    """Run ids in the order they were recorded."""
-    db = sqlite3.connect(root / ".tablewatch" / "results.db")
-    try:
-        return [
-            r
-            for (r,) in db.execute("SELECT id FROM tablewatch_runs ORDER BY started_at")
-        ]
-    finally:
-        db.close()
-
-
-@pytest.fixture
-def recorded(retail: Path, monkeypatch: pytest.MonkeyPatch) -> Recorded:
-    monkeypatch.chdir(retail)
-    assert invoke(retail, "run")[0] == 1
-    code, out, _ = invoke(retail, "run", "checks/sales", "--output", "json")
-    assert code == 1
-    run_a, run_b = run_ids(retail)
-    return Recorded(retail, run_a, run_b, json.loads(out))
-
-
 @contextmanager
-def served(root: Path, *, allowed_hosts: tuple[str, ...] = ()) -> Iterator[TestClient]:
+def served(
+    root: Path, *, allowed_hosts: tuple[str, ...] = (), ui: Bundle | None = None
+) -> Iterator[TestClient]:
     project = tw.load(root)
     store = open_store(project.config.results.url, project.root)
     context = ServerContext(project=project, store=store, loaded_at=datetime.now(UTC))
-    app = create_app(context, allowed_hosts=allowed_hosts)
+    app = create_app(context, allowed_hosts=allowed_hosts, ui=ui)
     try:
         yield TestClient(
             app, base_url="http://127.0.0.1", raise_server_exceptions=False
@@ -139,12 +115,16 @@ def start(
     monkeypatch: pytest.MonkeyPatch,
     *args: str,
     probe: Callable[[TestClient], None] | None = None,
+    bundle: Bundle | None = FAKE_BUNDLE,
 ) -> Started:
     """Run `serve` through the CLI with uvicorn replaced: `probe` gets a client
     on the real app while serve is up."""
     import tablewatch.server.serve as server
+    import tablewatch.server.ui as ui
 
     served: list[bool] = []
+    if bundle is not None:
+        monkeypatch.setattr(ui, "load_bundle", lambda: bundle)
 
     def fake_run(
         app: Any, sock: Any, *, access_log: bool, on_ready: Callable[[], None]
@@ -171,8 +151,8 @@ def test_serve_prints_where_it_listens(
     assert started.code == 0
     assert started.stdout == ""
     assert re.fullmatch(
-        r"tablewatch serve: http://127\.0\.0\.1:\d+/api/v1 "
-        r"\(project retail-example, 18 checks\)\n",
+        r"tablewatch serve: http://127\.0\.0\.1:\d+/ "
+        r"\(project retail-example, 18 checks; API at /api/v1\)\n",
         started.stderr,
     )
 
@@ -397,10 +377,36 @@ def test_an_in_memory_store_is_refused(
 # --- serve as a real process ------------------------------------------------------
 
 
+class Output(list[str]):
+    """stderr lines of a running serve, drained continuously by a thread so a
+    chatty server never blocks on a full pipe (H1)."""
+
+    def __init__(self, stream: IO[str]) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self._reader = threading.Thread(target=self._drain, args=(stream,), daemon=True)
+        self._reader.start()
+
+    def _drain(self, stream: IO[str]) -> None:
+        for line in stream:
+            self.append(line.rstrip("\n"))
+            if STARTED.search(line):
+                self.started.set()
+        self.started.set()
+
+    def finish(self) -> str:
+        """Everything written, once the process has exited."""
+        self._reader.join(10)
+        return "".join(line + "\n" for line in self)
+
+
+STARTED = re.compile(r"tablewatch serve: http://\S+:(\d+)/ ")
+
+
 @contextmanager
 def serving(
     root: Path, *args: str
-) -> Iterator[tuple[subprocess.Popen[str], int, list[str]]]:
+) -> Iterator[tuple[subprocess.Popen[str], int, Output]]:
     process = subprocess.Popen(
         [
             sys.executable,
@@ -419,28 +425,20 @@ def serving(
         text=True,
     )
     assert process.stderr is not None
-    lines: list[str] = []
-    deadline = time.monotonic() + 30
-    port = 0
-    while not port and time.monotonic() < deadline:
-        ready, _, _ = select.select([process.stderr], [], [], 0.5)
-        if ready:
-            line = process.stderr.readline()
-            if not line:
-                break
-            lines.append(line.rstrip("\n"))
-            if found := re.search(r":(\d+)/api/v1 ", line):
-                port = int(found.group(1))
+    output = Output(process.stderr)
+    output.started.wait(30)
+    found = next((m for line in output if (m := STARTED.search(line))), None)
     try:
-        assert port, "serve did not start:\n" + "\n".join(lines)
-        yield process, port, lines
+        assert found, "serve did not start:\n" + "\n".join(output)
+        yield process, int(found.group(1)), output
     finally:
         if process.poll() is None:
             process.kill()
         process.wait(10)
-        for stream in (process.stdout, process.stderr):
-            if stream:
-                stream.close()
+        output.finish()
+        if process.stdout:
+            process.stdout.close()
+        process.stderr.close()
 
 
 def test_serve_listens_on_loopback_and_stops_cleanly(recorded: Recorded) -> None:
@@ -462,14 +460,17 @@ def test_sigterm_stops_serve_cleanly(recorded: Recorded) -> None:  # S9
 
 
 def test_serve_logs_go_to_stderr_as_json(recorded: Recorded) -> None:  # S10
-    with serving(recorded.root, "--log-format", "json") as (process, port, _):
+    with serving(recorded.root, "--log-format", "json") as (process, port, output):
         for path in ("/api/v1/project", "/api/v1/runs", "/api/v1/nope"):
             httpx.get(f"http://127.0.0.1:{port}{path}")
         process.send_signal(signal.SIGTERM)
         assert process.wait(5) == 0
-        assert process.stdout is not None and process.stderr is not None
+        assert process.stdout is not None
         assert process.stdout.read() == ""
-        logged = [json.loads(line) for line in process.stderr.read().splitlines()]
+        # The startup line is for people; everything logged is JSON.
+        logged = [
+            json.loads(line) for line in output.finish().splitlines() if line[:1] == "{"
+        ]
     access = [entry for entry in logged if entry["logger"] == "uvicorn.access"]
     assert len(access) == 3
 
@@ -911,11 +912,13 @@ def test_non_finite_values_are_null() -> None:  # R8 (SQLite stores NaN as NULL)
     item = schemas.LatestResult(
         run_id="a" * 32,
         started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        since=datetime(2026, 1, 1, tzinfo=UTC),
         trigger="cli",
         outcome="fail",
         value=float("nan"),
         display_value="nan",
         message=None,
+        last_evaluated=None,
     )
     assert json.loads(item.model_dump_json())["value"] is None
     assert item.model_dump(mode="json")["value"] is None
