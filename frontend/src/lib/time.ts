@@ -56,3 +56,66 @@ export function absolute(iso: string): string {
   if (Number.isNaN(ms)) return iso;
   return ABSOLUTE.format(new Date(ms));
 }
+
+const ZONE = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" });
+
+/** The viewer's zone at a time, as the platform names it: "GMT+8", "CEST". */
+export function zoneName(ms: number): string {
+  const part = ZONE.formatToParts(new Date(Number.isNaN(ms) ? 0 : ms)).find((p) => p.type === "timeZoneName");
+  return part?.value ?? "local time";
+}
+
+const NO_ZONE = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+/** The full time in the viewer's zone, without the zone: for a table whose caption names it. */
+export function localTime(iso: string): string {
+  const ms = parseTimestamp(iso);
+  if (Number.isNaN(ms)) return iso;
+  return NO_ZONE.format(new Date(ms));
+}
+
+const SECONDS = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+const MINUTES = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const DAY_MINUTES = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const DAY_ONLY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+const MONTH = new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" });
+const FULL_DAY = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
+
+const MINUTE_MS = 60_000;
+const DAY_MS = 86_400_000;
+
+/**
+ * An x-axis label in the viewer's zone (the axis names the zone). Within one
+ * day only the time is shown; the axis states the date once.
+ */
+export function timeTick(ms: number, step: number, oneDay: boolean): string {
+  const d = new Date(ms);
+  if (step >= 30 * DAY_MS) return MONTH.format(d);
+  if (step >= DAY_MS) return DAY_ONLY.format(d);
+  if (!oneDay) return DAY_MINUTES.format(d);
+  return step < MINUTE_MS ? SECONDS.format(d) : MINUTES.format(d);
+}
+
+/** "Sep 26, 2026". */
+export function calendarDay(ms: number): string {
+  return FULL_DAY.format(new Date(ms));
+}
+
+/** True when two times fall on the same local calendar day. */
+export function sameLocalDay(a: number, b: number): boolean {
+  return calendarDay(a) === calendarDay(b);
+}

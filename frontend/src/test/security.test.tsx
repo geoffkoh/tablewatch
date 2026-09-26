@@ -75,6 +75,13 @@ const SOURCES = import.meta.glob<string>("../**/*.{ts,tsx,css}", {
   eager: true,
 });
 
+/** The chart and the shapes it draws (decision 14). */
+const CHART = Object.fromEntries(
+  Object.entries(SOURCES).filter(
+    ([p]) => p.startsWith("../components/chart/") || p.startsWith("../lib/chart/") || p === "../components/shapes.tsx",
+  ),
+);
+
 // Built from parts so this file does not match its own patterns.
 const j = (...parts: string[]): string => parts.join("");
 
@@ -127,6 +134,37 @@ describe("source rules", () => {
   it("reads nothing from the build environment but MODE and PROD", () => {
     const env = new RegExp(j("import\\.meta\\.", "env\\.(?!MODE\\b|PROD\\b)"));
     expect(offenders(env)).toEqual([]);
+  });
+
+  it("reads the chart's sources", () => {
+    const paths = Object.keys(CHART);
+    expect(paths).toContain("../components/chart/HistoryChart.tsx");
+    expect(paths).toContain("../components/chart/HistoryFigure.tsx");
+    expect(paths).toContain("../components/chart/ChartKey.tsx");
+    expect(paths).toContain("../components/shapes.tsx");
+    expect(paths).toContain("../lib/chart/layout.ts");
+  });
+
+  // Spec 004, decision 14: SVG built from data holds no link or reference of any kind.
+  it.each([
+    ["an <a> element", j("<", "a[\\s>]")],
+    ["a <use> element", j("<", "use\\b")],
+    ["an <image> element", j("<", "image\\b")],
+    ["a <foreignObject> element", j("<", "foreignObject\\b")],
+    ["an href of any kind", j("h", "ref")],
+    ["a style element or attribute", j("\\bstyle", "\\s*[=:{]")],
+  ])("the chart has %s: none", (_, pattern) => {
+    expect(offenders(new RegExp(pattern, "i"), CHART)).toEqual([]);
+  });
+
+  it("gives chart elements ids only from useId, never from data", () => {
+    for (const [path, source] of Object.entries(CHART)) {
+      const ids = [...source.matchAll(new RegExp(j("\\bid", "=\\{([^}]*)\\}"), "g"))].map((m) => m[1]);
+      if (ids.length === 0) continue;
+      expect(source, path).toMatch(new RegExp(j("use", "Id\\(\\)")));
+      for (const id of ids) expect(id, path).toMatch(/^(titleId|descId)$/);
+    }
+    expect(offenders(new RegExp(j("\\bid", "=\""), "i"), CHART)).toEqual([]);
   });
 
   it("names no third-party origin to load from", () => {

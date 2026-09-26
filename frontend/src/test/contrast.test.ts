@@ -40,6 +40,7 @@ export function contrast(a: string, b: string): number {
 }
 
 const STATUSES = ["fail", "error", "warn", "none", "skipped", "pass"] as const;
+const MARKS = ["pass", "warn", "fail", "error"] as const;
 const TEXT = 4.5; // WCAG 1.4.3, normal text
 const NON_TEXT = 3; // WCAG 1.4.11, icons and focus indicators
 
@@ -63,6 +64,16 @@ function pairs(): [string, string, string, number][] {
   }
   add("text-muted", "error-tint", TEXT);
   add("link", "error-tint", TEXT);
+  // Spec 004 D11: the history chart plots on --tw-bg. Marks, boundary lines
+  // (band edges), the value line and hairline markers need 3:1; axis and
+  // label text 4.5:1 (text and text-muted on bg, above).
+  for (const m of MARKS) {
+    add(`${m}-mark`, "bg", NON_TEXT);
+    add("on-status", `${m}-mark`, NON_TEXT); // the glyph inside a filled mark
+  }
+  add("series", "bg", NON_TEXT);
+  add("skipped-fg", "bg", NON_TEXT); // the skipped mark
+  add("text-muted", "bg", NON_TEXT); // rule-change marker, streak bracket, crosshair
   return list;
 }
 
@@ -97,6 +108,24 @@ describe.each(["light", "dark"] as const)("the %s palette", (scheme) => {
     expect(distance(fail, error)).toBeGreaterThanOrEqual(60);
     expect(distance(fail, warn)).toBeGreaterThanOrEqual(25);
     expect(distance(error, warn)).toBeGreaterThanOrEqual(60);
+  });
+});
+
+describe("the chart's mark tokens", () => {
+  it("are chart-only: separate from the status text tokens, and never used for text", async () => {
+    const { default: appCss } = await import("../styles/app.css?raw");
+    for (const scheme of ["light", "dark"] as const) {
+      const p = palettes()[scheme];
+      for (const m of MARKS) expect(p[`${m}-mark`], `${scheme} --tw-${m}-mark`).toMatch(/^#[0-9a-f]{6}$/);
+      expect(p.series).toBeDefined();
+      expect(p.grid).toBeDefined();
+    }
+    // Text never wears a mark colour (dataviz): no `color:` or text `fill` rule uses one,
+    // apart from the marks themselves (.mark--*), whose colour fills the shape.
+    const offending = appCss
+      .split("}")
+      .filter((rule) => /-mark\)/.test(rule) && /(^|[\s;{])color:/.test(rule) && !/\.mark--/.test(rule));
+    expect(offending).toEqual([]);
   });
 });
 

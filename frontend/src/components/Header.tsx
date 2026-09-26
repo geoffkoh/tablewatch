@@ -7,10 +7,15 @@ interface HeaderProps {
   now: number;
   busy: boolean;
   onRefresh: () => void;
+  /**
+   * The overview's `<h1>` is the project name. Other pages have their own
+   * `<h1>` in the main content, so the project name is a paragraph there.
+   */
+  projectIsHeading?: boolean;
 }
 
 /** Project, version, the age of the check files (O7), and Refresh (O10). */
-export function Header({ project, now, busy, onRefresh }: HeaderProps): ReactElement {
+export function Header({ project, now, busy, onRefresh, projectIsHeading = true }: HeaderProps): ReactElement {
   return (
     <header className="app-header">
       <a className="skip-link" href="#main">
@@ -28,13 +33,18 @@ export function Header({ project, now, busy, onRefresh }: HeaderProps): ReactEle
         </p>
         {project !== null && (
           <div className="app-header__project">
-            <h1 className="project-name">{project.name}</h1>
+            {projectIsHeading ? (
+              <h1 className="project-name">{project.name}</h1>
+            ) : (
+              <p className="project-name">{project.name}</p>
+            )}
             <p className="loaded-at">
               Check files loaded <Ago iso={project.loaded_at} now={now} />
             </p>
           </div>
         )}
-        {project === null && <h1 className="project-name">Overview</h1>}
+        {project === null && projectIsHeading && <h1 className="project-name">Overview</h1>}
+        {project === null && !projectIsHeading && <span className="app-header__spacer" />}
         <button type="button" className="button" onClick={onRefresh} aria-busy={busy}>
           Refresh
         </button>

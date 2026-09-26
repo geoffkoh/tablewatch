@@ -29,6 +29,19 @@ export const STATUS_META: Readonly<Record<Status, StatusMeta>> = {
   pass: { label: "Pass", meaning: "Data passed the check" },
 };
 
+/**
+ * Words for a streak, from `latest.since`. "since", never "continuously":
+ * runs happen at intervals (spec 003 O5). Every page takes them from here
+ * (spec 004 D4), so the overview and the check page cannot drift.
+ */
+export const SINCE_PREFIX: Readonly<Record<Outcome, string | null>> = {
+  fail: "Failing since",
+  warn: "Warning since",
+  error: "Could not evaluate since",
+  skipped: "Skipped since",
+  pass: null,
+};
+
 export function statusOf(check: CheckSummary): Status {
   return check.latest === null ? "none" : check.latest.outcome;
 }

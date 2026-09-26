@@ -537,9 +537,10 @@ describe("O11: accessible structure", () => {
 });
 
 describe("W3: unknown paths", () => {
+  // Spec 004 D1 made /checks/<id> a page; a run's page (I-15) is not built yet.
   it("renders page not found with a link to the overview, and requests nothing", () => {
     const fetchMock = stubServer(recorded);
-    render(<App path="/checks/b1ceb8262d8b5441" />);
+    render(<App path="/runs/b0000000000000000000000000000002" />);
     expect(screen.getByRole("heading", { name: "Page not found" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Go to the overview" }).getAttribute("href")).toBe("/");
     expect(fetchMock).not.toHaveBeenCalled();

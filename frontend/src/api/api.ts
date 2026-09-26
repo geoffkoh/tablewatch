@@ -5,7 +5,7 @@
  * by `tablewatch serve` next to the API, and the CSP allows `connect-src
  * 'self'` only.
  */
-import type { CheckList, ErrorBody, ErrorCode, Project, RunPage } from "./types";
+import type { CheckDetail, CheckList, ErrorBody, ErrorCode, HistoryPage, Project, RunPage } from "./types";
 
 const BASE = "/api/v1";
 
@@ -23,6 +23,17 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.failure = failure;
   }
+}
+
+/** What a failed request means for the page, for any thrown value. */
+export function failureOf(error: unknown): ApiFailure {
+  if (error instanceof ApiError) return error.failure;
+  return { kind: "network", message: "Something went wrong while loading. Try again." };
+}
+
+/** True when the server said the thing asked for does not exist. */
+export function isNotFound(failure: ApiFailure): boolean {
+  return failure.kind === "http" && failure.status === 404;
 }
 
 function isErrorBody(body: unknown): body is ErrorBody {
@@ -100,4 +111,18 @@ export function listChecks(): Promise<CheckList> {
 /** `GET /api/v1/runs?limit=N`: runs, newest first. */
 export function listRuns(limit: number): Promise<RunPage> {
   return get<RunPage>(`/runs?limit=${encodeURIComponent(String(limit))}`);
+}
+
+/**
+ * `GET /api/v1/checks/{id}`: one loaded check, with its rule. The id is always
+ * encoded, although the route only passes ids that match the id pattern.
+ */
+export function getCheck(id: string): Promise<CheckDetail> {
+  return get<CheckDetail>(`/checks/${encodeURIComponent(id)}`);
+}
+
+/** `GET /api/v1/checks/{id}/history?limit=N[&cursor=C]`: recorded results, newest first. */
+export function getHistory(id: string, limit: number, cursor: string | null = null): Promise<HistoryPage> {
+  const query = `limit=${encodeURIComponent(String(limit))}${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`;
+  return get<HistoryPage>(`/checks/${encodeURIComponent(id)}/history?${query}`);
 }

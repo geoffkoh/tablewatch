@@ -23,3 +23,14 @@ export type ErrorCode = Schemas["ErrorInfo"]["code"];
 
 /** A recorded outcome, as the API sends it. */
 export type Outcome = LatestResult["outcome"];
+
+export type CheckDetail = Schemas["CheckDetail"];
+export type Rule = Schemas["Rule"];
+export type CompareCondition = Schemas["CompareCondition"];
+export type BetweenCondition = Schemas["BetweenCondition"];
+/** One side of a rule: `expect`, `warn` or `fail`. */
+export type Condition = CompareCondition | BetweenCondition;
+export type HistoryEntry = Schemas["HistoryEntry"];
+export type HistoryPage = Schemas["HistoryPage"];
+/** A metric's unit; `null` on a history entry whose metric this version does not know. */
+export type Unit = CheckSummary["unit"];
