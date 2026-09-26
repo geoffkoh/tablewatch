@@ -92,7 +92,7 @@ Notes:
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | C1 | Read-only REST API (runs, results, checks, history), OpenAPI | Contract for the UI and integrations | all | 2 | M | backlog |
-| C2 | `tablewatch serve`, UI shell, overview (failing first) | Status at a glance, without a terminal | Sam, Alex | 2 | M | backlog |
+| C2 | `tablewatch serve` (listens on 127.0.0.1 by default; `--host` opts in with a no-authentication warning), UI shell, overview (failing first) | Status at a glance, without a terminal | Sam, Alex | 2 | M | backlog |
 | C3 | Check explorer: tree mirroring `checks/`, filters, search | Find any check the way it was written | Sam | 2 | M | backlog |
 | C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | backlog |
 | C5 | Run detail and diff against the previous run | "What broke since yesterday" | Sam | 2 | M | catalogue |
@@ -144,7 +144,8 @@ Notes:
 
 - **E7:** a check that uses history (`change()`, A5; later `anomaly()`, G1)
   while recording is off must be a load-time Diagnostic at `file:line:col`.
-- **E8** is Phase 4, but B6 stores samples from Phase 2b; until E8 ships,
+- **E8** is Phase 4, but B6 stores samples from Phase 2b. The owner
+  accepted this gap on 2026-09-26; until E8 ships,
   samples rely on being off by default and on `exclude_columns`.
 
 ## F. Governance & security

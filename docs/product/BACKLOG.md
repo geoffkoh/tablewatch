@@ -33,6 +33,10 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 Ranks 11–12 were added with the owner on 2026-09-26 and placed at the end
 pending the re-score; they are not a judgement of priority.
 
+**Owner priority input (2026-09-26): UI first.** After I-01, the UI chain
+(I-02 → I-05) comes before alerting (I-06, I-11). The next PLAN re-score
+takes this as given rather than re-deriving it from RICE.
+
 ## Requirements carried by backlog items
 
 Agreed with the owner on 2026-09-26. The spec for each item must include
@@ -42,6 +46,11 @@ these as acceptance scenarios.
   the caller) is one replaceable component, not hard-wired into the runner.
   `run(..., record=False)` evaluates and returns outcomes without writing to
   the store. See FEATURES.md, "Modular seams".
+- **I-02 — `tablewatch serve` listens on 127.0.0.1 by default.** Binding
+  anywhere else is an explicit opt-in (`--host`) and prints a clear warning
+  to stderr that there is no authentication until Phase 4 (F1, F2). API
+  tokens are not pulled forward. Security review required (inbound
+  network). Applies to I-03 onwards, which serve through the same command.
 - **I-08 — dataset-source and executor seams.** A dataset's source (table
   today, file here; later an in-memory frame, a Spark DataFrame, a stream
   window) supplies its `FROM` clause and a stable name for check identity,

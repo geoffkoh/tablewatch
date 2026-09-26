@@ -27,7 +27,9 @@ Runs from cron on a server, and the exit code can be trusted.
 See your data quality without a terminal, and hear about it when it changes.
 
 - `tablewatch serve`: FastAPI REST API + React UI, with built assets shipped
-  in the wheel (C1, C2)
+  in the wheel (C1, C2). It listens on 127.0.0.1 by default; `--host` opts in
+  to other interfaces, with a warning that there is no authentication until
+  Phase 4
   - Overview: latest run, failing checks first (C2)
   - Check explorer: a tree mirroring `checks/`, filterable by tag, owner,
     datasource and status (C3)

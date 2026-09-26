@@ -30,8 +30,7 @@ and how they were resolved, what was deferred, and what was learned.
   reconciled: scorecards are Phase 4 (C6); retention split from the Postgres
   store as E8 (Phase 4); cross-source reconciliation is A18; digests (D5) and
   every other catalogued feature now appear in the roadmap with its ID.
-  Still open for the owner: whether `serve` binds to localhost by default
-  and API tokens (F2) come forward.
+  Open questions from this revision were all decided the same day (below).
 - **Phase 2 split, decided by the owner on 2026-09-26.** Phase 2 → `0.2.0`
   "Visibility & alerting" (B1, C1–C5, C8, D1–D3, E5, E7, H3, A5, A8). New
   Phase 2b → `0.3.0` "Language depth" (A1–A4, A14, B6, C7). Numbered 2b so
@@ -48,3 +47,11 @@ and how they were resolved, what was deferred, and what was learned.
   quarantine (and which copy), and whether good rows come back when a
   batch-level check fails. The `parked` status is no longer used and was
   removed.
+- **Three more owner decisions, 2026-09-26.** (1) `tablewatch serve` listens
+  on 127.0.0.1 by default in Phase 2; `--host` is an explicit opt-in with a
+  no-authentication warning; API tokens (F2) stay in Phase 4 — a requirement
+  on I-02. (2) UI first: after I-01, the UI chain (I-02 → I-05) comes before
+  alerting (I-06, I-11); an input to the next PLAN re-score. (3) Retention
+  and purge (E8) stay in Phase 4; the owner accepts that failed-row samples
+  (B6, Phase 2b, off by default) have no purge until then. Nothing is left
+  open from the catalogue discussion.
