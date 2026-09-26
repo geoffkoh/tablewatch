@@ -23,7 +23,7 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | — | I-01 | Python API: `tablewatch.run()` / `load()` returning typed results; per-call `record=`; establishes the result-sink seam — [spec 001](specs/001-python-api.md) | B1, E7 (per call) | — | S | 2 | 2 | 1.0 | 5.0 | done (iteration 1) |
 | — | I-02 | Read-only REST API: runs, results, checks, history; `tablewatch serve` (API only) — [spec 002](specs/002-read-only-api.md) | C1 | I-01 ✓ | M | 3 | 1 | 0.8 | 1.5 | done (iteration 2) |
-| 1 | I-03 | UI shell + overview page, bundle shipped in the wheel | C2 | I-02 ✓ | M | 4 | 2 | 0.8 | **4.0** | proposed — next PLAN |
+| 1 | I-03 | UI shell + overview page, bundle shipped in the wheel — [spec 003](specs/003-ui-shell-overview.md) | C2 | I-02 ✓ | M | 4 | 2 | 0.8 | **4.0** | in-progress (iteration 3) |
 | 2 | I-05 | Check detail: history chart against threshold, SQL, source | C4 | I-03 | M | 3 | 2 | 0.8 | **2.4** | proposed |
 | 3 | I-04 | Check explorer tree with filters and search | C3 | I-03 | M | 2 | 1 | 0.8 | **0.8** | proposed |
 | 4 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
@@ -153,6 +153,11 @@ these as acceptance scenarios.
   `${env:}` references; a check file names a notifier, never an endpoint.
   Payloads never contain row data. The default `on:` is state changes only
   (failing, erroring, recovered).
+- **I-06 — from spec 003 (iteration 3 PLAN).** A "state change" uses the
+  same definition of an unbroken run of outcomes as `latest.since` (spec
+  003 decision D1: any different outcome, `error` included, ends the run),
+  or the spec says why it differs. Otherwise the UI's "failing since" and
+  the alert's "failing again" disagree about the same history.
 - **I-06 — from iteration 1.** Notifiers are result sinks and follow the
   `ResultSink` rule the architect set: a sink raises only when its failure
   means tablewatch could not do its job (the results store). A notifier
