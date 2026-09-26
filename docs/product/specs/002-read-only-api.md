@@ -100,9 +100,24 @@ thing.
   back **without** a timezone (verified on `main`: `datetime(2026, 9, 26, 6,
   56, 12, 385676)` with no tzinfo). They are stored in UTC and must be
   emitted with `+00:00`.
+  *(REFINE, data-steward)* The offset is always `+00:00`, whatever the
+  driver returns. A naive value is read as UTC. An aware value is converted
+  with `astimezone(UTC)`, because Postgres returns `timestamptz` in the
+  session's `TimeZone`, which is `Asia/Singapore` on a Singapore server.
+  That would give `+08:00`: the same instant, but a string that sorts and
+  compares differently in a client. Timestamps inside `message` text, such
+  as a freshness check's `newest …`, are data. The API passes them through
+  unchanged.
 - **Ids are exact.** A check id is the full 16-hex-character id. A run id is
   the full 32-hex-character id. Prefix matching is a CLI convenience and is
   not part of the API.
+  *(REFINE, data-steward)* A check with an explicit `id:` has that string
+  as its id: letters, digits, `.`, `_`, `:` and `-`, such as
+  `customers-email-missing` (`docs/check-language.md`). Only derived ids
+  are 16 hex characters. The API must not validate check ids against a
+  hex pattern. An explicit id is matched exactly, like any other, and
+  reaches `/checks/{id}` and `/checks/{id}/history` (L2). The OpenAPI
+  schema describes `check_id` as a string, with no hex pattern.
 - **Numbers.** `value` is a JSON number or `null`. A non-finite float (NaN,
   ±inf) is emitted as `null`, because JSON cannot represent it.
 - **One project.** The server serves the project it was started with. Runs
@@ -110,6 +125,26 @@ thing.
   project's `name`, because a shared store (E5) holds other projects' runs
   too.
 - **Outcomes** are the strings `pass`, `warn`, `fail`, `error`, `skipped`.
+  The engine does not produce `skipped` today, but it is part of the
+  `Outcome` enum and of `Counts`, so it is accepted wherever an outcome is.
+- *(REFINE, data-steward)* **`not_run` is a filter value, not an
+  outcome.** `GET /checks?outcome=not_run` matches checks whose `latest` is
+  `null`, meaning that no result is recorded **for this check id in this
+  project's runs**. It does not mean "left out of the last run": a check
+  that a narrower run skipped keeps its older `latest` (C1). It appears
+  nowhere else in a response. A check whose id changed because it was
+  edited also matches (L2). The UI should label it "no result recorded",
+  not "not run".
+- *(REFINE, data-steward)* **Units of `value`.** `value` is in the
+  metric's unit (`docs/check-language.md`, Metrics): a **count**; a
+  **percent in percentage points**, so `20.0` is 20% and not 0.2; a
+  **duration in seconds**, so a 3-day-old feed is about `259200`; or a
+  **number** in the column's own units. `display_value` is always a
+  string formatted for people, and it is `"—"` (U+2014) when `value` is
+  `null`, which happens on every `error`. Clients that show a value to a
+  person use `display_value`. Clients that chart or compare use `value`
+  and need the unit. The unit follows from `metric`, but see finding F-U
+  about exposing it.
 
 ### Shared shapes
 
@@ -194,6 +229,41 @@ come from the most recent run overall: a run limited to `checks/sales` does
 not clear the latest result of an inventory check. `latest.started_at` says
 how old that result is, and the UI must show it.
 
+*(REFINE, data-steward)* The rules below pin `latest` down exactly. The UI
+turns it into "what is failing right now", so any ambiguity here becomes a
+wrong answer on Sam's screen.
+
+- **Ties.** Runs are ordered by `(started_at, run id)`, both descending,
+  which is the same key as the pagination cursor. As a result, `latest`
+  always equals the first entry of the check's `/history` (L3).
+- **The last result stands, whatever it is.** If the check errored in its
+  most recent run, `latest.outcome` is `error`, with `value` `null` and
+  `display_value` `"—"`. It does **not** fall back to the last `pass` or
+  `fail`. The check then leaves `?outcome=fail` and joins `?outcome=error`
+  (L1). That is the honest answer, because tablewatch no longer knows the
+  state of the data. The UI's "needs attention" view should ask for
+  `fail`, `warn` **and** `error` together.
+- **Keyed on the current id, and on this project only.** Results recorded
+  under an older id of an edited check are not carried over. The edited
+  check shows `latest: null` until it runs again (L2). Results recorded by
+  another project in a shared store never count, even when the check ids
+  match. A copy of a project has the **same** ids, because the id hash
+  does not include the project name (R5).
+- **Not re-evaluated.** `latest` is the result as recorded, against the
+  check as it was then. After an edit that keeps the id (an explicit
+  `id:`, or a change to an option such as `valid_values`), `latest` still
+  describes the old rule until the next run. Its `message` usually names
+  the old threshold (`expected < 5%`), which helps.
+- **Not "since when".** `latest` does not say how long a check has been
+  failing. Sam asks for exactly that in the problem statement. A client
+  can work it out from `/history`. A `since` field is additive and is left
+  for I-03 or I-05 to request (finding F-S).
+- **Only checks in the loaded project.** A check that failed to load
+  (S5), or was deleted (H2), has no entry in `/checks`, and so none in
+  `?outcome=fail`, even if its last recorded result was `fail`.
+  `project.ok == false` is the only sign of this, so I-03 must show it
+  next to any count of failures (finding F-B).
+
 **`selection`** is shown **as recorded**. It holds only the keys that were
 non-empty. `{}` means nothing was narrowed, so every check was selected.
 Until I-16 normalises selections, `paths` holds exactly what the caller
@@ -254,6 +324,24 @@ they are derived from path and expression. The ids used below:
 | `b1ceb8262d8b5441` | sales.customers `missing_percent(email) < 5%` | fail (run B), value `20.0`, display `20.00%`, message `expected < 5%` |
 | `41e58afff9c48a46` | inventory.products `Price feed freshness` | warn (run A only) |
 | `32867fbe86f483f3` | sales.orders `Order volume` | warn (run B) |
+| `000f8d0048744bfb` | sales.customers `invalid_count(country) = 0` | fail (run B), value `1.0`, display `1`, message `expected = 0` *(REFINE)* |
+| `a30dacf7316eef07` | sales.orders `invalid_percent(status) < 1%` (line 11, the line S5 breaks) | fail (run B), display `14.29%` *(REFINE)* |
+| `e41cf32f07f328c3` | sales.customers `missing_percent(email) < 10%`: the L2 edit of `b1ceb8262d8b5441` | not in `recorded` *(REFINE)* |
+
+*(REFINE, data-steward)* The data-steward reproduced the whole table, run
+A's and run B's counts, and the three added ids on 2026-09-26, using a
+copy of `examples/retail` and `tablewatch list --output json`. The six
+checks that fail in run B are `b1ceb8262d8b5441` and `000f8d0048744bfb`
+(customers), and `fc9cc3088acaf77a`, `11c20dd55fb97fa9`,
+`a30dacf7316eef07` and `ed669ca6e5532a59` (orders). The two warnings are
+`41e58afff9c48a46` (run A) and `32867fbe86f483f3` (run B).
+
+*(REFINE, data-steward)* **Do not assert freshness values exactly.**
+`build.py` writes timestamps relative to the moment it runs. The two
+freshness checks' `value`, `display_value` and `message` therefore change
+with the time between build and run. On one build, run A gave `3d` and run
+B, 0.4 s later, gave `1h 1s`. Assert their outcomes only, or bounds on
+their values (U1).
 
 ### Starting and stopping `serve`
 
@@ -311,6 +399,14 @@ they are derived from path and expression. The ids used below:
   and `counts.checks == 17`.
 - And `GET /api/v1/runs` still returns runs A and B, so the history stays
   readable while a file is broken.
+- *(REFINE)* And the check that line 11 held, `a30dacf7316eef07`, is
+  **failing** in runs A and B. It is missing from `/checks`, so
+  `GET /api/v1/checks?outcome=fail` returns `total == 5`, not 6.
+  `GET /checks/a30dacf7316eef07` returns 404, and its `/history` still
+  returns 2 `fail` entries. The data-steward confirmed with `tw.load()`
+  that this is the check that drops. This scenario pins down, on purpose,
+  that a broken file makes the failure count go **down**. `project.ok ==
+  false` is how a client learns that the count is incomplete (finding F-B).
 
 **S6: no credentials needed, no datasource touched (rule 6)** `must`
 - Given spec 001's `demo` project (`wh` password `${env:TW_TEST_PG_PASSWORD}`,
@@ -385,6 +481,14 @@ they are derived from path and expression. The ids used below:
   order.
 - And `?outcome=not_run` against a fresh store (S7) returns all 18.
 - And `?outcome=bad` returns 400 `invalid_parameter` naming `outcome`.
+- *(REFINE)* And `total` is the number of items **after** filtering, and
+  `items` holds exactly that many. On `recorded`, `?outcome=not_run`
+  returns `total == 0`, and `?outcome=pass` returns `total == 10`: every
+  check was recorded at least once, and 18 − 6 − 2 = 10.
+- *(REFINE)* And `?outcome=skipped` is a valid filter: 200 with
+  `total == 0`, not 400.
+- *(REFINE)* And `?outcome=FAIL` returns 400. Outcome values are
+  lower-case, as they are everywhere else in the contract.
 
 **C3: one check** `must`
 - Given `recorded`
@@ -401,6 +505,75 @@ they are derived from path and expression. The ids used below:
   edit. This is the documented behaviour until hot reload is decided.
 - And a `tablewatch run` recorded after startup **is** visible (R4), since
   the store is read live.
+
+### Latest result semantics *(REFINE, data-steward)*
+
+**L1: a check that errored last time shows `error`** `must`
+- Given `recorded`, then **run E**, recorded as follows. Move
+  `retail.duckdb` aside (DuckDB opens it read-only, so no empty file is
+  created in its place). Run `tablewatch run checks/sales/customers.yml`.
+  Put the file back. Run E is recorded as 5 total, 5 error, outcome
+  `error`, exit_code 2, selection `{"paths": ["checks/sales/customers.yml"]}`.
+  The data-steward reproduced this on 2026-09-26.
+- When `GET /api/v1/checks/b1ceb8262d8b5441`
+- Then `latest.run_id == <run E id>`, `latest.outcome == "error"`,
+  `latest.value is null`, `latest.display_value == "—"`, and
+  `latest.message` starts with `IO Error: Cannot open database`.
+- And `?outcome=fail` returns `total == 4`: `b1ceb8262d8b5441` and
+  `000f8d0048744bfb` have left it. `?outcome=error` returns `total == 5`.
+  `?outcome=fail&outcome=warn&outcome=error` returns `total == 11`
+  (4 + 2 + 5).
+- And `GET /checks/b1ceb8262d8b5441/history` returns 3 items, E, B, A.
+  The two earlier `fail` entries are unchanged.
+
+**L2: editing an expression starts a new history** `must`
+- Given `recorded`, with `checks/sales/customers.yml` line 6 changed from
+  `- missing_percent(email) < 5%:` to `- missing_percent(email) < 10%:`,
+  and `serve` restarted
+- When `GET /api/v1/checks`
+- Then the item at that position has `id == "e41cf32f07f328c3"` and
+  `latest == null`. `?outcome=not_run` returns exactly that one check, and
+  `?outcome=fail` returns `total == 5`. The data still fails (20% is not
+  below 10%), but nothing is recorded for the new id yet. This is why the
+  UI must present `not_run` as unknown, never as healthy.
+- And `GET /checks/b1ceb8262d8b5441` returns 404, while
+  `GET /checks/b1ceb8262d8b5441/history` returns its 2 entries with
+  `expression == "missing_percent(email) < 5%"`.
+- And *(`should`)* with an explicit `id: customers-email-missing` on that
+  check, a run, the same threshold edit, another run, and a restart,
+  `latest` is the second run's result, and `/history` of
+  `customers-email-missing` returns both entries, each with its own
+  recorded `expression`. This is the documented way to keep history
+  across an edit (`docs/check-language.md`).
+
+**L3: `latest` is the head of history, and ties break by run id** `must`
+- Given `recorded`
+- Then for every check in `GET /checks` whose `latest` is not null,
+  `latest.run_id` equals the `run_id` of the first item of its `/history`,
+  and `latest.outcome`, `latest.value` and `latest.started_at` match that
+  item's.
+- And given two runs of this project written directly to the store with an
+  **identical** `started_at`, both including `b1ceb8262d8b5441`, with ids
+  `…0001` and `…0002` (32 hex characters each)
+- Then `latest.run_id` is the `…0002` run, `/history` lists `…0002`
+  before `…0001`, and `/runs?limit=1` followed by its cursor yields both,
+  neither repeated nor skipped.
+
+**U1: units of `value`** `should`
+- Given `recorded`
+- Then `latest` for `b1ceb8262d8b5441` has `value == 20.0` (percentage
+  points, not `0.2`). For `41e58afff9c48a46` (freshness), `value` is in
+  seconds, with `259200 <= value < 259200 + 600`, and `display_value`
+  starts with `3d`. For `32867fbe86f483f3` (`row_count`), `value == 7.0`
+  and `display_value == "7"`.
+
+**T1: timestamps are always emitted in UTC** `should`
+- Given the API's serialiser, called at unit level (no Postgres needed
+  until I-14)
+- When it is handed `datetime(2026, 9, 26, 14, 56, 12, 385676,
+  tzinfo=ZoneInfo("Asia/Singapore"))`, and separately the naive
+  `datetime(2026, 9, 26, 6, 56, 12, 385676)`
+- Then both are emitted as `"2026-09-26T06:56:12.385676+00:00"`.
 
 ### Runs
 
@@ -432,6 +605,10 @@ they are derived from path and expression. The ids used below:
   whose field names and values equal the `results` of
   `tablewatch run checks/sales --output json` for the same run. The
   exception is `duration_ms`, which is the stored value.
+- *(REFINE)* And for every run returned by `/runs` or `/runs/{id}`,
+  `counts` equals the tally of `results` by `outcome`, and
+  `counts.total == len(results)`. The run's list entry and its detail
+  must never disagree about how many checks failed.
 - And an unknown id, a 12-character prefix of run B's id, and the id of a
   run recorded by another project in the same store (R5) each return 404
   `not_found`.
@@ -450,6 +627,20 @@ they are derived from path and expression. The ids used below:
 - When `GET /api/v1/runs` and `GET /api/v1/checks/<any>/history` are
   called on retail's server
 - Then `other`'s run appears in neither.
+- *(REFINE)* Make `other` a **copy of `retail`** whose `tablewatch.yml`
+  says `name: other`, and record its run **after** run B. Its check ids
+  are identical to retail's, because the id hash does not include the
+  project (`derive_check_id`), so a filter on `check_id` alone would pass
+  the check above by accident. Then, on retail's server:
+  `latest.run_id` for `b1ceb8262d8b5441` is still run B;
+  `/checks/b1ceb8262d8b5441/history` returns exactly 2 items (B, A), not 3;
+  `/runs` returns exactly 2 runs; and `GET /runs/<other's run id>` returns
+  404.
+- *(REFINE)* And a server for a project named `fresh` (a third copy of `retail`), started on that
+  same store file, in which only `retail-example` and `other` have
+  recorded runs, returns `/runs` as `{"items": [], "next_cursor": null}`,
+  and every check's `latest` is `null`. For this project, "empty" means
+  "no runs recorded by this project", whatever else the store holds.
 
 **R6: bad paging parameters** `must`
 - When `?limit=0`, `?limit=201`, `?limit=abc`, or `?cursor=not-a-cursor`
@@ -641,6 +832,121 @@ other command stay free of all of these (S3).
   change the contract.
 - **CLAUDE.md's module table** needs a row for the new server package. The
   tech lead owns that file; the PM does not edit it.
+
+### Design decisions (settled in REFINE)
+
+Reviews: architect approve-with-followups; security-reviewer block on X3
+(resolved below), otherwise approve-with-followups; data-steward
+accept-with-followups; ui-engineer consulted. Tech lead decisions below
+supersede the open questions that follow, and any scenario text they
+contradict.
+
+**Contract changes**
+
+1. **Check ids are strings**, validated against the loader's id pattern
+   (`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`, at most 128 characters) — explicit
+   `id:` values are free text. **Run ids** are exactly 32 lowercase hex.
+   Anything else is 404 before any query. The API never uses a prefix or
+   `LIKE` query.
+2. **`outcome` filter values** are `pass|warn|fail|error|skipped|not_run`.
+   `not_run` means `latest == null` and is a filter value only, never an
+   outcome in a body. Anything else (including `FAIL`) is 400 naming
+   `outcome`.
+3. **HEAD** is 405 like every other non-GET method; the OpenAPI document
+   holds only `get` operations.
+4. **Every response field is `required`** in the OpenAPI schema; nullable
+   fields are `required` + nullable. The one exception is `selection`, whose
+   keys are present only when non-empty. `Outcome`, `Diagnostic.severity`
+   and `error.code` are enums.
+5. **`CheckSummary.unit`**: `"count" | "percent" | "duration" | "number"`
+   (from the metric). Added because every client would otherwise copy the
+   metric-to-unit table. `latest.since` ("failing since") is **deferred to
+   I-03** — additive, decided with the first screen that shows it.
+6. **`Run` does not carry `hostname` or `username`** — no planned screen
+   needs them and they map the estate. They stay in the store and in
+   `--output json`; a later item may add them back behind auth.
+7. **`GET /` is not part of the contract**; I-03 replaces it with the UI.
+8. **Named page models** `RunPage` and `HistoryPage` (not a generic whose
+   OpenAPI name depends on the pydantic version).
+
+**Security (security-reviewer)**
+
+9. **The Host check is on in every bind mode** (resolves the blocking
+   finding). Accepted `Host` values, case-insensitive, port stripped:
+   `localhost`, any IP literal (IPv4, or bracketed IPv6), and names given
+   with the repeatable `--allowed-host NAME`. Anything else — including a
+   missing or empty `Host`, `localhost.evil.example`,
+   `127.0.0.1.evil.example`, `127.0.0.1@evil.example` — is 403
+   `forbidden_host`. An IP literal cannot carry an attacker's DNS name,
+   so accepting it is safe. X3's last bullet is replaced: with
+   `--host 0.0.0.0`, `Host: evil.example:8765` is 403 and
+   `Host: 192.168.1.10:8765` is 200; `--allowed-host dq.internal` accepts
+   `Host: dq.internal`. Implemented as a pure ASGI middleware (not
+   Starlette's `TrustedHostMiddleware`, which mishandles `[::1]:port` and
+   returns plain-text 400).
+10. **The S2 warning** names what is exposed: `tablewatch: warning: serving
+    on <host> with no authentication — anyone who can reach this address
+    can read this project's checks and results, including data values and
+    owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot
+    turn it on yet).`
+11. **Store errors over HTTP carry a fixed message**:
+    `results store: unavailable — see the server log`; the driver's text
+    (host, user) goes only to the log. At startup, S8's line is
+    `tablewatch: results store: could not be opened — run with -v for
+    details`, with details logged at DEBUG. No URL, host or path reaches
+    stderr at the default level.
+12. **Cursor**: base64url of `"<utc isoformat>|<run id>"`, at most 256
+    characters, strictly decoded; any failure is 400 naming `cursor`. The
+    project predicate always comes from the server. 400 messages name the
+    parameter and never echo its value.
+13. **Response headers** on every response, errors included:
+    `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`,
+    `Cross-Origin-Resource-Policy: same-origin`, `Referrer-Policy:
+    no-referrer`, `X-Frame-Options: DENY`. No `server` header.
+14. **uvicorn/FastAPI settings**: `docs_url=None`, `redoc_url=None`,
+    `debug=False`, `redirect_slashes=False`, `proxy_headers=False`,
+    `server_header=False`, `limit_concurrency=64`.
+15. **Dependencies**: extra `server = ["fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1", "starlette>=0.49.1", "h11>=0.16"]` — plain
+    packages, no `[standard]`. `httpx` in the dev group. The lock diff must
+    add nothing from uvloop, httptools, watchfiles, websockets,
+    python-dotenv or python-multipart.
+
+**Design (architect)**
+
+16. **Layout** `src/tablewatch/server/`: `__init__.py` (docstring only,
+    never imports fastapi/starlette/uvicorn), `hosts.py` (stdlib:
+    `is_loopback`, `host_allowed`), `schemas.py` (wire models, `Timestamp`
+    and `JsonFloat` types, the only ORM→wire mapping), `routes.py` (the
+    six GETs and the cursor; no SQL), `app.py` (`create_app`, host guard,
+    headers, error handlers, OpenAPI post-processing), `serve.py` (bind,
+    uvicorn, logging, signals). All internal.
+17. **Timestamps** serialise with `isoformat()` after `astimezone(UTC)`
+    (naive → UTC). **Non-finite floats** serialise as `null`.
+18. **Store reads** live on `ResultStore`, all scoped by `project` and
+    returning fully loaded rows: `runs_page`, `run` (results eager, ordered
+    by result id), `latest_results` (one window-function query, tie-break
+    `(started_at, run id)` desc), `history_page`. A `StoreError` base
+    (`RecordError` subclasses it) is the only exception the server sees.
+    No model change, no migration; a `(project, started_at)` index is
+    I-14's.
+19. **The CLI command** imports the server lazily (missing extra → exit 3,
+    before loading the project), loads the project (unusable → 3), rejects
+    an in-memory store (3), opens the store once (3 on failure), binds the
+    socket itself (3 on failure), warns if not loopback, prints the startup
+    line, and runs. SIGINT/SIGTERM exit 0. `serve` never exits 1 or 2 of
+    its own accord.
+20. **Logging**: uvicorn's loggers use the tablewatch stderr handler; access
+    lines at INFO (shown by default, hidden by `-q`); startup and warning
+    lines via `click.echo(err=True)`.
+21. **OpenAPI**: `info.version = __version__`; FastAPI's 422 responses and
+    schemas removed; 400/404/503 declared with `ErrorBody`; checked in at
+    `docs/api/openapi.json` with a drift test.
+22. **Deferred to the backlog**: `latest.since` (I-03); `rules`, compiled
+    SQL and source endpoints (I-05); one shared `Check`→dict mapping for
+    `list --output json` and `CheckSummary`; raw driver text (with absolute
+    paths) in `error` messages served over the API; a `(project,
+    started_at)` index (I-14).
 
 ### Open questions for the tech lead and the architect (REFINE)
 
