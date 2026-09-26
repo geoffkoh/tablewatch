@@ -92,7 +92,7 @@ class Workspace:
         self.write("checks/t.yml", header + "checks:\n" + textwrap.dedent(checks))
         project = self.load()
         assert project.ok, "\n".join(str(d) for d in project.diagnostics)
-        return run_checks(project, project.checks, now=NOW).results
+        return run_checks(project, project.checks, trigger="test", now=NOW).results
 
 
 @pytest.fixture

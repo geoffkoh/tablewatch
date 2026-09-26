@@ -34,3 +34,7 @@ def configure(level: int, fmt: str) -> None:
     root.handlers[:] = [handler]
     root.setLevel(level)
     root.propagate = False
+    # Alembic logs every migration step at INFO; a routine run should be
+    # quiet. Set here, for the CLI only: the library leaves its host's
+    # logging alone.
+    logging.getLogger("alembic").setLevel(logging.WARNING)

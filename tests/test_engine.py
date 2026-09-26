@@ -79,7 +79,9 @@ def test_unreachable_datasource_errors_every_check(workspace: Workspace) -> None
     def broken(_: str) -> Engine:
         return create_engine("sqlite:////nonexistent/dir/db.sqlite")
 
-    run = run_checks(project, project.checks, now=NOW, engine_factory=broken)
+    run = run_checks(
+        project, project.checks, trigger="test", now=NOW, engine_factory=broken
+    )
     assert [r.outcome for r in run.results] == [Outcome.ERROR]
     assert run.exit_code() == 2
 
@@ -93,7 +95,7 @@ def test_missing_env_variable_is_a_check_error_not_a_crash(
     )
     workspace.write("checks/t.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
     project = workspace.load()
-    [result] = run_checks(project, project.checks, now=NOW).results
+    [result] = run_checks(project, project.checks, trigger="test", now=NOW).results
     assert result.outcome is Outcome.ERROR
     assert "TW_UNSET" in (result.message or "")
 
@@ -108,7 +110,7 @@ def test_datasources_run_in_parallel_results_keep_file_order(
         "checks/b.yml", "dataset: t\ndatasource: duck\nchecks:\n  - row_count = 5\n"
     )
     project = workspace.load()
-    run = run_checks(project, project.checks, now=NOW)
+    run = run_checks(project, project.checks, trigger="test", now=NOW)
     assert [r.check.dataset.datasource for r in run.results] == ["lite", "duck"]
     assert run.outcome is Outcome.PASS and run.exit_code() == 0
 
@@ -123,7 +125,7 @@ def test_triggers_fail_before_warn(workspace: Workspace) -> None:
 def test_exit_codes(workspace: Workspace) -> None:
     def project_run(checks: str) -> RunResult:
         project = _load(workspace, checks)
-        return run_checks(project, project.checks, now=NOW)
+        return run_checks(project, project.checks, trigger="test", now=NOW)
 
     assert project_run("  - row_count:\n      warn: when < 10\n").exit_code() == 0
     assert project_run("  - row_count:\n      warn: when < 10\n").exit_code("warn") == 1

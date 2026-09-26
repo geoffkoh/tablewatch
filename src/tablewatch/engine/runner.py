@@ -16,11 +16,11 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal, get_args
 
 from sqlalchemy import Engine
 
-from tablewatch import __version__
+from tablewatch._version import __version__
 from tablewatch.checks.model import Check, Dataset, Outcome, worst
 from tablewatch.config.loader import Project
 from tablewatch.config.project import MissingEnvironmentVariableError
@@ -33,6 +33,10 @@ log = logging.getLogger(__name__)
 
 EngineFactory = Callable[[str], Engine]
 
+FailOn = Literal["fail", "warn"]
+FAIL_ON_CHOICES: tuple[str, ...] = get_args(FailOn)
+MAX_CONCURRENCY = 64
+
 
 def _username() -> str:
     try:
@@ -43,6 +47,12 @@ def _username() -> str:
 
 @dataclass
 class CheckResult:
+    """The outcome of one check in one run.
+
+    `value` is in the metric's unit (percentages 0–100, durations in
+    seconds); `display_value` is the same value formatted for people.
+    """
+
     check: Check
     outcome: Outcome
     value: float | None
@@ -53,16 +63,32 @@ class CheckResult:
     def display_value(self) -> str:
         return format_value(self.check.metric.unit, self.value)
 
+    def __repr__(self) -> str:
+        # The dataclass repr would print the check, its dataset, and every
+        # sibling check — screens of text for one line in a notebook.
+        return (
+            f"CheckResult({self.outcome.value} {self.check.dataset.name} "
+            f"{self.check.name!r} value={self.display_value!r})"
+        )
+
 
 @dataclass
 class RunResult:
+    """One run: every check's outcome, and what the run as a whole means.
+
+    `outcome` describes the data (the worst check outcome); `exit_code()`
+    describes the run, and also counts failures to record it.
+    """
+
     id: str
     project: str
     started_at: datetime
+    trigger: str  # what started the run: "cli", "python", ...
     finished_at: datetime | None = None
     results: list[CheckResult] = field(default_factory=list)
     selection: dict[str, Any] = field(default_factory=dict)
-    trigger: str = "cli"
+    fail_on: FailOn = "fail"
+    record_errors: list[str] = field(default_factory=list)
     hostname: str = field(default_factory=socket.gethostname)
     username: str = field(default_factory=_username)
     version: str = __version__
@@ -74,19 +100,55 @@ class RunResult:
     def count(self, outcome: Outcome) -> int:
         return sum(1 for r in self.results if r.outcome is outcome)
 
-    def exit_code(self, fail_on: str = "fail") -> int:
-        """0 clean · 1 data failed a check · 2 tablewatch could not evaluate one."""
-        if self.count(Outcome.ERROR):
+    def exit_code(self, fail_on: FailOn | None = None) -> int:
+        """0 clean · 1 data failed a check · 2 tablewatch could not do its job.
+
+        `fail_on` defaults to the run's own; "warn" makes warnings count as
+        failures. A check that could not be evaluated, or a run that could
+        not be recorded, is 2 whatever `fail_on` says.
+        """
+        fail_on = self.fail_on if fail_on is None else fail_on
+        if fail_on not in FAIL_ON_CHOICES:
+            raise ValueError(
+                f"fail_on must be one of {', '.join(FAIL_ON_CHOICES)}, not {fail_on!r}"
+            )
+        if self.count(Outcome.ERROR) or self.record_errors:
             return 2
         if self.count(Outcome.FAIL) or (fail_on == "warn" and self.count(Outcome.WARN)):
             return 1
         return 0
+
+    def __repr__(self) -> str:
+        counts = ", ".join(
+            f"{outcome.value}={n}" for outcome in Outcome if (n := self.count(outcome))
+        )
+        # A run that could not be recorded says so: its outcome alone would
+        # read as "all is well" in a notebook.
+        unrecorded = (
+            f", record_errors={len(self.record_errors)}" if self.record_errors else ""
+        )
+        return (
+            f"RunResult(id={self.id[:12]!r}, project={self.project!r}, "
+            f"outcome={self.outcome.value}, {counts or 'no checks'}{unrecorded})"
+        )
+
+
+ResultSink = Callable[[RunResult], None]
+"""Receives a finished run, such as the results store.
+
+A sink raises only when its failure means tablewatch could not do its job;
+the reason lands in `RunResult.record_errors` and the exit code becomes 2.
+A sink whose failure should not change the exit code (a notifier, say)
+catches and logs its own errors.
+"""
 
 
 def run_checks(
     project: Project,
     checks: Iterable[Check],
     *,
+    trigger: str,
+    fail_on: FailOn = "fail",
     now: datetime | None = None,
     engine_factory: EngineFactory | None = None,
     max_workers: int = 4,
@@ -98,7 +160,9 @@ def run_checks(
         id=uuid.uuid4().hex,
         project=project.config.name,
         started_at=now,
+        trigger=trigger,
         selection=selection or {},
+        fail_on=fail_on,
     )
     order = {check.id: index for index, check in enumerate(checks)}
     factory = engine_factory or (

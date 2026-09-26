@@ -51,6 +51,12 @@ ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
 
 @dataclass
 class Project:
+    """A loaded project: its config, datasets and checks, and any diagnostics.
+
+    Public: `root`, `datasets`, `checks`, `diagnostics`, `ok`. `config` is
+    provisional and may change between releases.
+    """
+
     root: Path
     config: ProjectConfig
     datasets: list[Dataset] = field(default_factory=list)

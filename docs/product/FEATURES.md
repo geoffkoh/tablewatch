@@ -89,7 +89,7 @@ Notes:
 
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| B1 ★ | Python API `tablewatch.run(...)` | Embed in pipelines; foundation for the REST API | Dana | 2 | S | backlog |
+| B1 ★ | Python API `tablewatch.run(...)` | Embed in pipelines; foundation for the REST API | Dana | 2 | S | shipped (I-01) |
 | B2 | Connectors: **Databricks SQL first**, then Snowflake, BigQuery, SQL Server, Oracle, MySQL, Trino, Redshift | Where enterprise data lives | Priya | 3 | L (each S–M) | catalogue |
 | B3 | Timeouts, retry with backoff, per-datasource concurrency | A slow warehouse can't wedge a run | Priya | 3 | M | catalogue |
 | B4 | Partition-aware incremental runs; sampling | Checks on huge tables at bounded cost | Priya | 3 | M | catalogue |
@@ -113,7 +113,7 @@ Notes:
 | C2 | `tablewatch serve` (listens on 127.0.0.1 by default; `--host` opts in with a no-authentication warning), UI shell, overview (failing first) | Status at a glance, without a terminal | Sam, Alex | 2 | M | backlog |
 | C3 | Check explorer: tree mirroring `checks/`, filters, search | Find any check the way it was written | Sam | 2 | M | backlog |
 | C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | backlog |
-| C5 | Run detail and diff against the previous run | "What broke since yesterday" | Sam | 2 | M | catalogue |
+| C5 | Run detail and diff against the previous run | "What broke since yesterday" | Sam | 2 | M | backlog |
 | C6 | Health scores and scorecards by domain, owner, tag; runbook links | A trust signal for consumers | Alex | 4 | M | catalogue |
 | C7 | Failed-rows viewer | See the bad rows (needs B6) | Sam | 2b | S | catalogue |
 | C8 ★ | `tablewatch report`: static, emailable HTML | Visibility with no server to run | Sam, Ravi | 2 | S | backlog |
@@ -153,7 +153,7 @@ contain row data. Every notification increment needs security review
 | E2 | Docker image, Helm chart, K8s CronJob | Standard deployment | Priya | 3 | M | catalogue |
 | E3 | Airflow, Dagster, Prefect; GitHub Action; pre-commit | Fits existing pipelines | Dana | 3 | M | catalogue |
 | E4 | Prometheus, health endpoints, OpenTelemetry | Operable like any service | Priya | 3 | M | catalogue |
-| E5 | Postgres results store | Shared history across servers and the UI | Priya | 2 | S | catalogue |
+| E5 | Postgres results store | Shared history across servers and the UI | Priya | 2 | S | backlog |
 | E6 | Benchmarks guarding one-scan-per-dataset | Performance never silently regresses | Priya | 3 | S | catalogue |
 | E7 | Configurable result recording: `tablewatch.yml` → `_defaults.yml` → per-check `record:` → per-call/`--no-store` (strongest last); on by default | Keep the store and UI to what matters; in-pipeline checks don't flood history | Dana, Priya | 2 | S | backlog |
 | E8 | Retention policies and purge (results and samples) | Bounded storage; samples don't live forever | Priya, Ravi | 4 | S | catalogue |
@@ -234,4 +234,4 @@ requirements on the increments that first touch them (see BACKLOG.md):
 | --- | --- | --- | --- |
 | **Dataset source** — supplies the `FROM` clause and a stable dataset name for check identity | Table | File (A8), in-memory frame (A9), Spark DataFrame (B8), stream window (A17) | I-08 (files) |
 | **Executor** — runs a compiled plan | SQLAlchemy connection | DuckDB in-process (A8, A9), `spark.sql()` (B8), windowed runner (A17) | I-08 (files) |
-| **Result sink** — where outcomes go | Results store | None, caller callback (B1, A9), per E7 configuration | I-01 (Python API) |
+| **Result sink** — where outcomes go | Results store | None, caller callback (B1, A9), per E7 configuration | I-01 (Python API) — established: `ResultSink` in `engine/runner.py` |

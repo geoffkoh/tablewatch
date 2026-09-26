@@ -13,12 +13,13 @@ from pathlib import Path
 
 from tablewatch.checks.model import Check
 from tablewatch.config.loader import Project
+from tablewatch.errors import TablewatchError
 
 _GLOB_CHARS = frozenset("*?[")
 
 
-class SelectionError(Exception):
-    pass
+class SelectionError(TablewatchError):
+    """The selection is invalid or matched no checks, so nothing ran."""
 
 
 @dataclass
