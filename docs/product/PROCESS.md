@@ -100,8 +100,8 @@ authenticated).
 
 ## Product manager autonomy
 
-The PM may re-rank, split, combine, and add items that fit the five-phase
-roadmap. A new theme, skipping ahead a phase, or changing the roadmap is
+The PM may re-rank, split, combine, and add items that fit the roadmap's
+phases (1, 2, 2b, 3, 4, 5). A new theme, skipping ahead a phase, or changing the roadmap is
 written as a proposal in `ITERATIONS.md`, and the loop stops for the user.
 
 ## The loop stops and asks the user when

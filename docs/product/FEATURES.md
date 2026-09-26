@@ -1,43 +1,73 @@
 # Feature catalogue
 
 Everything tablewatch could reasonably become. The backlog draws PR-sized
-increments from here. **Phase** is the roadmap phase (`docs/ROADMAP.md`).
+increments from here. **Phase** is the roadmap phase (`docs/ROADMAP.md`):
+1, 2, 2b, 3, 4, 5 — Phase 2 was split on 2026-09-26 into 2 (visibility and
+alerting) and 2b (language depth).
 **Size** is a first guess in iterations: S ≈ 1, M ≈ 2, L ≈ 4.
 ★ marks small, valuable items worth considering early.
 
-Status: `shipped`, `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
+Status: `shipped`, `backlog` (in BACKLOG.md), `catalogue` (not yet planned),
+or `parked` (waiting on a decision by the owner; not to be planned until it is
+taken).
 
 ## A. Authoring & the check language
 
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | A0 | YAML check files, folders, `_defaults.yml`, 16 metrics, diagnostics | The core | Dana | 1 | — | shipped |
-| A1 | `for_each` over tables matching a pattern | One file covers a hundred tables | Dana | 2 | M | catalogue |
-| A2 | Variables `${var:name}`, `--var` | Partition dates and environments without copies | Dana | 2 | S | catalogue |
-| A3 | `reference(col)` referential integrity | Orphaned rows are a top real-world defect | Sam | 2 | M | catalogue |
-| A4 | Distribution metrics: percentile, stddev, `value_share` | Catches drift that averages hide | Sam | 2 | M | catalogue |
+| A1 | `for_each` over tables matching a pattern | One file covers a hundred tables | Dana | 2b | M | catalogue |
+| A2 | Variables `${var:name}`, `--var` | Partition dates and environments without copies | Dana | 2b | S | catalogue |
+| A3 | `reference(col)` referential integrity | Orphaned rows are a top real-world defect | Sam | 2b | M | catalogue |
+| A4 | Distribution metrics: percentile, stddev, `value_share` | Catches drift that averages hide | Sam | 2b | M | catalogue |
 | A5 ★ | Change-over-time: `change(row_count) < 20%` against the last run or the same weekday | Catches "half the data didn't load" without guessing a fixed threshold | Sam, Alex | 2 | M | backlog |
 | A6 | Reusable check templates | Standard checks applied consistently | Dana | 3 | M | catalogue |
 | A7 | `group_by:` per-segment metrics | "Region APAC is missing", not "the table is 3% off" | Sam | 3 | L | catalogue |
 | A8 ★ | Files as datasets (CSV, Parquet, JSON via DuckDB) | Check landing files before they're loaded | Dana | 2 | S | backlog |
-| A9 | DataFrame API (pandas, polars) | Checks inside notebooks and Python pipelines | Dana | 3 | M | catalogue |
-| A10 | Importers: dbt tests/sources; Soda and GX migration | Adoption without a rewrite | Dana | 4 | L | catalogue |
+| A9 | In-pipeline validation: `tw.check(frame, checks=...)` on pandas, polars and Arrow data in memory, queried in place by DuckDB with the same YAML checks; returns outcomes or raises on `fail` (`error` kept distinct). Supersedes the earlier "DataFrame API" | Bad data is stopped before it is written, not found after | Dana, Sam | 3 | M | catalogue |
+| A10 | Importers: dbt tests/sources; Soda, GX and DQX check migration | Adoption without a rewrite | Dana | 4 | L | catalogue |
 | A11 | Data contracts (ODCS) import/export | Producers and consumers agree in writing | Sam, Ravi | 5 | L | catalogue |
 | A12 | `tablewatch profile` → drafted check file | A useful first check file in one command | Sam | 5 | M | catalogue |
 | A13 | Claude-assisted authoring and failure explanations | Stewards write checks in plain English | Sam | 5 | M | catalogue |
-| A14 | Schema-drift detection: columns added, removed or retyped since the last run | Catches upstream changes before they break consumers | Sam, Dana | 2 | S | catalogue |
+| A14 | Schema-drift detection: columns added, removed or retyped since the last run | Catches upstream changes before they break consumers | Sam, Dana | 2b | S | catalogue |
+| A15 | Databricks DQX interop: read DQX quarantine and result tables (`dq_errors`, `dq_warnings`) as ordinary datasets, with a worked example; DQX check YAML import rides on A10 | DQX quarantines rows inside Spark; tablewatch adds history, alerting and the UI on top | Sam, Dana | 3 | S | catalogue |
+| A16 | Quarantine: split a batch into good and bad rows on row-level checks | Keep loading good rows while bad ones wait for a fix | Dana | — | M | parked: owner deciding |
+| A17 | Checks on streams (e.g. Kafka) over micro-batch windows, possibly as a sidecar | Quality at ingestion for streaming data | Dana, Priya | 5 | L | catalogue |
+| A18 | Cross-source reconciliation: compare a metric between two datasources | "The warehouse has every row the source sent" | Sam, Ravi | 5 | L | catalogue |
+
+Notes:
+
+- **A9** needs pandas and polars as optional extras (security review).
+  Recording its results follows E7; per-call `record=` comes with B1.
+- **A15** needs the Databricks SQL connector (B2). Exporting tablewatch checks
+  as DQX rules is an idea, not an item: DQX's licence is listed as
+  "Other/Proprietary" on PyPI and must be checked with the owner first.
+- **A16** open questions for when the owner decides: which checks may
+  quarantine (only row-level ones — `row_count` or uniqueness can only pass or
+  fail a whole batch); where bad rows go (returned to the caller or written to
+  a table); and whether keeping them is storing row data (security review).
+- **A17** is not wanted yet, but the design must leave room for it — see
+  "Modular seams" below.
 
 ## B. Execution
 
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | B1 ★ | Python API `tablewatch.run(...)` | Embed in pipelines; foundation for the REST API | Dana | 2 | S | backlog |
-| B2 | Connectors: Snowflake, Databricks, BigQuery, SQL Server, Oracle, MySQL, Trino, Redshift | Where enterprise data lives | Priya | 3 | L (each S–M) | catalogue |
+| B2 | Connectors: **Databricks SQL first**, then Snowflake, BigQuery, SQL Server, Oracle, MySQL, Trino, Redshift | Where enterprise data lives | Priya | 3 | L (each S–M) | catalogue |
 | B3 | Timeouts, retry with backoff, per-datasource concurrency | A slow warehouse can't wedge a run | Priya | 3 | M | catalogue |
 | B4 | Partition-aware incremental runs; sampling | Checks on huge tables at bounded cost | Priya | 3 | M | catalogue |
 | B5 | Cost guards and `EXPLAIN` estimates | No surprise warehouse bills | Priya | 3 | M | catalogue |
-| B6 | Failed-row samples (off by default, exclusion, masking) | Shows *which* rows are wrong | Sam | 2 | M | catalogue |
+| B6 | Failed-row samples (off by default, exclusion, masking) | Shows *which* rows are wrong | Sam | 2b | M | catalogue |
 | B7 | Environments `--env prod` | One check set, many targets | Priya | 3 | S | catalogue |
+| B8 | Spark DataFrame backend: register the DataFrame as a temp view, compile the same SQLAlchemy statements to Spark SQL, run through `spark.sql()` | In-pipeline validation (A9) for Spark jobs without collecting data to one machine | Dana | 3 | M | catalogue |
+
+Notes:
+
+- **Databricks first in B2** because it unlocks A15 and does the Spark SQL
+  normalisation (regex, timestamps, per design rule 3) that B8 then reuses.
+- **B8** makes pyspark (large, needs a JVM) an optional extra and needs a
+  local Spark in CI; metric tests must also pass on it.
 
 ## C. Visibility (API & UI)
 
@@ -48,19 +78,35 @@ Status: `shipped`, `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
 | C3 | Check explorer: tree mirroring `checks/`, filters, search | Find any check the way it was written | Sam | 2 | M | backlog |
 | C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | backlog |
 | C5 | Run detail and diff against the previous run | "What broke since yesterday" | Sam | 2 | M | catalogue |
-| C6 | Health scores and scorecards by domain, owner, tag | A trust signal for consumers | Alex | 3 | M | catalogue |
-| C7 | Failed-rows viewer | See the bad rows (needs B6) | Sam | 2 | S | catalogue |
+| C6 | Health scores and scorecards by domain, owner, tag; runbook links | A trust signal for consumers | Alex | 4 | M | catalogue |
+| C7 | Failed-rows viewer | See the bad rows (needs B6) | Sam | 2b | S | catalogue |
 | C8 ★ | `tablewatch report`: static, emailable HTML | Visibility with no server to run | Sam, Ravi | 2 | S | backlog |
 
 ## D. Alerting & incidents
 
+Notifications are configured **per check** with a `notify:` block, inherited
+through `_defaults.yml` so a folder can route to its domain owner:
+
+```yaml
+notify:
+  to: [owner, "#payments-dq"]         # notifier names from tablewatch.yml, or `owner`
+  on: [failing, erroring, recovered]  # the default: state changes only
+```
+
+Notifier endpoints and secrets live only in `tablewatch.yml` as `${env:}`
+references, never in check files (design rule 6). Alerting on every failure
+(`every_fail`) or on `pass` is an explicit opt-in. Notification payloads never
+contain row data. Every notification increment needs security review
+(outbound network, secrets).
+
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| D1 | Channels: Slack, Teams, email, webhook, PagerDuty | Problems reach people | Sam, Priya | 2 | M | backlog (webhook + Slack first) |
-| D2 | Alert on state change only (failing, recovered) | Never cry wolf | Sam | 2 | S | backlog |
-| D3 | Routing by owner, tag, severity | The right person, not everyone | Sam | 2 | S | catalogue |
+| D1 | Channels: webhook and Slack first, then Teams and email | Problems reach people | Sam, Priya | 2 | M | backlog |
+| D2 | Per-check `notify:` with `_defaults.yml` inheritance; state changes only by default (failing, erroring, recovered) | Never cry wolf | Sam | 2 | M | backlog |
+| D3 | Routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`) | The right person, not everyone | Sam | 2 | S | backlog |
 | D4 | Acknowledge, mute with expiry, resolve, timeline | Manage known issues without silencing checks | Sam | 4 | L | catalogue |
 | D5 | Daily digests | Awareness without interruption | Alex | 3 | S | catalogue |
+| D6 | PagerDuty and Opsgenie channels | On-call escalation for critical checks | Priya | 3 | S | catalogue |
 
 ## E. Operations
 
@@ -71,8 +117,17 @@ Status: `shipped`, `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
 | E2 | Docker image, Helm chart, K8s CronJob | Standard deployment | Priya | 3 | M | catalogue |
 | E3 | Airflow, Dagster, Prefect; GitHub Action; pre-commit | Fits existing pipelines | Dana | 3 | M | catalogue |
 | E4 | Prometheus, health endpoints, OpenTelemetry | Operable like any service | Priya | 3 | M | catalogue |
-| E5 | Postgres results store, retention and purge | Shared history across servers | Priya | 2 | S | catalogue |
+| E5 | Postgres results store | Shared history across servers and the UI | Priya | 2 | S | catalogue |
 | E6 | Benchmarks guarding one-scan-per-dataset | Performance never silently regresses | Priya | 3 | S | catalogue |
+| E7 | Configurable result recording: `tablewatch.yml` → `_defaults.yml` → per-check `record:` → per-call/`--no-store` (strongest last); on by default | Keep the store and UI to what matters; in-pipeline checks don't flood history | Dana, Priya | 2 | S | backlog |
+| E8 | Retention policies and purge (results and samples) | Bounded storage; samples don't live forever | Priya, Ravi | 4 | S | catalogue |
+
+Notes:
+
+- **E7:** a check that uses history (`change()`, A5; later `anomaly()`, G1)
+  while recording is off must be a load-time Diagnostic at `file:line:col`.
+- **E8** is Phase 4, but B6 stores samples from Phase 2b; until E8 ships,
+  samples rely on being off by default and on `exclude_columns`.
 
 ## F. Governance & security
 
@@ -82,7 +137,7 @@ Status: `shipped`, `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
 | F2 | API tokens for service accounts | Automation without shared passwords | Priya | 4 | S | catalogue |
 | F3 | Audit log | Who did what, provably | Ravi | 4 | M | catalogue |
 | F4 | Secret managers: Vault, AWS, Azure, GCP | Credentials from where they already live | Priya | 4 | M | catalogue |
-| F5 | Governed check changes (maker-checker); git SHA per run | Controls can't be weakened unseen | Ravi | 4 | L | catalogue |
+| F5 | Governed check changes (maker-checker), including who can redirect `notify:`; git SHA per run | Controls can't be weakened unseen | Ravi | 4 | L | catalogue |
 | F6 | PII policies: column tags, masking | Samples without a privacy incident | Ravi | 4 | M | catalogue |
 | F7 | Compliance evidence pack | Audit preparation in minutes | Ravi | 4 | M | catalogue |
 | F8 | Multiple projects / workspaces per server | One deployment for many teams | Priya | 4 | L | catalogue |
@@ -103,5 +158,17 @@ Status: `shipped`, `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
 | H1 | Plugin SDK (entry points) | Organisations extend without forking | Dana | 5 | M | catalogue |
 | H2 | VS Code extension | Diagnostics and results in the editor | Dana | 5 | L | catalogue |
 | H3 ★ | `validate --output sarif` | Errors shown inline on GitHub PRs | Dana | 2 | S | backlog |
-| H4 | OpenLineage, DataHub, OpenMetadata, Unity Catalog | Quality visible where data is discovered | Alex | 5 | L | catalogue |
+| H4 | OpenLineage, DataHub, OpenMetadata, Collibra, Unity Catalog | Quality visible where data is discovered | Alex | 5 | L | catalogue |
 | H5 | Documentation site | Adoption beyond the README | all | 3 | M | catalogue |
+
+## Modular seams
+
+Streaming (A17), Spark (B8) and in-memory frames (A9) are kept cheap to add
+later by three seams. They are not features of their own; they are written
+requirements on the increments that first touch them (see BACKLOG.md):
+
+| Seam | Today | Later | First established by |
+| --- | --- | --- | --- |
+| **Dataset source** — supplies the `FROM` clause and a stable dataset name for check identity | Table | File (A8), in-memory frame (A9), Spark DataFrame (B8), stream window (A17) | I-08 (files) |
+| **Executor** — runs a compiled plan | SQLAlchemy connection | DuckDB in-process (A8, A9), `spark.sql()` (B8), windowed runner (A17) | I-08 (files) |
+| **Result sink** — where outcomes go | Results store | None, caller callback (B1, A9), per E7 configuration | I-01 (Python API) |

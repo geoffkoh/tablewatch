@@ -15,3 +15,27 @@ and how they were resolved, what was deferred, and what was learned.
   documents (nothing could become "ready"; the log and CHANGELOG were due
   after the merge that required them; five Phase 2 features were missing from
   the roadmap; an ambiguous security trigger), all fixed in the same PR.
+- **Catalogue revised with the owner on 2026-09-26** (FEATURES, BACKLOG,
+  ROADMAP). Checking data while it is being ingested was missing. Added: A9 widened
+  to in-pipeline validation of pandas, polars and Arrow data (absorbs the
+  DataFrame API); B8 Spark DataFrame backend; Databricks SQL first in B2;
+  A15 Databricks DQX interop (reading DQX output; DQX import under A10);
+  A16 quarantine, `parked` for the owner; A17 streaming (Phase 5) made
+  possible later by three seams — dataset source, executor, result sink —
+  now written requirements on I-01 and I-08; E7 configurable result
+  recording (new backlog item I-12; per-call in I-01). Alerting redesigned as
+  per-check `notify:` with `_defaults.yml` inheritance and state-change
+  defaults, split into I-06 and new I-11 (both need security review); D2
+  resized S→M; PagerDuty split out as D6 (Phase 3). Roadmap and catalogue
+  reconciled: scorecards are Phase 4 (C6); retention split from the Postgres
+  store as E8 (Phase 4); cross-source reconciliation is A18; digests (D5) and
+  every other catalogued feature now appear in the roadmap with its ID.
+  Still open for the owner: whether `serve` binds to localhost by default
+  and API tokens (F2) come forward; quarantine.
+- **Phase 2 split, decided by the owner on 2026-09-26.** Phase 2 → `0.2.0`
+  "Visibility & alerting" (B1, C1–C5, C8, D1–D3, E5, E7, H3, A5, A8). New
+  Phase 2b → `0.3.0` "Language depth" (A1–A4, A14, B6, C7). Numbered 2b so
+  Phases 3–5 keep their numbers; their releases move to `0.4.0` (Phase 3)
+  and `0.5.0` (Phase 4); Phase 5 stays `1.0.0`. The failed-row samples
+  shown on check detail (C7) moved with B6 to 2b. The backlog holds Phase 2
+  only.
