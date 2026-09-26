@@ -204,10 +204,7 @@ class ResultStore:
             .options(selectinload(RunRow.results))
         )
         with _reading(), Session(self.engine) as session:
-            row = session.scalars(statement).one_or_none()
-            if row is not None:
-                row.results.sort(key=lambda result: result.id)
-            return row
+            return session.scalars(statement).one_or_none()
 
     def latest_results(self, project: str) -> dict[str, tuple[CheckResultRow, RunRow]]:
         """Each check id's result from the newest run of this project that had it.
@@ -275,6 +272,22 @@ def _older_than(before: PageKey | None) -> list[ColumnElement[bool]]:
             and_(RunRow.started_at == before.started_at, RunRow.id < before.run_id),
         )
     ]
+
+
+def is_persistent(url: str) -> bool:
+    """False for an in-memory SQLite store, which each connection sees empty.
+
+    Raises `StoreError` if `url` is not a database URL.
+    """
+    try:
+        parsed = make_url(url)
+    except (SQLAlchemyError, ValueError) as exc:
+        # The text can quote a misplaced password: say only what failed.
+        raise StoreError("results store: the url is not a valid database URL") from exc
+    return not (
+        parsed.get_backend_name() == "sqlite"
+        and parsed.database in (None, "", ":memory:")
+    )
 
 
 def open_store(url: str, project_root: Path) -> ResultStore:

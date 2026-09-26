@@ -17,6 +17,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
 
+from tablewatch._version import __version__
 from tablewatch.checks.model import Check
 from tablewatch.diagnostics import Diagnostic as DiagnosticModel
 from tablewatch.diagnostics import SourceLocation
@@ -121,7 +122,7 @@ class LatestResult(_Model):
             outcome=_outcome(result.outcome),
             value=result.value,
             display_value=result.display_value,
-            message=result.message,
+            message=_message(result.outcome, result.message),
         )
 
 
@@ -185,7 +186,7 @@ class HistoryEntry(_Model):
             outcome=_outcome(result.outcome),
             value=result.value,
             display_value=result.display_value,
-            message=result.message,
+            message=_message(result.outcome, result.message),
             duration_ms=result.duration_ms,
             name=result.check_name,
             expression=result.expression,
@@ -274,7 +275,7 @@ class RunResultItem(_Model):
             outcome=_outcome(result.outcome),
             value=result.value,
             display_value=result.display_value,
-            message=result.message,
+            message=_message(result.outcome, result.message),
             source=result.source,
             owner=result.owner,
             tags=list(result.tags),
@@ -307,7 +308,17 @@ class ErrorBody(_Model):
 
 
 def _outcome(value: str) -> Outcome:
+    # A shared store can hold outcomes from a newer tablewatch. This version
+    # cannot evaluate them, which is what `error` means; one such row must
+    # not fail every request that meets it.
     match value:
         case "pass" | "warn" | "fail" | "error" | "skipped":
             return value
-    raise ValueError(f"unknown outcome in the store: {value!r}")
+    return "error"
+
+
+def _message(outcome: str, message: str | None) -> str | None:
+    if outcome == _outcome(outcome):
+        return message
+    note = f"recorded outcome {outcome!r} is unknown to tablewatch {__version__}"
+    return f"{note}: {message}" if message else note

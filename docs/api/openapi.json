@@ -812,7 +812,7 @@
   "paths": {
     "/api/v1/checks": {
       "get": {
-        "operationId": "list_checks_api_v1_checks_get",
+        "operationId": "list_checks",
         "parameters": [
           {
             "in": "query",
@@ -889,7 +889,7 @@
     },
     "/api/v1/checks/{check_id}": {
       "get": {
-        "operationId": "get_check_api_v1_checks__check_id__get",
+        "operationId": "get_check",
         "parameters": [
           {
             "in": "path",
@@ -948,7 +948,7 @@
     },
     "/api/v1/checks/{check_id}/history": {
       "get": {
-        "operationId": "check_history_api_v1_checks__check_id__history_get",
+        "operationId": "get_check_history",
         "parameters": [
           {
             "in": "path",
@@ -1031,12 +1031,12 @@
             "description": "Results store unavailable"
           }
         },
-        "summary": "Check History"
+        "summary": "Get Check History"
       }
     },
     "/api/v1/project": {
       "get": {
-        "operationId": "get_project_api_v1_project_get",
+        "operationId": "get_project",
         "responses": {
           "200": {
             "content": {
@@ -1084,7 +1084,7 @@
     },
     "/api/v1/runs": {
       "get": {
-        "operationId": "list_runs_api_v1_runs_get",
+        "operationId": "list_runs",
         "parameters": [
           {
             "in": "query",
@@ -1163,7 +1163,7 @@
     },
     "/api/v1/runs/{run_id}": {
       "get": {
-        "operationId": "get_run_api_v1_runs__run_id__get",
+        "operationId": "get_run",
         "parameters": [
           {
             "in": "path",

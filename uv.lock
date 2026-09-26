@@ -1041,7 +1041,7 @@ dev = [
     { name = "duckdb-engine", specifier = ">=0.13" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "h11", specifier = ">=0.16" },
-    { name = "httpx2", specifier = ">=2.13" },
+    { name = "httpx2", specifier = ">=2.13,<3" },
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "mypy", specifier = ">=1.11" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },

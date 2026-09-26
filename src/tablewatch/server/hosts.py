@@ -32,7 +32,9 @@ def host_allowed(header: str | None, allowed_names: Collection[str] = ()) -> boo
     if not header:
         return False
     name = _strip_port(header.strip().lower())
-    if name is None or not name:
+    # A scoped IPv6 zone ("fe80::1%eth0") can hold any text; nothing
+    # legitimate sends one.
+    if not name or "%" in name:
         return False
     if name == "localhost" or name in {a.lower() for a in allowed_names}:
         return True

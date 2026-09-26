@@ -17,14 +17,13 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from tablewatch._version import __version__
 from tablewatch.checks.model import Check
-from tablewatch.config.loader import ID_PATTERN
+from tablewatch.config.loader import ID_PATTERN, MAX_ID_LENGTH
 from tablewatch.config.loader import Project as LoadedProject
 from tablewatch.results.store import PageKey, ResultStore
 from tablewatch.server import schemas
 
 OutcomeFilter = Literal["pass", "warn", "fail", "error", "skipped", "not_run"]
 RUN_ID = re.compile(r"^[0-9a-f]{32}$")
-MAX_CHECK_ID = 128
 MAX_CURSOR = 256
 
 ERRORS = {
@@ -69,7 +68,12 @@ Context = Annotated[ServerContext, Depends(get_context)]
 Limit = Annotated[int, Query(ge=1, le=200)]
 Cursor = Annotated[str | None, Query(max_length=MAX_CURSOR)]
 
-router = APIRouter(prefix="/api/v1", responses=ERRORS)  # type: ignore[arg-type]
+router = APIRouter(
+    prefix="/api/v1",
+    responses=ERRORS,  # type: ignore[arg-type]
+    # Stable operation ids: generated clients name their functions after them.
+    generate_unique_id_function=lambda route: route.name,
+)
 
 
 @router.get("/project", response_model=schemas.Project)
@@ -113,14 +117,15 @@ def get_check(context: Context, check_id: str) -> schemas.CheckSummary:
     check = context.check(check_id) if _is_check_id(check_id) else None
     if check is None:
         raise _not_found("check")
-    found = context.store.latest_results(context.name).get(check.id)
+    # The head of its history is its latest result: same order, one row.
+    head = context.store.history_page(context.name, check.id, limit=1)
     return schemas.CheckSummary.of(
-        check, schemas.LatestResult.of(*found) if found else None
+        check, schemas.LatestResult.of(*head[0]) if head else None
     )
 
 
 @router.get("/checks/{check_id}/history", response_model=schemas.HistoryPage)
-def check_history(
+def get_check_history(
     context: Context, check_id: str, limit: Limit = 50, cursor: Cursor = None
 ) -> schemas.HistoryPage:
     if not _is_check_id(check_id):
@@ -164,7 +169,7 @@ def get_run(context: Context, run_id: str) -> schemas.RunDetail:
 
 
 def _is_check_id(value: str) -> bool:
-    return len(value) <= MAX_CHECK_ID and ID_PATTERN.match(value) is not None
+    return len(value) <= MAX_ID_LENGTH and ID_PATTERN.match(value) is not None
 
 
 def _not_found(what: str) -> ApiError:
@@ -185,15 +190,21 @@ def _decode_cursor(cursor: str | None) -> PageKey | None:
     if cursor is None:
         return None
     try:
-        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        raw = base64.b64decode(
+            cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True
+        )
         when, _, run_id = raw.decode("ascii").partition("|")
         started_at = datetime.fromisoformat(when)
-    except (binascii.Error, UnicodeDecodeError, ValueError):
+        if started_at.tzinfo is None or not RUN_ID.match(run_id):
+            raise ValueError("incomplete cursor")
+        return PageKey(started_at=schemas.utc(started_at), run_id=run_id)
+    except (binascii.Error, UnicodeDecodeError, ValueError, OverflowError):
         raise _bad_cursor() from None
-    if started_at.tzinfo is None or not RUN_ID.match(run_id):
-        raise _bad_cursor()
-    return PageKey(started_at=schemas.utc(started_at), run_id=run_id)
 
 
 def _bad_cursor() -> ApiError:
-    return ApiError(400, "invalid_parameter", "invalid cursor")
+    return ApiError(
+        400,
+        "invalid_parameter",
+        "invalid cursor — use next_cursor from a previous page",
+    )

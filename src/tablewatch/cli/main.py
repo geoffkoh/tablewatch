@@ -398,9 +398,7 @@ def serve(
     """Serve the project's checks and results as a read-only JSON API."""
     from datetime import UTC, datetime
 
-    from sqlalchemy import make_url
-
-    from tablewatch.results.store import StoreError, open_store
+    from tablewatch.results.store import StoreError, is_persistent, open_store
     from tablewatch.server.hosts import is_loopback
 
     try:
@@ -426,10 +424,9 @@ def serve(
             err=True,
         )
 
-    url = make_url(project.config.results.url)
-    if url.get_backend_name() == "sqlite" and url.database in (None, "", ":memory:"):
-        _fail("serve needs a results store on disk, not an in-memory database")
     try:
+        if not is_persistent(project.config.results.url):
+            _fail("serve needs a results store on disk, not an in-memory database")
         store = open_store(project.config.results.url, project.root)
     except StoreError as exc:
         log.info("%s", exc)  # driver detail can name hosts and users: not by default

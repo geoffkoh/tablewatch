@@ -16,7 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
-from starlette.types import Message, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from tablewatch._version import __version__
 from tablewatch.results.store import StoreError
@@ -46,10 +46,22 @@ STATUS_CODES: dict[int, schemas.ErrorCode] = {
     503: "store_unavailable",
 }
 INTERNAL_ERROR = "internal error — see the server log"
+FORBIDDEN_HOST = (
+    "host not allowed — use an IP address or localhost, "
+    "or start serve with --allowed-host NAME"
+)
+# What a valid value looks like; the value sent is never echoed back.
+PARAMETER_RULES = {
+    "limit": "invalid limit — a whole number from 1 to 200",
+    "outcome": "invalid outcome — one of pass, warn, fail, error, skipped, not_run",
+    "cursor": "invalid cursor — use next_cursor from a previous page",
+}
 STORE_UNAVAILABLE = "results store: unavailable — see the server log"
 
 
-def create_app(context: ServerContext, *, allowed_hosts: Collection[str] = ()) -> Any:
+def create_app(
+    context: ServerContext, *, allowed_hosts: Collection[str] = ()
+) -> ASGIApp:
     """The `/api/v1` application for one loaded project and its open store.
 
     Internal: the contract is the HTTP API, not this factory. `allowed_hosts`
@@ -61,12 +73,16 @@ def create_app(context: ServerContext, *, allowed_hosts: Collection[str] = ()) -
         version=__version__,
         docs_url=None,  # Swagger UI and ReDoc load scripts from a CDN
         redoc_url=None,
-        openapi_url=OPENAPI_URL,
+        openapi_url=None,  # served below, GET only (Starlette's route adds HEAD)
         redirect_slashes=False,
         debug=False,
     )
     app.state.context = context
     app.include_router(router)
+
+    @app.get(OPENAPI_URL, include_in_schema=False)
+    def openapi() -> dict[str, Any]:
+        return _openapi(app)
 
     @app.get("/", include_in_schema=False)
     def root() -> dict[str, str]:  # a placeholder until I-03 serves the UI here
@@ -93,11 +109,12 @@ def create_app(context: ServerContext, *, allowed_hosts: Collection[str] = ()) -
         errors = exc.errors()
         loc: tuple[Any, ...] = tuple(errors[0]["loc"]) if errors else ()
         name = str(loc[1]) if len(loc) > 1 else "request"
-        return error_response(400, "invalid_parameter", f"invalid {name}")
+        message = PARAMETER_RULES.get(name, f"invalid {name}")
+        return error_response(400, "invalid_parameter", message)
 
     @app.exception_handler(HTTPException)
     def http_error(_: Request, exc: HTTPException) -> JSONResponse:
-        code = STATUS_CODES.get(exc.status_code, "not_found")
+        code = STATUS_CODES.get(exc.status_code, "internal_error")
         message = {404: "not found", 405: "method not allowed"}.get(
             exc.status_code, "request failed"
         )
@@ -109,7 +126,8 @@ def create_app(context: ServerContext, *, allowed_hosts: Collection[str] = ()) -
         return error_response(500, "internal_error", INTERNAL_ERROR)
 
     app.openapi = lambda: _openapi(app)  # type: ignore[method-assign]
-    return _Guard(app, allowed_hosts)
+    guard: ASGIApp = _Guard(app, allowed_hosts)
+    return guard
 
 
 def error_response(
@@ -153,7 +171,8 @@ class _Guard:
         hosts = [value for name, value in scope["headers"] if name == b"host"]
         host = hosts[0].decode("latin-1") if len(hosts) == 1 else None
         if not host_allowed(host, self.allowed_hosts):
-            await _send_error(send_secured, 403, "forbidden_host", "host not allowed")
+            log.warning("refused a request for host %r", (host or "")[:100])
+            await _send_error(send_secured, 403, "forbidden_host", FORBIDDEN_HOST)
             return
         try:
             await self.app(scope, receive, send_secured)
@@ -161,10 +180,6 @@ class _Guard:
             log.exception("unexpected error serving %s", scope.get("path", "?"))
             if not started:
                 await _send_error(send_secured, 500, "internal_error", INTERNAL_ERROR)
-
-    @property
-    def openapi(self) -> Any:  # lets tests and the snapshot read the document
-        return self.app.openapi
 
 
 async def _send_error(send: Send, status: int, code: str, message: str) -> None:

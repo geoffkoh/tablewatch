@@ -874,9 +874,10 @@ def test_one_project_per_server(recorded: Recorded, tmp_path: Path) -> None:  # 
 def test_bad_paging_parameters(recorded: Recorded, path: str, query: str) -> None:  # R6
     with served(recorded.root) as client:
         body = assert_error(client.get(f"{path}?{query}"), 400, "invalid_parameter")
-    name = query.split("=")[0]
-    assert name in body["error"]["message"]
-    assert query.split("=")[1][:20] not in body["error"]["message"]
+    name, _, value = query.partition("=")
+    assert body["error"]["message"].startswith(f"invalid {name}")
+    if len(value) > 3:  # a short value can occur in the rule's own text
+        assert value[:20] not in body["error"]["message"]
 
 
 def test_a_tampered_cursor_is_refused(recorded: Recorded) -> None:  # R6, security
@@ -1206,3 +1207,41 @@ def test_run_items_match_the_json_report(recorded: Recorded) -> None:
     fields = set(schemas.RunResultItem.model_fields)
     result = tw.run(recorded.root, record=False)
     assert fields == set(as_dict(result)["results"][0])
+
+
+def test_wire_enums_match_the_engine() -> None:
+    from typing import get_args
+
+    from tablewatch.metrics.base import Unit
+
+    assert set(get_args(schemas.Outcome)) == {o.value for o in tw.Outcome}
+    assert set(get_args(schemas.Unit)) == {u.value for u in Unit}
+
+
+def test_an_unknown_stored_outcome_is_served_as_error() -> None:
+    assert schemas._outcome("stale") == "error"
+    assert str(schemas._message("stale", "x")).startswith(
+        "recorded outcome 'stale' is unknown"
+    )
+    assert schemas._message("fail", "x") == "x"
+
+
+def test_a_malformed_store_url_stops_serve_without_echoing_it(
+    retail: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = retail / "tablewatch.yml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "sqlite:///.tablewatch/results.db", "postgresql://admin@db:Tr0ub4dor/x"
+        ),
+        encoding="utf-8",
+    )
+    started = start(retail, monkeypatch)
+    assert started.code == 3
+    assert "Tr0ub4dor" not in started.stderr
+    assert "Traceback" not in started.stderr
+
+
+def test_a_scoped_ipv6_host_is_refused() -> None:
+    assert not host_allowed("[fe80::1%25evil.example]:80")
+    assert not host_allowed("[fe80::1%eth0]")

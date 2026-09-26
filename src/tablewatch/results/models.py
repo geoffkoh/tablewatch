@@ -44,7 +44,9 @@ class RunRow(Base):
     errored: Mapped[int] = mapped_column(Integer)
 
     results: Mapped[list[CheckResultRow]] = relationship(
-        back_populates="run", cascade="all, delete-orphan"
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="CheckResultRow.id",  # recorded order
     )
 
 

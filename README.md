@@ -105,6 +105,7 @@ The full language — every metric, option and rule — is in
 | `tablewatch runs` | Show recent runs. |
 | `tablewatch history ID` | Show one check's outcomes over time. |
 | `tablewatch schema` | Print the JSON Schema for check files. |
+| `tablewatch serve` | Serve checks and results as a read-only JSON API ([below](#serve-results-over-http)). |
 
 `list`, `compile` and `run` take selectors: paths (`checks/sales`), `--tag`,
 `--datasource`, `--exclude PATH_OR_GLOB`, and `--check ID`.
@@ -130,6 +131,118 @@ logs to stderr, as JSON with `--log-format json`, so stdout stays clean for
 Give tablewatch a **read-only** database role. `filter:`, `where:`,
 `condition:` and `query:` are SQL from your checks repository, and they run
 with the datasource's credentials.
+
+## Serve results over HTTP
+
+`tablewatch serve` publishes one project's checks and recorded results as a
+read-only JSON API, for dashboards, scripts, and the web UI that comes next.
+It reads the results store only. It never connects to a datasource, never
+starts a run, and needs no credentials.
+
+```bash
+pip install 'tablewatch[duckdb,server]'
+tablewatch --project-dir examples/retail run      # record a run first
+tablewatch --project-dir examples/retail serve
+# tablewatch serve: http://127.0.0.1:8765/api/v1 (project retail-example, 18 checks)
+```
+
+To see what is failing right now, ask for every check whose most recent
+recorded result is `fail`, `warn` or `error`:
+
+```console
+$ curl -s 'http://127.0.0.1:8765/api/v1/checks?outcome=fail&outcome=warn&outcome=error' \
+    | jq -r '.items[] | [.latest.outcome, .dataset, .name, .latest.display_value] | @tsv'
+warn    inventory.products  Price feed freshness            3d 2m
+fail    sales.customers     missing_percent(email) < 5%     20.00%
+fail    sales.customers     invalid_count(country) = 0      1
+...
+$ curl -s http://127.0.0.1:8765/api/v1/checks/b1ceb8262d8b5441/history \
+    | jq -r '.items[] | [.started_at, .outcome, .display_value] | @tsv'
+2026-09-26T07:21:55.862351+00:00    fail    20.00%
+```
+
+| `GET /api/v1/...` | Returns |
+| --- | --- |
+| `project` | Name, datasources (names and types only), counts, and any check-file diagnostics |
+| `checks` | Every check, each with its latest recorded result. Filter with `?outcome=`, which is repeatable and takes `pass`, `warn`, `fail`, `error`, `skipped` or `not_run` |
+| `checks/{id}` | One check. Ids are exact: the full id from `tablewatch list` |
+| `checks/{id}/history` | That check's results, newest first, including results for checks since deleted |
+| `runs`, `runs/{id}` | Runs, newest first, with counts. One run's detail includes its results |
+| `openapi.json` | The contract, also checked in at [docs/api/openapi.json](docs/api/openapi.json) |
+
+Every endpoint is `GET`. `runs` and `history` are paged with `?limit=` (1 to
+200, default 50) and the `next_cursor` from the previous page.
+
+How to read the results:
+
+- **`latest` is the check's most recent result, which is not always from the
+  most recent run.** A run of `checks/sales` leaves the inventory checks'
+  results as they were. `latest.started_at` says how old a result is.
+- **An `error` replaces the last pass or fail.** If tablewatch could not
+  evaluate a check last time, the API does not know the state of the data,
+  so the check appears under `?outcome=error` and not under `fail`. Ask for
+  `fail`, `warn` and `error` together.
+- **`not_run` means no result is recorded for this check id.** Editing a
+  check's expression gives it a new id, so it matches `not_run` until it runs
+  again, and its old results stay under the old id's `history`. Treat
+  `not_run` as unknown, not healthy. An explicit `id:` keeps one history
+  across edits ([check language](docs/check-language.md)).
+- **`value` is in the metric's unit, which `unit` names**: `count`, `percent`
+  (`20.0` means 20%), `duration` (seconds), or `number`. Show
+  `display_value` to people.
+
+What `serve` reads, and when:
+
+- **It reads check files once, at startup. It reads results live.** Restart
+  `serve` to pick up edited checks. A `tablewatch run` from cron appears on
+  the next request.
+- **A mistake in a check file does not stop `serve`.** It prints the
+  diagnostics and serves the checks that loaded, and `project` reports
+  `"ok": false`. The broken file's checks are missing from `checks`, so the
+  failure count can go down. Check `ok` before you trust a count.
+- **It serves one project per server.** In a results store shared by several
+  projects, `serve` shows only runs recorded under this project's `name:`.
+  If you rename the project, its earlier runs stay in the store but no longer
+  appear. Run one `serve` per project, each on its own `--port`.
+
+### Who can reach it
+
+There is no authentication yet (it is planned for Phase 4). `serve` listens
+on `127.0.0.1` by default, so only the same machine can connect. From your
+laptop, the safest way in is an SSH tunnel:
+
+```bash
+ssh -L 8765:127.0.0.1:8765 dq-host      # then open http://127.0.0.1:8765/api/v1/project
+```
+
+`--host 0.0.0.0` (or any address that is not loopback) serves the network and
+prints a warning:
+
+```text
+tablewatch: warning: serving on 0.0.0.0 with no authentication — anyone who can reach this address can read this project's checks and results, including data values and owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn it on yet).
+```
+
+Results can contain data values, such as a minimum price or a newest
+timestamp, and owners' email addresses.
+
+The server answers requests addressed to an IP address or to `localhost`.
+To guard against DNS rebinding, it rejects any other host name with
+`403 forbidden_host`, in every bind mode. Name each host name that clients
+use:
+
+```bash
+tablewatch serve --host 0.0.0.0 --allowed-host dq.internal
+```
+
+`serve` exits `0` when stopped with Ctrl-C or SIGTERM. It exits `3` when it
+could not start: the `server` extra is missing, `tablewatch.yml` is unusable,
+the results store cannot be opened, or the port is in use. Its access log
+goes to stderr, as JSON with `--log-format json`, and `-q` turns it off.
+
+`serve` is meant for a handful of readers. It accepts at most 64 connections
+at once; beyond that the web server itself answers `503` in plain text,
+without the API's JSON error body. Anything past a trusted network belongs
+behind a reverse proxy, which is also where TLS goes.
 
 ## Use from Python
 
