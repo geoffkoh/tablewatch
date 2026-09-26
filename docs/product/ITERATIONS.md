@@ -55,3 +55,10 @@ and how they were resolved, what was deferred, and what was learned.
   and purge (E8) stay in Phase 4; the owner accepts that failed-row samples
   (B6, Phase 2b, off by default) have no purge until then. Nothing is left
   open from the catalogue discussion.
+- **Cross-table checks, decided by the owner on 2026-09-26.** New A19,
+  aggregate reconciliation between two datasets (Phase 2b, M), across
+  datasources from the start; each side's aggregate is folded into its own
+  scan and compared in Python. The `dataset(...).metric` syntax direction is
+  accepted (the spec settles details; the referenced dataset feeds check
+  identity). A18 narrowed to row-level diff across datasources (Phase 5, L).
+  Schema parity folded into A14 (S → M). A3 unchanged.

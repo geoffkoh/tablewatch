@@ -27,11 +27,12 @@ Status: `shipped`, `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
 | A11 | Data contracts (ODCS) import/export | Producers and consumers agree in writing | Sam, Ravi | 5 | L | catalogue |
 | A12 | `tablewatch profile` → drafted check file | A useful first check file in one command | Sam | 5 | M | catalogue |
 | A13 | Claude-assisted authoring and failure explanations | Stewards write checks in plain English | Sam | 5 | M | catalogue |
-| A14 | Schema-drift detection: columns added, removed or retyped since the last run | Catches upstream changes before they break consumers | Sam, Dana | 2b | S | catalogue |
+| A14 | Schema-drift detection: columns added, removed or retyped since the last run, and schema parity between two datasets (e.g. staging and target have the same columns and types) | Catches upstream changes before they break consumers | Sam, Dana | 2b | M | catalogue |
 | A15 | Databricks DQX interop: read DQX quarantine and result tables (`dq_errors`, `dq_warnings`) as ordinary datasets, with a worked example; DQX check YAML import rides on A10 | DQX quarantines rows inside Spark; tablewatch adds history, alerting and the UI on top | Sam, Dana | 3 | S | catalogue |
 | A16 | Quarantine in the in-pipeline library (with A9): `quarantine: mark` returns the frame with a `tw_errors` column naming the checks each row failed; `quarantine: split` returns `good` and `bad` frames. Row-level checks only; off by default | Keep loading good rows while bad ones wait for a fix | Dana | 3 | M | catalogue |
 | A17 | Checks on streams (e.g. Kafka) over micro-batch windows, possibly as a sidecar | Quality at ingestion for streaming data | Dana, Priya | 5 | L | catalogue |
-| A18 | Cross-source reconciliation: compare a metric between two datasources | "The warehouse has every row the source sent" | Sam, Ravi | 5 | L | catalogue |
+| A18 | Row-level diff across datasources: which rows are missing or different between two tables (hash-bucketed on each side, compared in Python) | "Show me the rows the warehouse lost", not just "the counts differ" | Sam, Ravi | 5 | L | catalogue |
+| A19 | Aggregate reconciliation between two datasets, in the same or different datasources: `row_count = dataset(staging.orders_raw).row_count` | Staging vs target, header vs line totals, source vs warehouse — without hand-written joins | Sam, Ravi | 2b | M | catalogue |
 
 Notes:
 
@@ -64,6 +65,23 @@ Notes:
     fails, are the good rows still returned?
   - For Spark, DQX already marks and splits; A15 reads its quarantine tables
     rather than B8 rebuilding this.
+- **A14** was widened on 2026-09-26 to include schema parity (S → M). Both
+  sides are schema measures compared in Python.
+- **A19** — decided with the owner on 2026-09-26; the spec settles the syntax.
+  - **One scan per dataset holds:** the other dataset's aggregate is one more
+    measure in that dataset's own scan; Python compares the two values. This
+    keeps the SQL portable and works across datasources from the start.
+  - **Ownership:** the check belongs to the dataset of the file it is written
+    in — that decides its folder, owner and notification routing. The
+    referenced dataset is part of the canonical expression, so it feeds check
+    identity.
+  - **Rule 7:** if either side cannot be measured, the outcome is `error`,
+    not `fail`.
+  - **Timing:** the two sides are read at different moments, possibly on
+    different databases, so a load in progress looks like a mismatch. The
+    spec must offer `tolerance:` and a `where:` per side (with A2 variables
+    for partition dates) so the check does not cry wolf.
+  - Row-level differences are A18 (Phase 5); referential integrity stays A3.
 - **A17** is not wanted yet, but the design must leave room for it — see
   "Modular seams" below.
 

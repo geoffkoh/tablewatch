@@ -56,7 +56,10 @@ Numbered 2b so that Phases 3–5 and every reference to them keep their numbers.
 - `for_each`: one check file applied to every table matching a pattern (A1)
 - Variables: `${var:run_date}` via `--var` (A2)
 - `reference(col)` referential integrity (A3); distribution metrics (A4);
-  schema-drift detection (A14)
+  schema-drift detection and schema parity between two datasets (A14)
+- Reconciliation between two datasets, in the same or different
+  datasources: `row_count = dataset(staging.orders_raw).row_count`, with a
+  tolerance and a filter per side (A19)
 - Failed-row samples, off by default, with `exclude_columns` (B6), shown in
   a failed-rows viewer on the check detail page (C7)
 
@@ -108,7 +111,7 @@ Numbered 2b so that Phases 3–5 and every reference to them keep their numbers.
   seasonality-aware baselines (G2) and root-cause hints (G3)
 - `tablewatch profile`: drafts a check file from a table's profile (A12)
 - Claude-assisted authoring and failure explanations (A13)
-- Cross-source reconciliation (A18)
+- Row-level diff across datasources: which rows are missing or different (A18)
 - Checks on streams over micro-batch windows (A17)
 - Data contracts enforced in CI (A11)
 - OpenLineage, DataHub, OpenMetadata, Collibra, Unity Catalog (H4)
