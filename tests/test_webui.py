@@ -614,7 +614,9 @@ def test_the_wheel_carries_the_ui(tmp_path: Path) -> None:  # K1
     prefix = "tablewatch/webapp/static/"
     with zipfile.ZipFile(wheel) as archive:
         shipped = {
-            n.removeprefix(prefix) for n in archive.namelist() if n.startswith(prefix)
+            n.removeprefix(prefix)
+            for n in archive.namelist()
+            if n.startswith(prefix) and not n.endswith("/")
         }
         index = archive.read(prefix + "index.html").decode()
     parser = _References()
