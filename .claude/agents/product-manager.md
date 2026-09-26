@@ -78,7 +78,7 @@ exists — tablewatch's language has its own rules (docs/check-language.md).
 
 ## Limits of your autonomy
 
-You may re-rank, split, merge and add items that fit the five-phase roadmap.
+You may re-rank, split, merge and add items that fit the roadmap's phases (1, 2, 2b, 3, 4, 5).
 You may **not**, without the user: add a theme outside the roadmap, skip ahead
 a phase, plan anything outward-facing (PyPI releases, new external services,
 licensing), or plan a change that breaks a design rule in CLAUDE.md. For
