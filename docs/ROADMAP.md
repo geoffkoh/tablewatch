@@ -67,6 +67,9 @@ Numbered 2b so that Phases 3–5 and every reference to them keep their numbers.
   BigQuery, SQL Server, Oracle, MySQL, Trino, Redshift (B2)
 - In-pipeline validation: `tw.check(frame)` on pandas, polars and Arrow data
   before it is written (A9); Spark DataFrames through Spark SQL (B8)
+- Quarantine in the in-pipeline library: `mark` rows with the checks they
+  failed, or `split` a batch into good and bad frames returned to the caller;
+  row-level checks only, off by default, tablewatch writes nothing (A16)
 - Databricks DQX interop: DQX quarantine and result tables as datasets (A15)
 - Environments: `--env prod` overrides datasource settings (B7)
 - Guardrails: query timeouts, retries, per-datasource concurrency limits
@@ -109,9 +112,3 @@ Numbered 2b so that Phases 3–5 and every reference to them keep their numbers.
 - OpenLineage, DataHub, OpenMetadata, Collibra, Unity Catalog (H4)
 - Public plugin SDK for metrics, connectors and notifiers (H1)
 - VS Code extension (H2)
-
-## Parked
-
-Waiting on a decision by the owner; not scheduled.
-
-- Quarantine: splitting a batch into good and bad rows (A16)

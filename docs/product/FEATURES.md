@@ -7,9 +7,7 @@ alerting) and 2b (language depth).
 **Size** is a first guess in iterations: S ≈ 1, M ≈ 2, L ≈ 4.
 ★ marks small, valuable items worth considering early.
 
-Status: `shipped`, `backlog` (in BACKLOG.md), `catalogue` (not yet planned),
-or `parked` (waiting on a decision by the owner; not to be planned until it is
-taken).
+Status: `shipped`, `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
 
 ## A. Authoring & the check language
 
@@ -31,7 +29,7 @@ taken).
 | A13 | Claude-assisted authoring and failure explanations | Stewards write checks in plain English | Sam | 5 | M | catalogue |
 | A14 | Schema-drift detection: columns added, removed or retyped since the last run | Catches upstream changes before they break consumers | Sam, Dana | 2b | S | catalogue |
 | A15 | Databricks DQX interop: read DQX quarantine and result tables (`dq_errors`, `dq_warnings`) as ordinary datasets, with a worked example; DQX check YAML import rides on A10 | DQX quarantines rows inside Spark; tablewatch adds history, alerting and the UI on top | Sam, Dana | 3 | S | catalogue |
-| A16 | Quarantine: split a batch into good and bad rows on row-level checks | Keep loading good rows while bad ones wait for a fix | Dana | — | M | parked: owner deciding |
+| A16 | Quarantine in the in-pipeline library (with A9): `quarantine: mark` returns the frame with a `tw_errors` column naming the checks each row failed; `quarantine: split` returns `good` and `bad` frames. Row-level checks only; off by default | Keep loading good rows while bad ones wait for a fix | Dana | 3 | M | catalogue |
 | A17 | Checks on streams (e.g. Kafka) over micro-batch windows, possibly as a sidecar | Quality at ingestion for streaming data | Dana, Priya | 5 | L | catalogue |
 | A18 | Cross-source reconciliation: compare a metric between two datasources | "The warehouse has every row the source sent" | Sam, Ravi | 5 | L | catalogue |
 
@@ -42,10 +40,30 @@ Notes:
 - **A15** needs the Databricks SQL connector (B2). Exporting tablewatch checks
   as DQX rules is an idea, not an item: DQX's licence is listed as
   "Other/Proprietary" on PyPI and must be checked with the owner first.
-- **A16** open questions for when the owner decides: which checks may
-  quarantine (only row-level ones — `row_count` or uniqueness can only pass or
-  fail a whole batch); where bad rows go (returned to the caller or written to
-  a table); and whether keeping them is storing row data (security review).
+- **A16** — decided with the owner on 2026-09-26:
+  - **Library only.** Bad rows are returned to the caller; tablewatch writes
+    nothing. `drop` and quarantine of tables at rest are out of scope — they
+    would need write access and would store row data.
+  - **Modes:** `off` (the default), `mark`, `split`.
+  - **Configuration** layers like `owner:` and `tags:`: `tablewatch.yml` →
+    `_defaults.yml` → check file → per-check `quarantine: off` → per-call
+    `tw.check(..., quarantine="split")` (strongest last).
+  - **Row-level checks only** (`missing_*`, `invalid_*`, `failed_rows`).
+    Batch-level checks (`row_count`, averages, freshness, schema,
+    `duplicate_count`) still gate the whole batch; `quarantine:` on one is a
+    Diagnostic at `file:line:col`.
+  - **Traps for the spec:** a row failing several checks appears once in
+    `bad`, listing every check it failed, and each check's count is
+    unchanged; the row filter must use the same NULL / `missing_values` rules
+    as the counts (a NULL is missing, not invalid), so the bad rows match the
+    reported numbers; a quarantined-row count is a new per-dataset measure and
+    must not change any check's identity; returned frames may hold PII and are
+    the caller's responsibility.
+  - **Open questions for the spec, not blockers:** can `duplicate_count`
+    quarantine, and if so which copy is the bad one? When a batch-level check
+    fails, are the good rows still returned?
+  - For Spark, DQX already marks and splits; A15 reads its quarantine tables
+    rather than B8 rebuilding this.
 - **A17** is not wanted yet, but the design must leave room for it — see
   "Modular seams" below.
 

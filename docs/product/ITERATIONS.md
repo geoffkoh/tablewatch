@@ -31,7 +31,7 @@ and how they were resolved, what was deferred, and what was learned.
   store as E8 (Phase 4); cross-source reconciliation is A18; digests (D5) and
   every other catalogued feature now appear in the roadmap with its ID.
   Still open for the owner: whether `serve` binds to localhost by default
-  and API tokens (F2) come forward; quarantine.
+  and API tokens (F2) come forward.
 - **Phase 2 split, decided by the owner on 2026-09-26.** Phase 2 → `0.2.0`
   "Visibility & alerting" (B1, C1–C5, C8, D1–D3, E5, E7, H3, A5, A8). New
   Phase 2b → `0.3.0` "Language depth" (A1–A4, A14, B6, C7). Numbered 2b so
@@ -39,3 +39,12 @@ and how they were resolved, what was deferred, and what was learned.
   and `0.5.0` (Phase 4); Phase 5 stays `1.0.0`. The failed-row samples
   shown on check detail (C7) moved with B6 to 2b. The backlog holds Phase 2
   only.
+- **Quarantine (A16) un-parked, decided by the owner on 2026-09-26:**
+  library only (in-pipeline, alongside A9; tablewatch writes nothing, so no
+  `drop` and no quarantine of tables at rest); `mark` and `split` first,
+  `off` by default; Phase 3, size M. Configured through `tablewatch.yml` →
+  `_defaults.yml` → check file → per-check opt-out → per-call override;
+  row-level checks only. Left for the spec: whether `duplicate_count` can
+  quarantine (and which copy), and whether good rows come back when a
+  batch-level check fails. The `parked` status is no longer used and was
+  removed.
