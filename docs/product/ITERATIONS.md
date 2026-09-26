@@ -9,7 +9,7 @@ and how they were resolved, what was deferred, and what was learned.
 ## Iteration 1 — Python API (I-01), 2026-09-26
 
 - **Spec:** [001-python-api](specs/001-python-api.md). **Branch:**
-  `iter/001-python-api`. **PR:** #TBD (added by the tech lead).
+  `iter/001-python-api`. **PR:** #5.
 - **Shipped:** `tablewatch.load()` and `tablewatch.run()` returning a typed
   `RunResult`; per-call `record=`; `exit_code()` with the CLI's meanings;
   `TablewatchError` (`ProjectError`, `SelectionError`) raised only when
