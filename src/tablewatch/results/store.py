@@ -6,6 +6,7 @@ upgrading tablewatch never needs a separate migration step on a server.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from alembic import command
@@ -14,10 +15,17 @@ from sqlalchemy import URL, Engine, create_engine, make_url, select
 from sqlalchemy.orm import Session
 
 from tablewatch.checks.model import Outcome
+from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import ResultSink, RunResult
 from tablewatch.results.models import CheckResultRow, RunRow
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+
+# Alembic keeps its migration context in module-level state, so two threads
+# migrating at once corrupt each other — and on a fresh store can leave
+# tables without a version stamp, which breaks every later open. Stores in
+# one process therefore migrate one at a time.
+_MIGRATION_LOCK = threading.Lock()
 
 
 def resolve_store_url(url: str, project_root: Path) -> URL:
@@ -33,12 +41,20 @@ def resolve_store_url(url: str, project_root: Path) -> URL:
     return parsed
 
 
+class RecordError(Exception):
+    """A run could not be written to the results store."""
+
+
 class ResultStore:
     """Run history in a SQL database, migrated to the current schema on open."""
 
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
-        self._migrate()
+        try:
+            self._migrate()
+        except BaseException:
+            engine.dispose()  # `with` never gets the chance to close it
+            raise
 
     @classmethod
     def open(cls, url: str, project_root: Path) -> ResultStore:
@@ -56,7 +72,7 @@ class ResultStore:
     def _migrate(self) -> None:
         config = Config()
         config.set_main_option("script_location", str(MIGRATIONS_DIR))
-        with self.engine.begin() as connection:
+        with _MIGRATION_LOCK, self.engine.begin() as connection:
             config.attributes["connection"] = connection
             command.upgrade(config, "head")
 
@@ -137,7 +153,12 @@ def store_sink(url: str, project_root: Path) -> ResultSink:
     """
 
     def record(run: RunResult) -> None:
-        with ResultStore.open(url, project_root) as store:
-            store.save(run)
+        try:
+            with ResultStore.open(url, project_root) as store:
+                store.save(run)
+        except Exception as exc:
+            # Name the part that failed, but never the URL: it may hold a
+            # password.
+            raise RecordError(f"results store: {error_message(exc)}") from exc
 
     return record

@@ -5,7 +5,8 @@ check tablewatch could not evaluate is an `error`, and a run that could not
 be recorded exits 2 — the same meanings as the CLI's exit codes. It raises a
 `TablewatchError` only when nothing ran.
 
-`execute()` is the one code path behind both `tw.run()` and `tablewatch run`.
+`execute()` and `default_sinks()` are internal: the one code path shared by
+`tablewatch run` and the server, with no stability promise. Use `run()`.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from tablewatch.diagnostics import ProjectError, Severity, error
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import (
     FAIL_ON_CHOICES,
+    MAX_CONCURRENCY,
     FailOn,
     ResultSink,
     RunResult,
@@ -88,8 +90,15 @@ def run(
         raise ValueError(
             f"fail_on must be one of {', '.join(FAIL_ON_CHOICES)}, not {fail_on!r}"
         )
-    if isinstance(concurrency, bool) or not 1 <= concurrency <= 64:
-        raise ValueError(f"concurrency must be between 1 and 64, not {concurrency!r}")
+    if (
+        not isinstance(concurrency, int)
+        or isinstance(concurrency, bool)
+        or not 1 <= concurrency <= MAX_CONCURRENCY
+    ):
+        raise ValueError(
+            f"concurrency must be a whole number from 1 to {MAX_CONCURRENCY}, "
+            f"not {concurrency!r}"
+        )
 
     if not isinstance(project, Project):
         project = load(project)
@@ -123,6 +132,8 @@ def execute(
 ) -> RunResult:
     """Select, run, and hand the finished run to each sink in order.
 
+    Internal, shared by the CLI and the server; use `run()` instead.
+
     A sink that raises does not stop the others; its reason is added to
     `RunResult.record_errors`, which makes the exit code 2. Relative paths
     in `selection` resolve against `cwd` first, then the project root.
@@ -151,7 +162,10 @@ def execute(
 
 
 def default_sinks(project: Project, *, record: bool) -> list[ResultSink]:
-    """Where a run goes: the project's results store, unless `record` is off."""
+    """Where a run goes: the project's results store, unless `record` is off.
+
+    Internal, shared by the CLI and the server.
+    """
     if not record:
         return []
     return [store_sink(project.config.results.url, project.root)]

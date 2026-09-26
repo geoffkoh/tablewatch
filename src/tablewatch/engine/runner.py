@@ -20,7 +20,7 @@ from typing import Any, Literal, get_args
 
 from sqlalchemy import Engine
 
-from tablewatch import __version__
+from tablewatch._version import __version__
 from tablewatch.checks.model import Check, Dataset, Outcome, worst
 from tablewatch.config.loader import Project
 from tablewatch.config.project import MissingEnvironmentVariableError
@@ -35,6 +35,7 @@ EngineFactory = Callable[[str], Engine]
 
 FailOn = Literal["fail", "warn"]
 FAIL_ON_CHOICES: tuple[str, ...] = get_args(FailOn)
+MAX_CONCURRENCY = 64
 
 
 def _username() -> str:
@@ -121,14 +122,25 @@ class RunResult:
         counts = ", ".join(
             f"{outcome.value}={n}" for outcome in Outcome if (n := self.count(outcome))
         )
+        # A run that could not be recorded says so: its outcome alone would
+        # read as "all is well" in a notebook.
+        unrecorded = (
+            f", record_errors={len(self.record_errors)}" if self.record_errors else ""
+        )
         return (
             f"RunResult(id={self.id[:12]!r}, project={self.project!r}, "
-            f"outcome={self.outcome.value}, {counts or 'no checks'})"
+            f"outcome={self.outcome.value}, {counts or 'no checks'}{unrecorded})"
         )
 
 
 ResultSink = Callable[[RunResult], None]
-"""Receives a finished run: the results store, and later notifiers."""
+"""Receives a finished run, such as the results store.
+
+A sink raises only when its failure means tablewatch could not do its job;
+the reason lands in `RunResult.record_errors` and the exit code becomes 2.
+A sink whose failure should not change the exit code (a notifier, say)
+catches and logs its own errors.
+"""
 
 
 def run_checks(

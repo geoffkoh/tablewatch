@@ -14,24 +14,17 @@ from __future__ import annotations
 
 import logging
 
-# Assigned before the imports below: the engine reads it while they load.
-__version__ = "0.1.0"
+from tablewatch._version import __version__
+from tablewatch.api import load, run
+from tablewatch.checks.model import Check, Dataset, Outcome
+from tablewatch.config import Project
+from tablewatch.diagnostics import Diagnostic, ProjectError, Severity, SourceLocation
+from tablewatch.engine.runner import CheckResult, RunResult
+from tablewatch.errors import TablewatchError
+from tablewatch.selection import SelectionError
 
 # A library never configures its host's logging; the CLI adds its own handler.
 logging.getLogger("tablewatch").addHandler(logging.NullHandler())
-
-from tablewatch.api import load, run  # noqa: E402
-from tablewatch.checks.model import Check, Dataset, Outcome  # noqa: E402
-from tablewatch.config import Project  # noqa: E402
-from tablewatch.diagnostics import (  # noqa: E402
-    Diagnostic,
-    ProjectError,
-    Severity,
-    SourceLocation,
-)
-from tablewatch.engine.runner import CheckResult, RunResult  # noqa: E402
-from tablewatch.errors import TablewatchError  # noqa: E402
-from tablewatch.selection import SelectionError  # noqa: E402
 
 __all__ = [
     "Check",

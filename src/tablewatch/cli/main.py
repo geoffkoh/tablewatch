@@ -19,7 +19,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 import click
 from sqlalchemy import text
@@ -40,6 +40,7 @@ from tablewatch.datasources import (
 from tablewatch.diagnostics import ProjectError, Severity
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.planner import plan_dataset, render
+from tablewatch.engine.runner import FAIL_ON_CHOICES, MAX_CONCURRENCY, FailOn
 from tablewatch.output import REPORTERS, console
 from tablewatch.results import ResultStore
 from tablewatch.selection import Selection, SelectionError, select_checks
@@ -297,7 +298,7 @@ def compile(ctx: click.Context, /, **selectors: tuple[str, ...]) -> None:  # noq
 @_selector_options
 @click.option(
     "--fail-on",
-    type=click.Choice(["fail", "warn"]),
+    type=click.Choice(FAIL_ON_CHOICES),
     default="fail",
     show_default=True,
     help="Lowest outcome that makes the exit code non-zero.",
@@ -316,7 +317,12 @@ def compile(ctx: click.Context, /, **selectors: tuple[str, ...]) -> None:  # noq
 @click.option(
     "--no-store", is_flag=True, help="Do not record this run in the results store."
 )
-@click.option("--concurrency", type=click.IntRange(1, 64), default=4, show_default=True)
+@click.option(
+    "--concurrency",
+    type=click.IntRange(1, MAX_CONCURRENCY),
+    default=4,
+    show_default=True,
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -336,7 +342,7 @@ def run(
             project,
             Selection(**selectors),
             sinks=default_sinks(project, record=not no_store),
-            fail_on="warn" if fail_on == "warn" else "fail",
+            fail_on=cast(FailOn, fail_on),
             concurrency=concurrency,
             trigger="cli",
             cwd=Path.cwd(),
