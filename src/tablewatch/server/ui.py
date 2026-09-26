@@ -46,6 +46,29 @@ class Bundle:
     def index(self) -> Asset:
         return self.assets[INDEX]
 
+    def lookup(self, path: str) -> Asset | None:
+        """The asset for a request path (without its leading "/"), or None.
+
+        Exact files first. Any other path is a page of the app and gets
+        `index.html` — unless it names a file (its last segment has an
+        extension, or it ends in "/" after one), because a script tag handed
+        HTML fails confusingly.
+        """
+        if path == "":
+            return self.index
+        if asset := self.assets.get(path):
+            return asset
+        segments = [s for s in path.split("/") if s]
+        if segments and "." in segments[-1]:
+            return None
+        return self.index
+
+
+def is_api_path(path: str) -> bool:
+    """Whether a request path (without its leading "/") belongs to the API."""
+    first = next((s for s in path.split("/") if s), "")
+    return first == "api"
+
 
 def load_bundle(directory: Path | None = None) -> Bundle | None:
     """The installed bundle, or None when this installation has no UI."""

@@ -23,7 +23,7 @@ from tablewatch.results.store import StoreError
 from tablewatch.server import schemas
 from tablewatch.server.hosts import host_allowed
 from tablewatch.server.routes import STATUS_CODES, ApiError, ServerContext, router
-from tablewatch.server.ui import Bundle
+from tablewatch.server.ui import Bundle, is_api_path
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +90,8 @@ def create_app(
     def openapi() -> dict[str, Any]:
         return _openapi(app)
 
-    # Registered after every API route, so it only sees what they don't match.
+    # The web UI answers whatever no route above matched, so it must stay the
+    # last route registered: a router included after it would be shadowed.
     @app.get("/{path:path}", include_in_schema=False)
     def web_ui(path: str) -> Response:
         return _ui_response(ui, path)
@@ -133,17 +134,13 @@ def create_app(
 
 
 def _ui_response(ui: Bundle | None, path: str) -> Response:
-    if path == "api" or path.startswith("api/"):
+    if is_api_path(path):
         raise ApiError(404, "not_found", "not found")
     if ui is None:
         raise ApiError(404, "not_found", f"web UI not installed — the API is at {API}")
-    asset = ui.assets.get(path) or (ui.index if path == "" else None)
+    asset = ui.lookup(path)
     if asset is None:
-        # A file that isn't there is a 404: a script tag handed HTML fails
-        # confusingly. Anything else is a page of the app.
-        if "." in path.rsplit("/", 1)[-1]:
-            raise ApiError(404, "not_found", "not found")
-        asset = ui.index
+        raise ApiError(404, "not_found", "not found")
     return Response(asset.body, media_type=asset.content_type)
 
 

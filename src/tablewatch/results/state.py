@@ -15,7 +15,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-EVALUATED = frozenset({"pass", "warn", "fail"})
+from tablewatch.checks.model import Outcome
+
+EVALUATED = frozenset({Outcome.PASS, Outcome.WARN, Outcome.FAIL})
+KNOWN = frozenset(Outcome)
+
+
+def recorded(outcome: str) -> str:
+    """An outcome as this version understands it: unknown ones are `error`.
+
+    A shared store can hold outcomes from a newer tablewatch; this version
+    cannot evaluate them, which is what `error` means.
+    """
+    return outcome if outcome in KNOWN else Outcome.ERROR
 
 
 @dataclass(frozen=True)
@@ -37,6 +49,8 @@ class Evaluated:
 
 @dataclass(frozen=True)
 class State:
+    """How long a check has been in its latest state, and what it last showed."""
+
     since: datetime
     # Set only when the latest result was not evaluated: what the data last showed.
     last_evaluated: Evaluated | None
@@ -45,12 +59,15 @@ class State:
 def current_state(history: Sequence[Entry]) -> State:
     """The state of a check, given its history newest first (never empty).
 
+    Outcomes this version does not know count as `error`.
+
     For an evaluated latest outcome, `since` is the oldest result of the
     streak of that outcome, passing over unevaluated results. For an
     unevaluated latest outcome, `since` is the start of the unbroken run of
     that same outcome, and `last_evaluated` describes the newest evaluated
     result before it, if there is one.
     """
+    history = [Entry(recorded(e.outcome), e.started_at) for e in history]
     latest = history[0]
     if latest.outcome in EVALUATED:
         return State(since=_streak_start(history), last_evaluated=None)
