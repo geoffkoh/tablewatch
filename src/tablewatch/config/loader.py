@@ -47,6 +47,8 @@ DATASET_KEYS = ("dataset", "datasource", "filter", "owner", "tags", "checks")
 DEFAULTS_KEYS = ("datasource", "owner", "tags")
 COMMON_CHECK_KEYS = ("name", "id", "warn", "fail")
 ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
+# The results store's check_id column is this wide.
+MAX_ID_LENGTH = 64
 
 
 @dataclass
@@ -464,6 +466,14 @@ class _ChecksLoader:
             self.diagnostics.append(
                 error(
                     f"invalid id '{check_id}' — use letters, digits, '.', '_', ':' or '-'",
+                    source.of_value(options_node, "id"),
+                )
+            )
+            return None
+        if check_id is not None and len(check_id) > MAX_ID_LENGTH:
+            self.diagnostics.append(
+                error(
+                    f"id is {len(check_id)} characters — at most {MAX_ID_LENGTH}",
                     source.of_value(options_node, "id"),
                 )
             )

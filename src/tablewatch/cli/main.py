@@ -9,6 +9,9 @@ Built to run unattended: no prompts, logs on stderr (stdout stays clean for
     1  a check failed — the data is bad
     2  a check could not be evaluated — tablewatch could not do its job
     3  the project is invalid, or nothing matched — nothing ran
+
+`serve` is a long-running command: it exits 0 when stopped by SIGINT or
+SIGTERM, and 3 when it could not start. It never exits 1 or 2 itself.
 """
 
 from __future__ import annotations
@@ -368,6 +371,95 @@ def run(
             output_file.write_text(report + "\n", encoding="utf-8")
             click.echo(console.summary(result))
     sys.exit(code)
+
+
+SERVER_PACKAGES = frozenset({"fastapi", "starlette", "uvicorn"})
+
+
+@cli.command()
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Address to listen on. Anything but loopback serves without authentication.",
+)
+@click.option("--port", type=click.IntRange(0, 65535), default=8765, show_default=True)
+@click.option(
+    "--allowed-host",
+    "allowed_hosts",
+    multiple=True,
+    help="A host name clients may use to reach the server (repeatable). "
+    "IP addresses and localhost are always accepted.",
+)
+@click.pass_context
+def serve(
+    ctx: click.Context, host: str, port: int, allowed_hosts: tuple[str, ...]
+) -> None:
+    """Serve the project's checks and results as a read-only JSON API."""
+    from datetime import UTC, datetime
+
+    from tablewatch.results.store import StoreError, is_persistent, open_store
+    from tablewatch.server.hosts import is_loopback
+
+    try:
+        from tablewatch.server import serve as server
+        from tablewatch.server.app import create_app
+        from tablewatch.server.routes import ServerContext
+    except ModuleNotFoundError as exc:
+        if (exc.name or "").split(".")[0] not in SERVER_PACKAGES:
+            raise
+        _fail(
+            "tablewatch serve needs the server extra: pip install 'tablewatch[server]'"
+        )
+
+    settings: _Settings = ctx.obj
+    project = _project(ctx, require_valid=False)
+    errors = [d for d in project.diagnostics if d.severity is Severity.ERROR]
+    for diagnostic in errors:
+        click.echo(str(diagnostic), err=True)
+    if errors:
+        click.echo(
+            f"tablewatch: {len(errors)} error{'s' if len(errors) != 1 else ''} in the "
+            f"project — serving the {len(project.checks)} checks that loaded",
+            err=True,
+        )
+
+    try:
+        if not is_persistent(project.config.results.url):
+            _fail("serve needs a results store on disk, not an in-memory database")
+        store = open_store(project.config.results.url, project.root)
+    except StoreError as exc:
+        log.info("%s", exc)  # driver detail can name hosts and users: not by default
+        _fail("results store: could not be opened — run with -v for details")
+
+    with store:
+        try:
+            sock = server.bind(host, port)
+        except OSError as exc:
+            _fail(f"could not listen on {host}:{port}: {exc.strerror or exc}")
+        if not is_loopback(host):
+            click.echo(
+                f"tablewatch: warning: serving on {host} with no authentication — anyone "
+                "who can reach this address can read this project's checks and results, "
+                "including data values and owner emails. Authentication arrives in "
+                "Phase 4 (tablewatch.yml cannot turn it on yet).",
+                err=True,
+            )
+        shown = f"[{host}]" if ":" in host else host
+        started = (
+            f"tablewatch serve: http://{shown}:{sock.getsockname()[1]}/api/v1 "
+            f"(project {project.config.name}, {len(project.checks)} checks)"
+        )
+        context = ServerContext(
+            project=project, store=store, loaded_at=datetime.now(UTC)
+        )
+        app = create_app(context, allowed_hosts=allowed_hosts)
+        server.run(
+            app,
+            sock,
+            access_log=not settings.quiet,
+            on_ready=lambda: click.echo(started, err=True),
+        )
 
 
 @cli.command("test-connection")

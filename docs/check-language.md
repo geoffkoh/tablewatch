@@ -162,6 +162,8 @@ the normalised expression and triggers, and the `where:` scope.
 - Refining options such as `valid_values` keeps the id: it's the same check,
   stated better.
 - Two checks that would get the same id are an error. Give one an `id:`.
+- An explicit `id:` uses letters, digits, `.`, `_`, `:` and `-`, starts with a
+  letter or digit, and is at most 64 characters.
 
 ## Security note
 
