@@ -9,7 +9,7 @@
 | Depends on | I-02 ✓ (spec 002: `/api/v1`, `tablewatch serve`, `docs/api/openapi.json`) |
 | Unblocks | I-05 check detail, I-04 check explorer, I-15 run detail and diff |
 | Branch | `iter/003-ui-shell-overview` |
-| Status | planned (PLAN, iteration 3) |
+| Status | shipped (iteration 3, PR #7) |
 
 ## Problem and persona
 

@@ -86,6 +86,11 @@ itself. It also reviews in REFINE when a spec adds a seam or public API.
   entry under `Unreleased`, backlog updated.
 - The PR is open and CI is green.
 
+A failing supply-chain step in CI (`npm audit`, `npm audit signatures`) is
+fixed by upgrading the dependency, or by a time-boxed exception written
+down in the PR and in `ITERATIONS.md` with the advisory, the reason and an
+expiry date. It is never fixed by removing or weakening the step.
+
 ## Merge policy — auto-merge when green
 
 Granted by the user on 2026-09-26, **for tablewatch only**.

@@ -46,8 +46,45 @@ All notable changes to tablewatch. The format follows
   port in use), with a one-line message that never repeats the results
   store's URL. A mistake in a check file does not stop it: it serves the
   checks that loaded and reports `"ok": false`.
+- A web page for your checks. Open the address `tablewatch serve` prints
+  (by default `http://127.0.0.1:8765/`) to see, at a glance, what is wrong
+  with your tables: failing checks first, then checks tablewatch could not
+  evaluate, then warnings, checks with no result yet, and passing checks.
+  Each row shows how old its latest result is and how long the check has
+  been failing. A check with no recorded result is shown as unknown, never
+  as passing. If a check file fails to load, a banner lists each mistake
+  at `file:line:col` and marks the counts incomplete. The page also shows
+  when the check files were loaded and what the latest run covered. It
+  refreshes when you press **Refresh**, never by itself. See "Reading the
+  overview" in the README.
+- The page comes with the `server` extra: no Node.js or other tooling is
+  needed to use it. It loads nothing from other sites and is served with a
+  strict Content-Security-Policy.
+- The JSON API tells you since when: each check's `latest` result now has
+  `since`, when the current state began ("failing since"). A run that could
+  not evaluate the check (`error`) or skipped it does not reset how long a
+  failure has lasted; a pass does. When the latest result is an `error`
+  or `skipped`, the new `latest.last_evaluated` says what the data showed
+  the last time tablewatch could measure it, so an outage does not hide a
+  known failure.
+- The OpenAPI document now describes the API exactly: a run's `selection`
+  has named keys (`paths`, `tags`, `datasources`, `excludes`,
+  `check_ids`); the 403, 405 and 500 errors are declared on every
+  endpoint; timestamps are marked as date-times. Clients that generate
+  code from it get precise types.
 
 ### Changed
+
+- API timestamps always carry six fractional digits
+  (`2026-09-26T06:56:12.000000+00:00`); before, the fraction was left out
+  when it was zero. Standard date-time parsers read both.
+- A request with a method other than `GET` to a path the server does not
+  know, including an unknown `/api/v1/...` path, now answers `405 Method
+  Not Allowed` instead of `404 Not Found`. Read-only clients are not
+  affected.
+- `GET /` on `tablewatch serve` now returns the web page; unknown paths
+  outside `/api` that look like page addresses return the page too, and
+  unknown paths under `/api` still return the JSON error.
 
 - An explicit check `id:` can be at most 64 characters, the width of the
   results store's column. A longer id is now reported at its `file:line:col`
