@@ -1,6 +1,134 @@
 {
   "components": {
     "schemas": {
+      "BetweenCondition": {
+        "properties": {
+          "high": {
+            "title": "High",
+            "type": "number"
+          },
+          "kind": {
+            "const": "between",
+            "title": "Kind",
+            "type": "string"
+          },
+          "low": {
+            "title": "Low",
+            "type": "number"
+          },
+          "negated": {
+            "title": "Negated",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "low",
+          "high",
+          "negated",
+          "text"
+        ],
+        "title": "BetweenCondition",
+        "type": "object"
+      },
+      "CheckDetail": {
+        "description": "One check with its rule: what `GET /checks/{id}` serves.",
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "datasource": {
+            "title": "Datasource",
+            "type": "string"
+          },
+          "expression": {
+            "title": "Expression",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/Rule"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "percent",
+              "duration",
+              "number"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "expression",
+          "metric",
+          "unit",
+          "dataset",
+          "datasource",
+          "owner",
+          "tags",
+          "source",
+          "location",
+          "latest",
+          "rule"
+        ],
+        "title": "CheckDetail",
+        "type": "object"
+      },
       "CheckList": {
         "properties": {
           "items": {
@@ -109,6 +237,43 @@
           "latest"
         ],
         "title": "CheckSummary",
+        "type": "object"
+      },
+      "CompareCondition": {
+        "properties": {
+          "kind": {
+            "const": "compare",
+            "title": "Kind",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "=",
+              "!=",
+              "<",
+              "<=",
+              ">",
+              ">="
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "op",
+          "value",
+          "text"
+        ],
+        "title": "CompareCondition",
         "type": "object"
       },
       "Counts": {
@@ -240,6 +405,10 @@
       },
       "HistoryEntry": {
         "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
           "display_value": {
             "title": "Display Value",
             "type": "string"
@@ -262,6 +431,10 @@
               }
             ],
             "title": "Message"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
           },
           "name": {
             "title": "Name",
@@ -295,6 +468,23 @@
             "title": "Trigger",
             "type": "string"
           },
+          "unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "count",
+                  "percent",
+                  "duration",
+                  "number"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
           "value": {
             "anyOf": [
               {
@@ -318,7 +508,10 @@
           "duration_ms",
           "name",
           "expression",
-          "source"
+          "source",
+          "metric",
+          "dataset",
+          "unit"
         ],
         "title": "HistoryEntry",
         "type": "object"
@@ -552,6 +745,93 @@
           "checks"
         ],
         "title": "ProjectCounts",
+        "type": "object"
+      },
+      "Rule": {
+        "description": "The check's conditions as this server loaded them.\n\nBuilt only from the parsed expectation and triggers \u2014 never from options\nsuch as `valid_values`, or from `where:`/`filter:` SQL.",
+        "properties": {
+          "expect": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "between": "#/components/schemas/BetweenCondition",
+                    "compare": "#/components/schemas/CompareCondition"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CompareCondition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BetweenCondition"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expect"
+          },
+          "fail": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "between": "#/components/schemas/BetweenCondition",
+                    "compare": "#/components/schemas/CompareCondition"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CompareCondition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BetweenCondition"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fail"
+          },
+          "warn": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "between": "#/components/schemas/BetweenCondition",
+                    "compare": "#/components/schemas/CompareCondition"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CompareCondition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BetweenCondition"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warn"
+          }
+        },
+        "required": [
+          "expect",
+          "warn",
+          "fail"
+        ],
+        "title": "Rule",
         "type": "object"
       },
       "Run": {
@@ -1055,7 +1335,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CheckSummary"
+                  "$ref": "#/components/schemas/CheckDetail"
                 }
               }
             },

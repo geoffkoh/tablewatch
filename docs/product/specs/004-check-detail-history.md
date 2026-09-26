@@ -85,14 +85,16 @@ The link can be pasted, reloaded and bookmarked. The page has the
 overview's header and a Refresh button. The two pages share one
 load/refresh hook, so they behave the same when the store is down.
 
-The API gains one additive field, `rule`, on `GET /api/v1/checks/{id}`.
-No new endpoint, no new dependency, and no chart library.
+The API gains one additive field, `rule`, on `GET /api/v1/checks/{id}`,
+and (REFINE, R7) `metric` and `dataset` on each history entry, read from
+columns the store already has. No new endpoint, no new dependency, no
+migration, and no chart library.
 
 ## Scope at a glance
 
 | Part | Who builds it | Where |
 | --- | --- | --- |
-| `rule` on the check (R1–R6), OpenAPI regenerated | tech lead | `server/schemas.py`, `server/routes.py`, `docs/api/openapi.json` |
+| `rule` on the check (R1–R6), `metric`/`dataset` on history entries (R7), OpenAPI regenerated | tech lead | `server/schemas.py`, `server/routes.py`, `docs/api/openapi.json` |
 | Types regenerated; shared load/refresh hook (D14); shared status wording (D4) | ui-engineer | `frontend/src/api/`, `frontend/src/lib/` |
 | Detail page, chart, history table, links from the overview (D1–D19) | ui-engineer | `frontend/**`, `docs/UI_SPECIFICATION.md`, the bundle |
 | README: "Reading a check's page" | data-steward | `README.md` |
@@ -135,6 +137,13 @@ Condition = { kind: "compare", op: "=" | "!=" | "<" | "<=" | ">" | ">=", value: 
 `GET /api/v1/checks` is unchanged unless the architect decides otherwise
 (Q1). The API version stays `v1`.
 
+### `metric` (and `dataset`) on each history entry *(REFINE)*
+
+`HistoryEntry` gains `metric: string`, and should gain `dataset: string`,
+both as recorded in that run, read from columns the store already has
+(R7). Additive; no migration. Without it the chart cannot keep a value
+measured by another metric off today's axis (D20).
+
 ## Acceptance scenarios
 
 **Fixtures** (spec 002 and 003; `tests/conftest.py`):
@@ -152,6 +161,16 @@ Condition = { kind: "compare", op: "=" | "!=" | "<" | "<=" | ">" | ">=", value: 
   A: `fail`, value `20.0`), then the expression changed to
   `missing_percent(email) < 15%`, then `tablewatch run` (run C: `fail`,
   value `20.0`).
+- **`edited-pending`** *(REFINE)*: `edited`, then the expression changed
+  to `missing_percent(email) < 25%` and the server restarted, with **no
+  run**. The current rule has judged nothing yet. The latest result (C,
+  `fail`, 20.0, message `expected < 15%`) would pass the current rule.
+- **`metric-changed`** *(REFINE)*: `edited`, then the expression changed to
+  `missing_count(email) = 0` and `tablewatch run checks/sales/customers.yml`
+  (run M: `fail`, value `1`, message `expected = 0`). The data-steward
+  reproduced this on 2026-09-26: `tablewatch history
+  customer-email-completeness` lists M `1`, C `20.00%`, A `20.00%` under
+  one id.
 
 Check ids used below. The PM confirmed these on `main` on 2026-09-26
 with `tablewatch.load()` on a scratch copy of `examples/retail`
@@ -194,6 +213,11 @@ real `serve` on `recorded`, `interrupted` and `edited` in VERIFY.
   "text": "< 5%"}, "warn": null, "fail": null}`.
 - And `latest.value == 20.0`, so the boundary and the value share a
   scale.
+- *(REFINE, `should`)* And given `- missing_percent(email) < 5` (no `%`,
+  which the loader accepts on a percent metric), `rule.expect.value ==
+  5.0` and `text == "< 5"`. The UI shows `< 5` and does not add a `%`.
+  Given `< 0.05`, `value == 0.05`, not `5.0`: a bare number on a percent
+  metric is already on the 0–100 scale (Q3, answered below).
 
 **R2: triggers** `must`
 - When `GET /api/v1/checks/41e58afff9c48a46`
@@ -203,6 +227,8 @@ real `serve` on `recorded`, `interrupted` and `edited` in VERIFY.
 - And for `32867fbe86f483f3`, `rule.warn` is `<` `100.0` (`"< 100"`) and
   `rule.fail` is `=` `0.0` (`"= 0"`).
 - And for `a81b0374b0b04f06`, `rule.expect` is `<` `21600.0` (`"< 6h"`).
+- *(REFINE, `should`)* And a fractional duration `< 1.5h` is `5400.0`
+  with `text` `"< 1.5h"`.
 
 **R3: between** `must`
 - Then `366d9254d889c910` has `rule.expect == {"kind": "between", "low":
@@ -210,12 +236,21 @@ real `serve` on `recorded`, `interrupted` and `edited` in VERIFY.
 - And given a check file with `- row_count not between 5 and 10`, its
   `rule.expect` has `"negated": true` and `"text": "not between 5 and
   10"`.
+- *(REFINE, `should`)* And negative bounds keep their sign:
+  `min(amount) not between -1 and 1` has `low == -1.0`, `high == 1.0`.
+  `between 5 and 5` (allowed; the loader rejects only low > high) has
+  `low == high == 5.0`.
 
 **R4: the implied expectation** `must`
 - Then `fbc3aa0b93b66eee` (`schema`) and `ed669ca6e5532a59`
   (`failed_rows`) each have `rule.expect == {"kind": "compare", "op":
   "=", "value": 0.0, "text": "= 0"}` and null `warn` and `fail`, although
   their `expression` has no condition.
+- *(REFINE, `must`)* And the implied `= 0` applies only when the check has
+  no triggers, as the loader does. Given `- failed_rows:` with `warn: when
+  > 0` and `fail: when > 10` (and its `sql:`), `rule.expect` is null,
+  `rule.warn.text == "> 0"` and `rule.fail.text == "> 10"`. The API must
+  not add an `expect` the engine does not evaluate.
 
 **R5: `rule` is the loaded rule, not history** `must`
 - Given `edited`
@@ -234,6 +269,22 @@ real `serve` on `recorded`, `interrupted` and `edited` in VERIFY.
   (spec 003 K3).
 - And every spec 002 and 003 scenario for `/checks/{id}` still passes.
   The change is additive.
+
+**R7: each history entry says what it measured** `must` *(REFINE)*
+- Given `metric-changed`
+- When `GET /api/v1/checks/customer-email-completeness/history`
+- Then each entry carries `metric` as recorded in that run: `missing_count`
+  for M, `missing_percent` for C and A. The store already has this column
+  (`tablewatch_check_results.metric`), so this needs no model change and no
+  migration. It is additive, in `openapi.json` and the generated types.
+- *Why:* an explicit `id:` can outlive a change of metric. The history
+  then mixes a count (`1`) with percentages (`20.0`), and a chart on
+  today's axis would draw the count as "1%". The page must be able to tell
+  which values are on today's scale without parsing `expression` (a second
+  copy of the DSL). The unit follows from the metric, because every metric
+  has one fixed unit.
+- *(`should`)* And each entry carries `dataset` as recorded, so a check
+  moved to another dataset under the same `id:` is visible (D20).
 
 ### The page (ui-engineer, vitest; data-steward by hand)
 
@@ -292,12 +343,24 @@ recorded in `docs/UI_SPECIFICATION.md`.
   scenario, even if its words match today.
 - And "Not in the latest run" appears when `latest.run_id` is not the
   newest run's id, as on the overview. *(`should`)*
+- *(REFINE, `must`)* And given `edited-pending`, the rule reads "Expected
+  < 25%", and the latest result (`20.00%`, `fail`) says it was judged by
+  an earlier rule and names that rule's recorded expression
+  (`missing_percent(email) < 15%`). The page knows this because the first
+  history entry's `expression` differs from the check's `expression`.
+  Without the note, Sam sees "Expected < 25%" beside a red 20.00% and
+  concludes that tablewatch is wrong. The rule section also says that no
+  run has used the current rule yet.
 
 **D5: the chart plots recorded values and marks recorded outcomes** `must`
 - Given `interrupted`, on `/checks/b1ceb8262d8b5441`
 - Then the chart has 3 value marks (A, B, F, each at 20.0, each marked
-  `fail`) and 1 mark for E in a separate lane labelled "Could not
-  evaluate". E is **not** plotted at 0 or at any value.
+  `fail`) and 1 mark for E in a separate lane labelled "No value" (REFINE:
+  was "Could not evaluate"). E's mark has the `error` shape, and the legend
+  names it "Could not evaluate". E is **not** plotted at 0 or at any
+  value. The lane gets a neutral name because a `fail` with no value (D9)
+  also sits in it, and a `fail` under a "Could not evaluate" label would
+  say the opposite of what happened.
 - And the line joining consecutive values **breaks** at E. There is a
   segment from A to B and none from B to F. A line through E would draw
   a value nobody measured.
@@ -321,14 +384,26 @@ recorded in `docs/UI_SPECIFICATION.md`.
   | expect `> 0` | [0, 10] | — (zero height) | — | 0 |
   | expect `between 10 and 500` | [0, 600] | [0, 10), (500, 600] | — | 10, 500 |
   | expect `not between 5 and 10` | [0, 20] | [5, 10] | — | 5, 10 |
-  | expect `= 0` | [0, 3] | — | — | 0 |
-  | expect `!= 0` | [0, 3] | — | — | 0 |
-  | warn `< 100`, fail `= 0` | [0, 120] | — | [0, 100) | 0, 100 |
+  | expect `= 0` | [0, 3] | (0, 3] | — | 0 |
+  | expect `= 0` | [-2, 3] | [-2, 0), (0, 3] | — | 0 |
+  | expect `!= 0` | [0, 3] | — (a single value) | — | 0 |
+  | expect `between 5 and 5` | [0, 10] | [0, 5), (5, 10] | — | 5 |
+  | warn `< 100`, fail `= 0` | [0, 120] | — (a single value) | [0, 100) | 0, 100 |
+  | fail `!= 0` | [0, 3] | (0, 3] | — | 0 |
   | warn `> 86400`, fail `> 604800` | [0, 700000] | (604800, 700000] | (86400, 604800] | 86400, 604800 |
 
-  A fail region is drawn over a warn region where they overlap. For `=`
-  and `!=` only the line is drawn, because the region is a single value
-  or everything but one.
+  A fail region is drawn over a warn region where they overlap. **The
+  rule (REFINE):** shade every failing (or warning) interval that has
+  height in the domain. When the failing set is a single value (`expect
+  != v`, `fail when = v`), draw only its line, in the fail colour. When it
+  is everything but one value (`expect = v`, `fail when != v`), shade both
+  sides of the line. *Why:* `= 0` is the most common rule there is (8 of
+  the 18 retail checks, including `schema` and `failed_rows`). Left
+  unshaded, a failing `invalid_count(country) = 0` at 1 sits in white
+  space, and on this chart white means passing.
+- *(REFINE, `must`)* And given `recorded`, `000f8d0048744bfb`
+  (`invalid_count(country) = 0`, `fail`, 1) has its mark at 1 inside a
+  shaded fail region, with the `= 0` line at 0.
 - And given `interrupted`, `b1ceb8262d8b5441`'s chart shows the region
   from 5 upward shaded, a line labelled `< 5%` at 5, and the marks at 20
   inside the region.
@@ -351,6 +426,15 @@ recorded in `docs/UI_SPECIFICATION.md`.
 - And a marker is placed wherever two consecutive entries (in history
   order) have different `expression` strings. A → B → A gives two
   markers. The band still covers only the newest segment.
+- *(REFINE, `must`)* And given `edited-pending`, **no band and no boundary
+  line are drawn anywhere**: no recorded entry was judged by `< 25%`. The
+  rule's text (`< 25%`) is shown beside the chart with a note that no run
+  has used it yet (D4). The newest marker's label reads from
+  `missing_percent(email) < 5%` to `missing_percent(email) < 15%`. Nothing
+  suggests a marker for the pending edit, because no run recorded it.
+- *(REFINE, `should`)* And the marker label says the rule changed "between
+  runs", not "at" a time. The history knows only the two runs either side
+  of the edit, not when the file was edited.
 
 **D8: marks follow the recorded outcome, never a recomputed one** `must`
 - Given a history fixture with three entries under different rules
@@ -369,6 +453,15 @@ recorded in `docs/UI_SPECIFICATION.md`.
 - And the no-value lane is labelled so that a `fail` there reads
   differently from an `error` there: the first is bad data (an empty
   table), the second is tablewatch unable to evaluate.
+- *(REFINE, `must`)* The asserted words: the lane is "No value". The
+  legend and tooltip name a `fail` there "Fail: no value measured" and an
+  `error` there "Could not evaluate". A second realistic source of the
+  former is freshness on a table with no timestamps (`message: "no
+  timestamps in scope"`), and it is tested with that message too.
+- *(REFINE, `should`)* And a `skipped` entry (in the API's enum, although
+  the engine does not produce it today) goes in the same lane with its
+  own shape and the legend name "Skipped". It is never drawn as `error`
+  or as `pass`.
 
 **D10: the y-axis** `must`
 - **Ticks are formatted by `unit`** by one pure function, tested with
@@ -382,7 +475,9 @@ recorded in `docs/UI_SPECIFICATION.md`.
   | duration | 21600 | `6h` |
   | duration | 86400 | `1d` |
   | duration | 90 | `1m 30s` |
+  | duration | -25200 | `-7h` |
   | number | 54.3571 | `54.36` |
+  | number | -1.5 | `-1.5` |
 
   Ticks are chosen at round values for the unit (for durations: seconds,
   minutes, hours, days). *Formatting ticks in the browser does not break
@@ -401,6 +496,15 @@ recorded in `docs/UI_SPECIFICATION.md`.
     least half the plot height, and 10000 is again off-range.
   - no values (every entry is an `error`), boundary 5 → the domain
     contains 5, and no line is drawn.
+  - *(REFINE, `must`)* values {-25200, -21600} (freshness), boundary
+    21600 → the domain contains the negative values and 0, and they are
+    drawn below 0, never clamped to it. A negative freshness means the
+    newest timestamp is in the future. That is usually a naive timestamp
+    read in the wrong `timezone`, and it passes `< 6h` for ever. The chart
+    is where Sam can see it, so it must not hide it.
+  - *(REFINE, `must`)* values only from entries whose `metric` differs
+    from the check's current `metric` (D20) → those values do not enter
+    the domain.
 
   The exact rule for when a boundary is left off-range is the
   ui-engineer's, recorded in `docs/UI_SPECIFICATION.md`.
@@ -429,7 +533,12 @@ recorded in `docs/UI_SPECIFICATION.md`.
   viewer's time zone, with the zone stated, as spec 003 O4), outcome,
   `display_value`, and the message if there is one. *(`should`; the
   table already carries all of it)*
-- And the x-axis states the time zone its labels are in. *(`should`)*
+- And the x-axis states the time zone its labels are in. *(REFINE:
+  raised from `should` to `must`.)* Until I-24, the only UTC times on
+  the page are inside stored messages (`newest 2026-09-26T11:33:48…+00:00`).
+  Every time the page makes itself must name its zone, so a local axis
+  label is never read as the same zone as the message beside it. See
+  "REFINE: data-steward decisions" for the I-24 call.
 
 **D12: the history table** `must`
 - Given `interrupted`, on `/checks/b1ceb8262d8b5441`
@@ -441,6 +550,13 @@ recorded in `docs/UI_SPECIFICATION.md`.
   timestamp inside a freshness message (`newest 2026-09-23T12:23:02…`) or
   the bare `0` of a passing schema check. Those are I-24's, fixed in
   Python for every surface at once.
+- *(REFINE, `must`)* And the value column is headed so that a
+  freshness row reads as an age (for example "Value" holding `1h`), and
+  it comes before the message. Sam reads the verdict from the value and
+  not from the timestamp inside the message.
+- *(REFINE, `should`)* And the table states the zone of its absolute
+  times once, in a caption or header (for example "Times in GMT+8"),
+  matching the axis.
 
 **D13: long histories** `must`
 - The page requests `/history?limit=200` once. The chart and the table
@@ -482,6 +598,10 @@ recorded in `docs/UI_SPECIFICATION.md`.
   edited without an `id:`, as in spec 003 O3), the page says the check is
   no longer in the loaded files and still shows the history table and a
   chart without a band.
+  *(REFINE)* With no loaded check there is no `unit`. The ticks are then
+  plain numbers, the axis title says the unit is unknown, and values are
+  plotted only if every entry has the same recorded `metric` (R7).
+  Otherwise the page shows the table alone.
 
 **D16: data renders as text** `must`
 - Given a check named `<img src=x onerror=alert(1)>` and a history entry
@@ -513,6 +633,30 @@ recorded in `docs/UI_SPECIFICATION.md`.
   the start of the current streak (`latest.since`), with the overview's
   "Failing since" wording in its label. An `error` that was passed over
   (E) sits inside the marked span, and D5 still shows it.
+- *(REFINE)* And given `edited`, the streak runs from A and so spans the
+  rule-change marker (`latest.since` follows outcomes, not rules; spec
+  003). Both stay visible, and neither label covers the other. "Failing
+  since" together with a visible rule change is the honest reading: the
+  check has been red throughout, under two thresholds.
+
+**D20: a value measured by another metric is not plotted on today's axis** `must` *(REFINE)*
+- Given `metric-changed` and the check file then changed back to
+  `missing_percent(email) < 15%` and run again (run N: `fail`, `20.0`),
+  on `/checks/customer-email-completeness`
+- Then the chart plots N, C and A (`missing_percent`, on the percent
+  axis) and does **not** plot M (`missing_count`, value 1). M does not
+  enter the y-domain (D10), and the line breaks across it.
+- And the chart's caption says that 1 result measured a different metric
+  (`missing_count`) and is not plotted. The history table still lists M,
+  with its `display_value` `1` and its recorded expression marked as a
+  different rule (D7).
+- And rule-change markers still sit at C → M and M → N.
+- And the rule for what is plotted is "the entry's `metric` equals the
+  check's current `metric`". It uses R7's field, not a parse of
+  `expression`.
+- *(`should`)* And a change of recorded `dataset` under one id (R7) gets
+  a marker labelled with both dataset names, even when the expression is
+  unchanged.
 
 ## Non-goals
 
@@ -612,6 +756,102 @@ built chart against the skill in VERIFY.
    and unit-tested. The SVG component only draws what they return.
 8. **No chart library** (D17).
 
+### Design decisions (settled in REFINE)
+
+Reviews: architect, security-reviewer and data-steward approve/accept with
+follow-ups; ui-engineer consulted. These supersede the open questions below
+and any scenario text they contradict. The dataviz skill was loaded by the
+tech lead; its rules are binding on the chart (listed in 13).
+
+**API (tech lead; built)**
+
+1. **Q1:** `rule` is on a new `CheckDetail(CheckSummary)`, served only by
+   `GET /api/v1/checks/{id}` (`CheckDetail.of_detail`, as `RunDetail`).
+   `GET /checks` and `CheckSummary` are unchanged — moving a field onto the
+   list later is additive; taking it back would not be.
+2. `Rule`, `CompareCondition`, `BetweenCondition`: a union discriminated on
+   `kind` (no default), every field required, `op` a `Literal` tested equal
+   to `dsl.Op`.
+3. `rule` is built from the parsed `expectation` / `warn` / `fail`
+   (including the metric's implied `= 0`), never from `check.canonical`,
+   options, `where:` or `filter:`. Numbers are `Number.magnitude` /
+   `Duration.magnitude` — by construction exactly what each recorded value
+   was judged against (`engine/evaluate.py`); `text` is `str(condition)`.
+   No unit or scale logic in `server/` or `frontend/`. An exhaustive match
+   with `assert_never` makes a new condition kind a type error.
+4. **R7:** each history entry carries `metric`, `dataset` and `unit` (the
+   metric's unit, `null` for a metric this version doesn't know), so the
+   page can leave other-metric values off the axis (D20) and format ticks
+   for a check no longer loaded (D15).
+5. A number literal too large for a float is a syntax error at
+   `file:line:col` ("this number is too large") — it used to crash
+   `validate` and would have reached the wire as `null`.
+6. The recorded `expression` equals the served `expression` for an
+   unchanged check (both `Check.canonical`), tested for triggers and implied
+   conditions, so D7's `===` never draws a false rule change.
+
+**Page (ui-engineer)**
+
+7. **Q4:** plain `<a href>` and full page loads; no router, no
+   `pushState`. `lib/route.ts` holds a pure `parseRoute(path)` and
+   `checkHref(id)`: one non-empty segment, decoded inside try/catch,
+   checked against the id pattern (`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`, at
+   most 64); anything else is "page not found" **with no request made**
+   (`..`, `%2e%2e`, `a%2Fb`, `a%3Fb`, malformed `%`, 65 characters). Every
+   API path and query value is built with `encodeURIComponent`.
+8. **Q5:** one hook `lib/useLoads.ts` with named independent slots, a
+   generation guard, `busy`, the minute clock, `reload`, and `isCurrent`
+   so "Load older" answers after a refresh are dropped. Refresh on the
+   detail page also re-fetches `/runs?limit=1`. `failureOf` moves to
+   `api/api.ts`. Status wording (`SINCE_PREFIX`) stays in `lib/status.ts`;
+   `Result`, `When`, `LastEvaluatedNote` move to a shared component
+   imported by both pages.
+9. Chart logic is plain functions in `frontend/src/lib/chart/` (scale,
+   ticks, domain, bands, series, hit columns, label stacking, summary,
+   layout) testable without the DOM; `HistoryChart.tsx` only draws.
+   Status shapes are shared with `StatusIcon` so marks and icons can't
+   drift. No generic chart framework until a second chart exists.
+10. Two lanes, each drawn only when it has entries: "Could not evaluate"
+    (`error`) and "No value" (any other outcome with no value).
+11. D7 "labelled": a solid hairline marker "Rule changed" (numbered if
+    more than one) on the chart, with an HTML caption under it: "Rule
+    changed between runs <time> and <time>: from `A` to `B`".
+12. Off-range edge labels are axis annotations formatted by the tick
+    formatter (the D10 carve-out); rule text is never formatted from
+    numbers.
+
+**Chart rules (dataviz skill, binding)**
+
+13. One series → no legend box (an inline shape key under the title is
+    allowed). One y-axis. Line 2px round, neutral colour (it can't take a
+    status colour); markers ≥ 8px with a 2px surface-colour ring; bands a
+    ~10% wash; boundary lines solid; gridlines and markers 1px solid
+    hairlines — nothing dashed. Status colours only for status, always
+    with shape and text; text never wears the data colour. Label
+    selectively (latest point, boundaries, off-range, markers). Hover and
+    keyboard focus: a crosshair snapping to hit columns ≥ 24 units wide
+    and a tooltip (value first); the SVG keeps `role="img"` with
+    `<title>`/`<desc>`, interaction lives on a wrapping focusable group.
+    The table view carries every value. Dark mode uses its own validated
+    steps. New chart-only mark tokens (`--tw-{pass,warn,fail,error}-mark`,
+    `--tw-grid`, `--tw-series`) are validated with the skill's
+    `validate_palette.js` in both modes; the overview's text tokens are
+    unchanged.
+
+**Security (security-reviewer)**
+
+14. The chart contains no `<a>`, `<use>`, `<image>` or `<foreignObject>`
+    and no `href` of any kind; element ids come from `useId()`, never from
+    data. The tooltip is positioned without any inline style (SVG
+    transforms or class-based positions). The not-found page shows only a
+    well-formed id, inside `<code>`. Source rules in the security test
+    cover the chart directory.
+
+**Deferred**: I-24 moves up to run straight after I-26 (data-steward: UTC
+timestamps in freshness messages are misleading next to local-time axes);
+a loader warning for a bare `< 0.05` on a percent metric; `list --output
+json` sharing the API's check mapping.
+
 ### Open questions for the tech lead and the architect (REFINE)
 
 1. **Q1: where `rule` lives.** On `CheckSummary`, so that `/checks` and
@@ -627,6 +867,22 @@ built chart against the skill in VERIFY.
    duration metric in seconds, so that `magnitude` is always on the
    value's scale. If any metric differs, R1–R3 need a unit note and a
    test per metric.
+   **Answered by the data-steward in REFINE: confirmed, no unit note
+   needed.** `percent()` in `metrics/base.py` returns `100 * part /
+   whole` for all three percent metrics (`missing_`, `invalid_`,
+   `duplicate_percent`), and `Number.magnitude` ignores the `%` flag, so
+   `5%` and a bare `5` are both `5.0` on the 0–100 scale. `freshness` is
+   the only duration metric, and it records `total_seconds()`.
+   `Duration.magnitude` is in seconds. The loader's `_check_units`
+   requires a duration unit on duration metrics, rejects durations
+   elsewhere, and rejects `%` on non-percent metrics, so no threshold can
+   sit on another scale. Counts and `number` metrics compare raw. The
+   implied `= 0` of `schema` and `failed_rows` is a count of differences
+   or rows. One trap stays in the language (not this spec): `< 0.05` on a
+   percent metric means 0.05%, not 5%. It fails loudly, not silently, and
+   the chart makes it obvious. **The scale is not stable across a
+   rule change under an explicit `id:`**, because the metric itself can
+   change. R7 and D20 cover that.
 4. **Q4: navigation.** Plain `<a href>` links with a full page load (the
    PM's preference: the server already answers every client route with
    `index.html`, the Back button just works, and there is no router), or
@@ -657,6 +913,50 @@ built chart against the skill in VERIFY.
   Check that the off-range label reads correctly.
 - **Freshness values** vary with build time. Do not assert them.
 
+### REFINE: data-steward decisions
+
+- **Old results against today's rule.** This is covered by D7 (band
+  only on the current segment), D8 (marks keep their recorded outcome),
+  and two added cases: D4 and D7 for an edit not yet run (`edited-pending`),
+  and D20 for a metric change, where today's axis would have mislabelled
+  old values.
+- **Errors are not plotted as 0.** D5 and D9 cover this. The lane is
+  renamed "No value", because the same lane holds a `fail` with no value,
+  and "Could not evaluate" would mislabel it.
+- **`= 0` gets a band** (D6). Before this, the most common rule was the
+  only one whose failures sat in unshaded (passing-looking) space.
+- **Negative values** (D10). They are real (future timestamps, negative
+  `min`) and must be drawn below 0.
+- **The since and last-evaluated wording** reuses the overview's code
+  (D4). The overview already says "Could not evaluate since …" for an
+  error streak and "failing since …" inside "Last evaluated". The detail
+  page must match word for word, which D4's shared module guarantees.
+- **I-24, the time-zone trigger: pull it forward.** In REFINE, on a
+  scratch run of `examples/retail`, `freshness(created_at) < 6h` passed
+  with value `1h` and message `newest 2026-09-26T11:33:48.035115+00:00`.
+  The run started at about 12:33 UTC. A steward in GMT+8 (Singapore, for
+  example) sees that run on the axis at about `20:33 GMT+8`, and a
+  "newest" of `11:33` in the message. Read as local time, the newest row
+  looks 9 hours old against a value of `1h`. **The zone offset (8h) is
+  larger than the threshold (6h).** Read naively, the message says the
+  check should have failed.
+  That is *misleading*, not untidy, and it hits exactly the check whose
+  whole meaning is a time. The trigger recorded in BACKLOG ("I-24's
+  impact goes 1 → 2, and it runs straight after I-26") is met. I-24 does
+  **not** move ahead of I-05: doing it first would not clean stored
+  messages, and the page is still worth shipping. Inside this spec the
+  mitigation is labelling, not reformatting. The axis zone is now a
+  `must` (D11), the table states its zone (D12), and the value (the age)
+  is read before the message (D12). For I-24's own spec: the freshness
+  message should name the zone in words, drop the microseconds, and say
+  what the timestamp is ("newest row at 2026-09-26 11:33:48 UTC"). Ideally
+  it lets the UI show it in the viewer's zone from a structured field,
+  rather than by rewriting text.
+- **Not taken up here (non-blocking, for the backlog):** `latest.since`
+  runs across rule and metric changes (spec 003 semantics; D19 keeps it
+  visible). A bare `< 0.05` on a percent metric means 0.05%, and a
+  loader warning would help.
+
 ## Reviewers required
 
 - **qa-engineer**: always. Focus: the pure functions at their edges
@@ -670,7 +970,9 @@ built chart against the skill in VERIFY.
   `edited`, and the README section.
 - **security-reviewer**: **required, narrow.** This changes what the
   server exposes over the network (the `rule` field), though only as a
-  structured form of the `expression` it already serves. It also renders
+  structured form of the `expression` it already serves. (REFINE: also
+  `metric` and `dataset` on history entries, R7. Both are already
+  visible through `expression` and `/checks`.) It also renders
   check-file and data text into SVG (`<title>`, `<desc>`, labels,
   tooltips; D16), and it must keep the CSP and the dependency surface
   unchanged (D17). No new endpoint: the SQL and source endpoints, the
@@ -690,7 +992,7 @@ Frontend: a route, the shared hook and wording extraction, the detail
 page, the history table, and the first chart with its pure functions and
 tests. The chart is most of the work.
 
-**Pre-planned split, if BUILD runs long.** D5–D11 and D19 (the chart)
+**Pre-planned split, if BUILD runs long.** D5–D11, D19 and D20 (the chart)
 move to a new S item that ships next. This PR then ships the page with
 identity, rule, latest result, the history table, links, the hook and
 the failure states (R*, D1–D4, D12–D18). The page is useful without the

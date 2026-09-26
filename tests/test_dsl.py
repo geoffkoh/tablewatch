@@ -91,3 +91,13 @@ def test_errors_name_the_problem_at_its_column(
         parse_check(source)
     assert info.value.offset + 1 == column
     assert message in info.value.message
+
+
+@pytest.mark.parametrize(
+    "text", ["row_count > " + "9" * 400, "freshness(x) < " + "9" * 306 + "d"]
+)
+def test_a_number_too_large_is_a_syntax_error(text: str) -> None:
+    # Otherwise it becomes infinity: validate crashed formatting it, and JSON
+    # cannot carry it.
+    with pytest.raises(DSLSyntaxError, match="this number is too large"):
+        parse_check(text)

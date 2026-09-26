@@ -121,13 +121,13 @@ def list_checks(
     return schemas.CheckList(items=items, total=len(items))
 
 
-@router.get("/checks/{check_id}", response_model=schemas.CheckSummary)
-def get_check(context: Context, check_id: str) -> schemas.CheckSummary:
+@router.get("/checks/{check_id}", response_model=schemas.CheckDetail)
+def get_check(context: Context, check_id: str) -> schemas.CheckDetail:
     check = context.check(check_id) if _is_check_id(check_id) else None
     if check is None:
         raise _not_found("check")
     found = context.store.latest_results(context.name, check.id).get(check.id)
-    return schemas.CheckSummary.of(
+    return schemas.CheckDetail.of_detail(
         check, schemas.LatestResult.of(found) if found else None
     )
 
