@@ -1,0 +1,62 @@
+/*
+ * Colour tokens, light and dark. src/test/contrast.test.ts parses this file
+ * and checks every text/background pair against WCAG AA, so a change here
+ * that breaks contrast fails the tests.
+ *
+ * Status hues are far apart: fail red, error violet, warn amber, pass green,
+ * no result neutral grey, skipped slate blue. Colour is never the only
+ * signal: every status also has its own icon shape and text label.
+ *
+ * -fg is the status colour for text and icons; -tint is the badge background.
+ */
+:root {
+  color-scheme: light dark;
+
+  --tw-bg: #ffffff;
+  --tw-surface: #f6f7f9;
+  --tw-border: #c9d0d8;
+  --tw-text: #1b1f24;
+  --tw-text-muted: #525b66;
+  --tw-link: #0b57d0;
+  --tw-focus: #0b57d0;
+  --tw-on-status: #ffffff;
+
+  --tw-fail-fg: #b42318;
+  --tw-fail-tint: #fdecea;
+  --tw-error-fg: #6b2fbf;
+  --tw-error-tint: #f1eafc;
+  --tw-warn-fg: #8a4b00;
+  --tw-warn-tint: #fff1dc;
+  --tw-none-fg: #4d5661;
+  --tw-none-tint: #eceff3;
+  --tw-skipped-fg: #36557a;
+  --tw-skipped-tint: #e7eef7;
+  --tw-pass-fg: #17743a;
+  --tw-pass-tint: #e6f4ea;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tw-bg: #0f1216;
+    --tw-surface: #171b21;
+    --tw-border: #3a424d;
+    --tw-text: #e6e9ed;
+    --tw-text-muted: #a3acb7;
+    --tw-link: #8ab4f8;
+    --tw-focus: #8ab4f8;
+    --tw-on-status: #0f1216;
+
+    --tw-fail-fg: #ff8f85;
+    --tw-fail-tint: #3b1714;
+    --tw-error-fg: #c9adff;
+    --tw-error-tint: #2b1f48;
+    --tw-warn-fg: #f2b661;
+    --tw-warn-tint: #35260c;
+    --tw-none-fg: #b3bcc6;
+    --tw-none-tint: #242a32;
+    --tw-skipped-fg: #9ec0e6;
+    --tw-skipped-tint: #1c2835;
+    --tw-pass-fg: #6ddc8e;
+    --tw-pass-tint: #0f2e1a;
+  }
+}
