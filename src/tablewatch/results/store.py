@@ -7,12 +7,27 @@ upgrading tablewatch never needs a separate migration step on a server.
 from __future__ import annotations
 
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import URL, Engine, create_engine, make_url, select
-from sqlalchemy.orm import Session
+from sqlalchemy import (
+    URL,
+    ColumnElement,
+    Engine,
+    and_,
+    create_engine,
+    func,
+    make_url,
+    or_,
+    select,
+)
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, selectinload
 
 from tablewatch.checks.model import Outcome
 from tablewatch.engine.executor import error_message
@@ -41,8 +56,30 @@ def resolve_store_url(url: str, project_root: Path) -> URL:
     return parsed
 
 
-class RecordError(Exception):
+class StoreError(Exception):
+    """The results store could not be opened, read or written.
+
+    The message names the store but never its URL, which may hold a password.
+    """
+
+
+class RecordError(StoreError):
     """A run could not be written to the results store."""
+
+
+class PageKey(NamedTuple):
+    """Where a newest-first page of runs ends: the last run shown."""
+
+    started_at: datetime
+    run_id: str
+
+
+@contextmanager
+def _reading() -> Iterator[None]:
+    try:
+        yield
+    except SQLAlchemyError as exc:
+        raise StoreError(f"results store: {error_message(exc)}") from exc
 
 
 class ResultStore:
@@ -143,6 +180,109 @@ class ResultStore:
                 .limit(limit)
             )
             return [(result, run) for result, run in session.execute(statement)]
+
+    # --- reads scoped to one project (the server; I-19 moves the CLI here) ---
+
+    def runs_page(
+        self, project: str, *, limit: int, before: PageKey | None = None
+    ) -> list[RunRow]:
+        """This project's runs, newest first, after `before` if given."""
+        statement = (
+            select(RunRow)
+            .where(RunRow.project == project, *_older_than(before))
+            .order_by(RunRow.started_at.desc(), RunRow.id.desc())
+            .limit(limit)
+        )
+        with _reading(), Session(self.engine) as session:
+            return list(session.scalars(statement))
+
+    def run(self, project: str, run_id: str) -> RunRow | None:
+        """One of this project's runs, with its results in recorded order."""
+        statement = (
+            select(RunRow)
+            .where(RunRow.project == project, RunRow.id == run_id)
+            .options(selectinload(RunRow.results))
+        )
+        with _reading(), Session(self.engine) as session:
+            row = session.scalars(statement).one_or_none()
+            if row is not None:
+                row.results.sort(key=lambda result: result.id)
+            return row
+
+    def latest_results(self, project: str) -> dict[str, tuple[CheckResultRow, RunRow]]:
+        """Each check id's result from the newest run of this project that had it.
+
+        Ties on `started_at` break by run id, the same order as history, so
+        a check's latest result is always the head of its history.
+        """
+        ranked = (
+            select(
+                CheckResultRow.id.label("result_id"),
+                func.row_number()
+                .over(
+                    partition_by=CheckResultRow.check_id,
+                    order_by=(RunRow.started_at.desc(), RunRow.id.desc()),
+                )
+                .label("rank"),
+            )
+            .join(RunRow, CheckResultRow.run_id == RunRow.id)
+            .where(RunRow.project == project)
+            .subquery()
+        )
+        statement = (
+            select(CheckResultRow, RunRow)
+            .join(RunRow, CheckResultRow.run_id == RunRow.id)
+            .join(ranked, ranked.c.result_id == CheckResultRow.id)
+            .where(ranked.c.rank == 1)
+        )
+        with _reading(), Session(self.engine) as session:
+            return {
+                result.check_id: (result, run)
+                for result, run in session.execute(statement)
+            }
+
+    def history_page(
+        self, project: str, check_id: str, *, limit: int, before: PageKey | None = None
+    ) -> list[tuple[CheckResultRow, RunRow]]:
+        """One check's results in this project, newest first.
+
+        A run holds at most one result per check id, so the run's key
+        pages history as it pages runs.
+        """
+        statement = (
+            select(CheckResultRow, RunRow)
+            .join(RunRow, CheckResultRow.run_id == RunRow.id)
+            .where(
+                RunRow.project == project,
+                CheckResultRow.check_id == check_id,
+                *_older_than(before),
+            )
+            .order_by(RunRow.started_at.desc(), RunRow.id.desc())
+            .limit(limit)
+        )
+        with _reading(), Session(self.engine) as session:
+            return [(result, run) for result, run in session.execute(statement)]
+
+
+def _older_than(before: PageKey | None) -> list[ColumnElement[bool]]:
+    # Written out rather than as a tuple comparison, which not every
+    # database supports.
+    if before is None:
+        return []
+    return [
+        or_(
+            RunRow.started_at < before.started_at,
+            and_(RunRow.started_at == before.started_at, RunRow.id < before.run_id),
+        )
+    ]
+
+
+def open_store(url: str, project_root: Path) -> ResultStore:
+    """Open and migrate the store, or raise `StoreError` without the URL."""
+    try:
+        return ResultStore.open(url, project_root)
+    except (SQLAlchemyError, OSError, ValueError) as exc:
+        raise StoreError(f"results store: {error_message(exc)}") from exc
 
 
 def store_sink(url: str, project_root: Path) -> ResultSink:

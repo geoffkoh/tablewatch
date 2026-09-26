@@ -79,6 +79,8 @@ load YAML tree ─► parse DSL ─► resolve ─► plan ─► execute ─►
 | `output/` | console, JSON and JUnit reporters |
 | `selection.py` | paths / tags / datasources / excludes / check ids |
 | `cli/main.py` | click commands and the exit-code contract |
+| `api.py` | the Python API (`load`, `run`) and `execute`, the one run path shared with the CLI |
+| `server/` | internal HTTP adapter for `serve`: read-only `/api/v1`, wire schemas, host guard; holds no SQL; FastAPI and uvicorn are imported only here, only when `serve` runs |
 
 ### Rules the design depends on — keep them
 
