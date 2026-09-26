@@ -1,0 +1,5 @@
+# The web UI bundle is Vite output from frontend/: collapse it in reviews and
+# keep its bytes identical on every platform (CI checks it is the fresh build).
+src/tablewatch/webapp/static/** linguist-generated=true text eol=lf
+frontend/src/api/schema.gen.ts linguist-generated=true text eol=lf
+frontend/** text eol=lf

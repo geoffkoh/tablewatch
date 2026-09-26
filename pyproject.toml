@@ -100,6 +100,8 @@ exclude = ["*.md"]
 # Strict by default, so that `uv run mypy .` is the strict one and
 # strictness cannot regress unnoticed.
 strict = true
+# npm packages can ship .py files under frontend/node_modules.
+exclude = ["^frontend/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

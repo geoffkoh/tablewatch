@@ -6,22 +6,27 @@ change cannot silently change the API. Field names follow
 `tablewatch run --output json` and `tablewatch list --output json`.
 
 Every field is required; a value that may be absent is required and
-nullable, so a typed client never guesses which keys exist.
+nullable, so a typed client never guesses which keys exist. The one
+exception is `Run.selection`, which holds only the selectors a run was given.
 """
 
 from __future__ import annotations
 
 import math
+from dataclasses import fields
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, WithJsonSchema
 
 from tablewatch._version import __version__
 from tablewatch.checks.model import Check
 from tablewatch.diagnostics import Diagnostic as DiagnosticModel
 from tablewatch.diagnostics import SourceLocation
 from tablewatch.results.models import CheckResultRow, RunRow
+from tablewatch.results.state import Evaluated
+from tablewatch.results.store import Latest
+from tablewatch.selection import Selection
 
 
 def utc(moment: datetime) -> datetime:
@@ -38,11 +43,33 @@ def _finite(value: float | None) -> float | None:
 
 
 Timestamp = Annotated[
-    datetime, PlainSerializer(lambda d: utc(d).isoformat(), return_type=str)
+    datetime,
+    PlainSerializer(
+        lambda d: utc(d).isoformat(timespec="microseconds"), return_type=str
+    ),
+    WithJsonSchema({"type": "string", "format": "date-time"}),
 ]
 JsonFloat = Annotated[float | None, PlainSerializer(_finite, return_type=float | None)]
 
 Outcome = Literal["pass", "warn", "fail", "error", "skipped"]
+EvaluatedOutcome = Literal["pass", "warn", "fail"]
+
+# The selectors a run was narrowed by, as recorded. Named after `Selection`;
+# keys from other tablewatch versions pass through rather than vanish, since
+# dropping one would make a narrowed run read as "every check".
+SelectionMap = Annotated[
+    dict[str, list[str]],
+    WithJsonSchema(
+        {
+            "type": "object",
+            "properties": {
+                f.name: {"type": "array", "items": {"type": "string"}}
+                for f in fields(Selection)
+            },
+            "additionalProperties": {"type": "array", "items": {"type": "string"}},
+        }
+    ),
+]
 Unit = Literal["count", "percent", "duration", "number"]
 ErrorCode = Literal[
     "invalid_parameter",
@@ -104,25 +131,50 @@ class Project(_Model):
     diagnostics: list[Diagnostic]
 
 
+class LastEvaluated(_Model):
+    """What the data last showed, when the latest result could not be evaluated."""
+
+    outcome: EvaluatedOutcome
+    started_at: Timestamp
+    since: Timestamp
+
+    @classmethod
+    def of(cls, evaluated: Evaluated) -> LastEvaluated:
+        return cls(
+            outcome=_evaluated(evaluated.outcome),
+            started_at=evaluated.started_at,
+            since=evaluated.since,
+        )
+
+
 class LatestResult(_Model):
     run_id: str
     started_at: Timestamp
+    # When this streak began: errors pass over a streak of evaluated
+    # outcomes without ending it (results/state.py).
+    since: Timestamp
     trigger: str
     outcome: Outcome
     value: JsonFloat
     display_value: str
     message: str | None
+    last_evaluated: LastEvaluated | None
 
     @classmethod
-    def of(cls, result: CheckResultRow, run: RunRow) -> LatestResult:
+    def of(cls, latest: Latest) -> LatestResult:
+        result, run, state = latest.result, latest.run, latest.state
         return cls(
             run_id=run.id,
             started_at=run.started_at,
+            since=state.since,
             trigger=run.trigger,
             outcome=_outcome(result.outcome),
             value=result.value,
             display_value=result.display_value,
             message=_message(result.outcome, result.message),
+            last_evaluated=LastEvaluated.of(state.last_evaluated)
+            if state.last_evaluated
+            else None,
         )
 
 
@@ -218,7 +270,7 @@ class Run(_Model):
     trigger: str
     version: str
     # Only the selectors that were given; {} means every check was selected.
-    selection: dict[str, list[str]]
+    selection: SelectionMap
     counts: Counts
 
     @classmethod
@@ -315,6 +367,13 @@ def _outcome(value: str) -> Outcome:
         case "pass" | "warn" | "fail" | "error" | "skipped":
             return value
     return "error"
+
+
+def _evaluated(value: str) -> EvaluatedOutcome:
+    match value:
+        case "pass" | "warn" | "fail":
+            return value
+    raise ValueError(f"not an evaluated outcome: {value!r}")
 
 
 def _message(outcome: str, message: str | None) -> str | None:

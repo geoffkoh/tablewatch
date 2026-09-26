@@ -29,18 +29,16 @@ from fastapi.testclient import TestClient
 
 import tablewatch as tw
 from tablewatch.server import schemas
+from tests.conftest import Recorded, invoke, run_ids
 from tests.test_server import (
     CUSTOMERS_EMAIL,
     PRICE_FRESHNESS,
     SECURITY_HEADERS,
-    Recorded,
     assert_error,
     checks_by_id,
     clone_run,
     copy_project,
     get,
-    invoke,
-    run_ids,
     served,
     serving,
     start,
@@ -348,7 +346,7 @@ def test_all_interfaces_bind_warns_and_still_guards_hosts(recorded: Recorded) ->
             f"{base}/api/v1/project", headers={"Host": f"192.168.1.10:{port}"}
         )
     assert lines[0].startswith("tablewatch: warning: serving on 0.0.0.0 ")
-    assert lines[1].startswith(f"tablewatch serve: http://0.0.0.0:{port}/api/v1 ")
+    assert lines[1].startswith(f"tablewatch serve: http://0.0.0.0:{port}/ ")
     assert evil.status_code == 403
     assert by_ip.status_code == 200
 
@@ -490,25 +488,25 @@ def test_a_read_only_store_can_be_served(
 
 
 def test_text_access_logs_go_to_stderr(recorded: Recorded) -> None:  # S10
-    with serving(recorded.root) as (process, port, _):
+    with serving(recorded.root) as (process, port, output):
         for path in ("/api/v1/project", "/api/v1/runs?limit=abc", "/api/v1/nope"):
             httpx.get(f"http://127.0.0.1:{port}{path}")
         process.terminate()
         assert process.wait(5) == 0
-        assert process.stdout is not None and process.stderr is not None
+        assert process.stdout is not None
         assert process.stdout.read() == ""
-        err = process.stderr.read()
+        err = output.finish()
     assert err.count("uvicorn.access") == 3, err
 
 
 def test_quiet_serve_logs_no_access_lines(recorded: Recorded) -> None:
-    with serving(recorded.root, "-q") as (process, port, _):
+    with serving(recorded.root, "-q") as (process, port, output):
         httpx.get(f"http://127.0.0.1:{port}/api/v1/project")
         process.terminate()
         assert process.wait(5) == 0
-        assert process.stdout is not None and process.stderr is not None
+        assert process.stdout is not None
         assert process.stdout.read() == ""
-        assert "uvicorn.access" not in process.stderr.read()
+        assert "uvicorn.access" not in output.finish()
 
 
 def test_other_commands_never_import_the_server_extra_when_run(

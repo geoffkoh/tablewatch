@@ -1039,7 +1039,9 @@ past one scan per request.
   since" on a check that failed for a week with a one-off error
   yesterday, is not misled. The row shows the age of the latest result,
   and I-05 will show the history. Say whether the overview needs more
-  than that.
+  than that. *(REFINE, data-steward: answered by reversing D1. The error
+  no longer resets the streak, and P7/O2 add "last evaluated" to error
+  rows.)*
 - Freshness values vary with build time (spec 002). Do not assert them in
   fixtures.
 - `display_value` is `"—"` on `error`. The row should show the message,

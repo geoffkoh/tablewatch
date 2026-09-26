@@ -24,11 +24,13 @@ is wrong or missing a field, report it; never invent fields.
 
 ## Toolchain
 
-Node and npm are **not on PATH** on this machine. They live in the conda
-environment `pystructurizr`:
+Node and npm are **not on PATH** on this machine. tablewatch's Node lives in
+the conda environment `tablewatch-node`, pinned to the version in
+`frontend/.nvmrc` so local builds match CI byte for byte. Never use another
+project's environment (`pystructurizr` is c4studio's):
 
 ```bash
-export PATH="/opt/miniconda3/envs/pystructurizr/bin:$PATH"
+export PATH="/opt/miniconda3/envs/tablewatch-node/bin:$PATH"
 npm --prefix frontend ci && npm --prefix frontend run build
 ```
 

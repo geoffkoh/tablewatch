@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -21,7 +22,6 @@ from sqlalchemy import (
     Engine,
     and_,
     create_engine,
-    func,
     make_url,
     or_,
     select,
@@ -33,6 +33,7 @@ from tablewatch.checks.model import Outcome
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import ResultSink, RunResult
 from tablewatch.results.models import CheckResultRow, RunRow
+from tablewatch.results.state import Entry, State, current_state
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
@@ -65,6 +66,15 @@ class StoreError(Exception):
 
 class RecordError(StoreError):
     """A run could not be written to the results store."""
+
+
+@dataclass(frozen=True)
+class Latest:
+    """A check's newest recorded result, its run, and its current state."""
+
+    result: CheckResultRow
+    run: RunRow
+    state: State
 
 
 class PageKey(NamedTuple):
@@ -206,36 +216,52 @@ class ResultStore:
         with _reading(), Session(self.engine) as session:
             return session.scalars(statement).one_or_none()
 
-    def latest_results(self, project: str) -> dict[str, tuple[CheckResultRow, RunRow]]:
-        """Each check id's result from the newest run of this project that had it.
+    def latest_results(
+        self, project: str, check_id: str | None = None
+    ) -> dict[str, Latest]:
+        """Each check id's newest result in this project, and its current state.
 
-        Ties on `started_at` break by run id, the same order as history, so
-        a check's latest result is always the head of its history.
+        Newest is by `(started_at, run id)`, the same order as history, so a
+        check's latest result is always the head of its history. Two
+        queries, however many checks: every result's outcome in history
+        order, then the head rows.
         """
-        ranked = (
+        scope = [RunRow.project == project]
+        if check_id is not None:
+            scope.append(CheckResultRow.check_id == check_id)
+        outcomes = (
             select(
-                CheckResultRow.id.label("result_id"),
-                func.row_number()
-                .over(
-                    partition_by=CheckResultRow.check_id,
-                    order_by=(RunRow.started_at.desc(), RunRow.id.desc()),
-                )
-                .label("rank"),
+                CheckResultRow.check_id,
+                CheckResultRow.outcome,
+                RunRow.started_at,
+                CheckResultRow.id,
             )
             .join(RunRow, CheckResultRow.run_id == RunRow.id)
-            .where(RunRow.project == project)
-            .subquery()
-        )
-        statement = (
-            select(CheckResultRow, RunRow)
-            .join(RunRow, CheckResultRow.run_id == RunRow.id)
-            .join(ranked, ranked.c.result_id == CheckResultRow.id)
-            .where(ranked.c.rank == 1)
+            .where(*scope)
+            .order_by(
+                CheckResultRow.check_id, RunRow.started_at.desc(), RunRow.id.desc()
+            )
         )
         with _reading(), Session(self.engine) as session:
+            histories: dict[str, list[Entry]] = {}
+            heads: dict[int, str] = {}
+            for check, outcome, started_at, result_id in session.execute(outcomes):
+                if check not in histories:
+                    histories[check] = []
+                    heads[result_id] = check
+                histories[check].append(Entry(outcome, started_at))
+            if not heads:
+                return {}
+            rows = session.execute(
+                select(CheckResultRow, RunRow)
+                .join(RunRow, CheckResultRow.run_id == RunRow.id)
+                .where(CheckResultRow.id.in_(heads))
+            )
             return {
-                result.check_id: (result, run)
-                for result, run in session.execute(statement)
+                result.check_id: Latest(
+                    result, run, current_state(histories[result.check_id])
+                )
+                for result, run in rows
             }
 
     def history_page(
