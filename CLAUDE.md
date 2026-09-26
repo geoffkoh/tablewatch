@@ -11,6 +11,28 @@ Phase 1 (engine + CLI, `0.1.0`) is built. The phases after it are in
 `docs/ROADMAP.md`; build one phase at a time, and do not pull later-phase
 features forward without being asked.
 
+## Team and process
+
+Everything after Phase 1 is built in iterations. **`docs/product/PROCESS.md`
+is the protocol — read it before running an iteration.** It covers steps,
+definitions of ready and done, when security review is mandatory, the merge
+policy, and when to stop and ask the user.
+
+- The main session is **tech lead**: it runs each step, builds core Python,
+  and opens and merges PRs.
+- Agents in `.claude/agents/`: `product-manager` (plans, specs, retro),
+  `data-steward` (domain semantics, acceptance), `qa-engineer`
+  (adversarial tests), `security-reviewer` (read-only), `ui-engineer`
+  (frontend), `platform-engineer` (connectors, deployment, benchmarks).
+  Builders never judge their own work.
+- Product documents live in `docs/product/`: `VISION.md`, `FEATURES.md`,
+  `BACKLOG.md`, `specs/`, `ITERATIONS.md`, `PROCESS.md`.
+- **Merge policy (tablewatch only):** auto-merge an iteration PR when CI is
+  green, no required reviewer has an open blocking finding, and the
+  definition of done is met. Outward-facing steps (PyPI releases, new
+  external services) always need the user.
+- "Run N iterations" runs N. Without a number, run one and stop.
+
 ## Stack and commands
 
 Python >= 3.13, managed with `uv`, `src/` layout, `uv_build` backend.
