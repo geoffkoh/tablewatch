@@ -3,7 +3,7 @@
 Ranked PR-sized increments, drawn from `FEATURES.md`. Owned by the
 product-manager; see `PROCESS.md` for scoring and statuses.
 
-Re-scored and re-ranked by the product-manager in iteration 1 PLAN
+Re-scored and re-ranked by the product-manager in iteration 1 REVIEW
 (2026-09-26). Score = reach × impact × confidence ÷ effort, × 1.25 if other
 items depend on it (PROCESS.md). The rank follows the score except where the
 owner's priority says otherwise (below); every departure is stated.
@@ -12,68 +12,93 @@ The backlog holds the **current phase only: Phase 2 (visibility and
 alerting, `0.2.0`)**. Phase 2b items (A1–A4, A14, B6, C7) join it when Phase
 2 is done; until then they live in `FEATURES.md`. C5 (run diff) and E5
 (Postgres store) were broken into increments in iteration 1 (I-14, I-15), so
-every Phase 2 feature now has one.
+every Phase 2 feature now has one. I-16 to I-18 are follow-ups from the
+iteration 1 reviews; they harden what shipped rather than add features.
 
 Statuses: `proposed` (not yet specified) → `ready` (spec meets the
 definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 
 | Rank | ID | Increment | Features | Depends on | Size | R | I | C | Score | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | I-01 | Python API: `tablewatch.run()` / `load()` returning typed results; per-call `record=`; establishes the result-sink seam — [spec 001](specs/001-python-api.md) | B1, E7 (per call) | — | S | 2 | 2 | 1.0 | **5.0** | in-progress |
-| 2 | I-02 | Read-only REST API: runs, results, checks, history; `tablewatch serve` (API only) | C1 | I-01 | M | 3 | 1 | 0.8 | **1.5** | proposed |
-| 3 | I-03 | UI shell + overview page, bundle shipped in the wheel | C2 | I-02 | M | 4 | 2 | 0.8 | **4.0** | proposed |
-| 4 | I-05 | Check detail: history chart against threshold, SQL, source | C4 | I-03 | M | 3 | 2 | 0.8 | **2.4** | proposed |
-| 5 | I-04 | Check explorer tree with filters and search | C3 | I-03 | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 6 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
-| 7 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
-| 8 | I-08 | Files as datasets (CSV, Parquet, JSON via DuckDB); establishes the dataset-source and executor seams | A8 | — | S | 1 | 2 | 0.8 | **2.0** | proposed |
-| 9 | I-14 | Postgres results store: the store verified on Postgres in CI (migrations, concurrent writers from two servers), documented for a shared deployment | E5 | — | S | 1 | 2 | 0.8 | **1.6** | proposed |
-| 10 | I-07 | Change-over-time checks from the results store | A5 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
-| 11 | I-13 | `validate --connect`: datasets, columns, type suitability and every compiled statement checked against the target database without scanning; Diagnostics at `file:line:col` | H6 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
-| 12 | I-09 | `validate --output sarif` for inline PR annotations | H3 | — | S | 1 | 1 | 1.0 | **1.0** | proposed |
-| 13 | I-12 | Configurable result recording: `record:` in `tablewatch.yml`, `_defaults.yml` and per check | E7 | I-01 | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 14 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 15 | I-15 | Run detail page and diff against the previous run ("what broke since yesterday") | C5 | I-02, I-03 | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| — | I-01 | Python API: `tablewatch.run()` / `load()` returning typed results; per-call `record=`; establishes the result-sink seam — [spec 001](specs/001-python-api.md) | B1, E7 (per call) | — | S | 2 | 2 | 1.0 | 5.0 | done (iteration 1) |
+| 1 | I-02 | Read-only REST API: runs, results, checks, history; `tablewatch serve` (API only) | C1 | I-01 ✓ | M | 3 | 1 | 0.8 | **1.5** | proposed |
+| 2 | I-03 | UI shell + overview page, bundle shipped in the wheel | C2 | I-02 | M | 4 | 2 | 0.8 | **4.0** | proposed |
+| 3 | I-05 | Check detail: history chart against threshold, SQL, source | C4 | I-03 | M | 3 | 2 | 0.8 | **2.4** | proposed |
+| 4 | I-04 | Check explorer tree with filters and search | C3 | I-03 | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 5 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
+| 6 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — needs an owner decision on the exit code (see below) |
+| 7 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
+| 8 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
+| 9 | I-08 | Files as datasets (CSV, Parquet, JSON via DuckDB); establishes the dataset-source and executor seams | A8 | — | S | 1 | 2 | 0.8 | **2.0** | proposed |
+| 10 | I-14 | Postgres results store: the store verified on Postgres in CI (migrations, concurrent writers from two servers), documented for a shared deployment | E5 | — | S | 1 | 2 | 0.8 | **1.6** | proposed |
+| 11 | I-07 | Change-over-time checks from the results store | A5 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
+| 12 | I-13 | `validate --connect`: datasets, columns, type suitability and every compiled statement checked against the target database without scanning; Diagnostics at `file:line:col` | H6 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
+| 13 | I-09 | `validate --output sarif` for inline PR annotations | H3 | — | S | 1 | 1 | 1.0 | **1.0** | proposed |
+| 14 | I-12 | Configurable result recording: `record:` in `tablewatch.yml`, `_defaults.yml` and per check | E7 | I-01 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 15 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 16 | I-15 | Run detail page and diff against the previous run ("what broke since yesterday") | C5 | I-02, I-03 | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 17 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
 
 ### Why the rank departs from the score
 
 - **Owner priority (2026-09-26): UI first.** After I-01, the UI chain comes
   before alerting. So I-02 (1.5), I-05 (2.4) and I-04 (0.8) rank above I-06
-  (4.5), I-10 and I-08. I-02 scores low on its own — an API with no screen
-  helps few people directly — but it carries every UI item behind it, and
-  I-03 (4.0) is the highest-value item in the chain.
+  (4.5), I-16, I-17, I-10 and I-08. I-02 scores low on its own — an API with
+  no screen helps few people directly — but it carries every UI item behind
+  it, and I-03 (4.0) is the highest-value item in the chain. With I-01 done,
+  I-02's dependency is met: it is the next PLAN.
 - **Inside the UI chain, check detail (I-05) comes before the explorer
   (I-04)**: the overview (I-03) lists failing checks first and can link
   straight to their detail, which answers "why is this failing"; the
   explorer is navigation for a project large enough to need it.
 - **I-06 comes straight after the UI chain** as the owner asked, and is the
   highest-scoring item left: alerting is how a failure reaches Sam at all.
+- **I-16 (3.2) comes next, not earlier.** It fixes a silent false pass — a
+  misspelt folder or tag next to a real one runs the rest and exits 0 — so
+  its impact is high, but it needs a typo to bite, the owner's order puts
+  the UI chain and alerting first, and it needs an owner decision before it
+  can be specified. It outranks I-10 (2.4) on score.
+- **I-17 (2.0) sits above I-10 (2.4)** because it is hardening of what is
+  already shipped and pairs naturally with I-16 (both touch the CLI's error
+  paths); if I-16 waits on the owner, I-17 can go alone.
 - **Ties at 1.6** (I-14, I-07, I-13) are broken by what they complete:
   I-14 makes the UI useful to a team on more than one server; I-07 is the
   first check that reads history (and with I-12 settles the "history needs
   recording" Diagnostic); I-13 pairs with I-09 for CI and goes with it.
 - **Scoring notes.** Reach counts personas materially helped *by the
-  increment itself*. I-01's reach is Dana and Priya (pipelines,
-  orchestrators); its unblocking bonus reflects I-02 and I-12. I-06 has
-  impact 3 because without it a failure reaches nobody who is not looking.
-  I-08 takes the unblocking bonus for the dataset-source and executor seams
-  that A9, B8 and A17 (later phases) depend on. I-12 has impact 0.5 because per-call `record=` (I-01) and `--no-store`
-  already cover the urgent case.
+  increment itself*. I-06 has impact 3 because without it a failure reaches
+  nobody who is not looking. I-08 takes the unblocking bonus for the
+  dataset-source and executor seams that A9, B8 and A17 (later phases)
+  depend on. I-12 has impact 0.5 because per-call `record=` (I-01) and
+  `--no-store` already cover the urgent case. I-16's reach is Dana and Priya
+  (the people whose pipelines trust the exit code); I-17's confidence is 1.0
+  because the reviewers reproduced every case; I-18 is cosmetic (impact
+  0.5, Dana in notebooks only).
 
 ## Requirements carried by backlog items
 
-Agreed with the owner on 2026-09-26. The spec for each item must include
+Agreed with the owner on 2026-09-26, or carried from an iteration's
+reviews (marked with the iteration). The spec for each item must include
 these as acceptance scenarios.
 
-- **I-01 — result-sink seam.** Where outcomes go (results store, nothing, or
-  the caller) is one replaceable component, not hard-wired into the runner.
-  `run(..., record=False)` evaluates and returns outcomes without writing to
-  the store. See FEATURES.md, "Modular seams".
+- **I-01 — result-sink seam.** Done in iteration 1: `ResultSink` in
+  `engine/runner.py`; `record=False` means "no store sink".
 - **I-02 — `tablewatch serve` listens on 127.0.0.1 by default.** Binding
   anywhere else is an explicit opt-in (`--host`) and prints a clear warning
   to stderr that there is no authentication until Phase 4 (F1, F2). API
   tokens are not pulled forward. Security review required (inbound
   network). Applies to I-03 onwards, which serve through the same command.
+- **I-02 — from iteration 1.** (a) The server migrates the results store
+  **once, at startup**, not on every request that opens it; a store that
+  cannot be migrated stops `serve` with a clear message before it listens.
+  (b) If `serve` ever starts runs, it goes through the same `execute()` path
+  as the CLI and `tw.run()` with its own `trigger` value; a second copy of
+  the run logic is not acceptable (architect C2). (c) The API exposes a
+  run's `selection`; the spec says what form it shows until I-16 normalises
+  it.
+- **I-03 — from iteration 1.** CI builds the wheel and checks that the UI
+  bundle is inside it. Today only a test builds the wheel (added by
+  qa-engineer in iteration 1); CI does not.
 - **I-13 — security review required** (credentials; user SQL sent to the
   database in prepared form). Plain `validate` must stay credential-free;
   exit codes follow the existing 0/1/2/3 contract unchanged (see the H6 note
@@ -88,6 +113,24 @@ these as acceptance scenarios.
   `${env:}` references; a check file names a notifier, never an endpoint.
   Payloads never contain row data. The default `on:` is state changes only
   (failing, erroring, recovered).
+- **I-06 — from iteration 1.** Notifiers are result sinks and follow the
+  `ResultSink` rule the architect set: a sink raises only when its failure
+  means tablewatch could not do its job (the results store). A notifier
+  catches and logs its own failures; a Slack outage never changes the run's
+  exit code or stops another sink.
+- **I-14 — from iteration 1.** Two *processes* opening the same fresh store
+  at once must not race inside the migration (iteration 1 serialised
+  migrations within one process only; the cross-process race exists on
+  `main` as it did before). The spec includes that scenario on Postgres.
+- **I-16 — from iteration 1.** Spec 001 R12 is the starting scenario. A
+  partial match (`tablewatch run checks/inventory checks/inventry`) runs
+  today and exits 0; making it an error means a command that exits 0 today
+  exits 3. The owner decides that before the spec is ready (see
+  ITERATIONS.md, iteration 1).
+- **I-17 — from iteration 1.** Click reports usage errors (for example
+  `--fail-on bad`) with exit 2, which the contract reserves for "could not
+  evaluate". Whether usage errors should exit 3 is an exit-code question for
+  the owner, raised with I-16; the rest of I-17 does not depend on it.
 - **I-12 and I-07 — history needs recording.** A check that uses `change()`
   while recording is off for it is a load-time Diagnostic at
   `file:line:col`. Whichever of the two ships second adds that scenario.

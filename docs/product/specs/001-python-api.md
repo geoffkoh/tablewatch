@@ -9,7 +9,7 @@
 | Depends on | nothing (Phase 1 engine) |
 | Unblocks | I-02 REST API (and through it I-03..I-05), I-12 configurable recording |
 | Branch | `iter/001-python-api` |
-| Status | ready (PLAN, iteration 1) |
+| Status | done (REVIEW, iteration 1) — see `ITERATIONS.md` |
 
 ## Problem and persona
 
@@ -232,7 +232,8 @@ messages and the S4 defect all reproduce as written.
   `tw.run(retail, check_ids=[c.id], record=False)` for one check `c` from
   `tw.load(retail).checks` gives exactly that check.
 - Note *(REFINE)*: `check_ids` match by **prefix**, as `--check` does
-  (`check_ids=["a"]` selects the 3 retail checks whose id starts with `a`).
+  (`check_ids=["a"]` selects the 4 retail checks whose id starts with `a`;
+  corrected in REVIEW — the REFINE note said 3).
   That is intended, and the docstring and README must say so.
 
 **R4 — bad data is an outcome, unevaluable is an outcome, neither raises (rule 7)** `must`

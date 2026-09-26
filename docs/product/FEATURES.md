@@ -89,7 +89,7 @@ Notes:
 
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| B1 ★ | Python API `tablewatch.run(...)` | Embed in pipelines; foundation for the REST API | Dana | 2 | S | backlog |
+| B1 ★ | Python API `tablewatch.run(...)` | Embed in pipelines; foundation for the REST API | Dana | 2 | S | shipped (I-01) |
 | B2 | Connectors: **Databricks SQL first**, then Snowflake, BigQuery, SQL Server, Oracle, MySQL, Trino, Redshift | Where enterprise data lives | Priya | 3 | L (each S–M) | catalogue |
 | B3 | Timeouts, retry with backoff, per-datasource concurrency | A slow warehouse can't wedge a run | Priya | 3 | M | catalogue |
 | B4 | Partition-aware incremental runs; sampling | Checks on huge tables at bounded cost | Priya | 3 | M | catalogue |
@@ -234,4 +234,4 @@ requirements on the increments that first touch them (see BACKLOG.md):
 | --- | --- | --- | --- |
 | **Dataset source** — supplies the `FROM` clause and a stable dataset name for check identity | Table | File (A8), in-memory frame (A9), Spark DataFrame (B8), stream window (A17) | I-08 (files) |
 | **Executor** — runs a compiled plan | SQLAlchemy connection | DuckDB in-process (A8, A9), `spark.sql()` (B8), windowed runner (A17) | I-08 (files) |
-| **Result sink** — where outcomes go | Results store | None, caller callback (B1, A9), per E7 configuration | I-01 (Python API) |
+| **Result sink** — where outcomes go | Results store | None, caller callback (B1, A9), per E7 configuration | I-01 (Python API) — established: `ResultSink` in `engine/runner.py` |
