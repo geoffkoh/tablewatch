@@ -5,7 +5,8 @@ product-manager; see `PROCESS.md` for scoring and statuses.
 
 Re-scored and re-ranked by the product-manager in iteration 5 REVIEW
 (2026-09-27); I-26 was split and I-29 to I-32 added in iteration 5 REFINE
-the same day. Score = reach × impact × confidence ÷ effort, × 1.25 if other
+the same day. Iteration 6 PLAN (2026-09-27): I-29 in progress; I-33
+re-ranked to fourth after the owner's decision. Score = reach × impact × confidence ÷ effort, × 1.25 if other
 items depend on it (PROCESS.md). The rank follows the score except where
 the owner's priority says otherwise (below); every departure is stated.
 
@@ -32,17 +33,17 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | — | I-03 | UI shell + overview page, bundle shipped in the wheel — [spec 003](specs/003-ui-shell-overview.md) | C2 | I-02 ✓ | M | 4 | 2 | 0.8 | 4.0 | done (iteration 3) |
 | — | I-05 | Check detail 1: identity, rule, latest result, history chart against the threshold and history table — [spec 004](specs/004-check-detail-history.md) | C4 (without SQL and source) | I-03 ✓ | M | 3 | 2 | 0.8 | 3.0 | done (iteration 4) |
 | — | I-26 | Check detail 2: compiled SQL on the detail page, with this check's columns in the shared scan named (split from I-05 in iteration 4 PLAN; Source half split to I-29 in iteration 5 REFINE) — [spec 005](specs/005-check-detail-sql-source.md) | C4 (SQL) | I-05 ✓ | S | 2 | 1 | 0.8 | **2.0** | done (iteration 5) |
-| 1 | I-29 | Check detail 3: the check's own YAML source on the detail page, with its comments and the file's `filter:` (the Source half of I-26, split in iteration 5 REFINE) — [spec 006](specs/006-check-detail-source.md) (draft) | C4 (source) | I-26 ✓ | S | 2 | 1 | 0.8 | **1.6** | proposed — spec 006 drafted in iteration 5 REFINE; next PLAN re-checks it against `main` and makes it ready; ships next |
+| 1 | I-29 | Check detail 3: the check's own YAML source on the detail page, with its comments and the file's `filter:` (the Source half of I-26, split in iteration 5 REFINE) — [spec 006](specs/006-check-detail-source.md) | C4 (source) | I-26 ✓ | S | 2 | 1 | 0.8 | **1.6** | **in-progress** (iteration 6) — spec 006 re-checked against `main` and made ready in iteration 6 PLAN |
 | 2 | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree | E0, C2, C4 (hardening) | — | S | 3 | 2 | 0.8 | **4.8** | proposed — runs after I-29 (trigger met in iteration 4 REFINE) |
 | 3 | I-34 | `valid_values: [null]` is a silent pass: it compiles to `NOT IN (NULL, …)`, which is never true in SQL, so `invalid_*` counts nothing on that column. NULL in `valid_values` (and any list option compared with `IN`) is either a Diagnostic at `file:line:col` or dropped with a warning (NULL is already missing, not invalid); the data-steward decides in the spec (qa-engineer, iteration 5) | A (language hardening) | — | S | 2 | 2 | 1.0 | **4.0** | proposed — follows I-24 |
-| 4 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — follows I-24 (spec 005 D8: not folded into I-26) |
-| 5 | I-35 | The SQL section in plain words: "cannot compile" says the driver is not installed and which package to add, not `Can't load plugin: sqlalchemy.dialects:snowflake`; the malformed-URL message names the datasource and `tablewatch.yml`; a check whose datasource is not defined shows the name as written, marked "not defined", in the Datasource row and the SQL section; "computes 6 values, used by this check and 6 others" (data-steward, iteration 5) | C4 (hardening) | I-26 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — with or straight after I-27 |
-| 6 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 7 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 8 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
-| 9 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — exit code decided 2026-09-27: exit 3 |
-| 10 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
-| 11 | I-33 | Check identity for `failed_rows` and `sql_metric`: `condition:` and `query:` do not feed the derived id, so two `failed_rows` checks on one table in one file collide, the loader reports a duplicate, and nothing in the project runs until one gets an `id:` (data-steward, iteration 5) | A (language hardening) | owner decision | S | 2 | 1 | 1.0 | **2.0** | proposed — **waits on the owner** (changes check ids: see ITERATIONS.md, iteration 5 question); if option 1, before the first release |
+| 4 | I-33 | Check identity for `failed_rows` and `sql_metric`: `condition:` and `query:` do not feed the derived id, so two `failed_rows` checks on one table in one file collide, the loader reports a duplicate, and nothing in the project runs until one gets an `id:` (data-steward, iteration 5) | A (language hardening) | owner decision ✓ | S | 2 | 1 | 1.0 | **2.0** | proposed — **ready to plan**: owner chose option 1 on 2026-09-27 (change the id now, no history migration). **Gate: before the first PyPI release.** Breaking for existing history of those checks (CHANGELOG note when it ships) |
+| 5 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — follows I-24 (spec 005 D8: not folded into I-26) |
+| 6 | I-35 | The SQL section in plain words: "cannot compile" says the driver is not installed and which package to add, not `Can't load plugin: sqlalchemy.dialects:snowflake`; the malformed-URL message names the datasource and `tablewatch.yml`; a check whose datasource is not defined shows the name as written, marked "not defined", in the Datasource row and the SQL section; "computes 6 values, used by this check and 6 others" (data-steward, iteration 5) | C4 (hardening) | I-26 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — with or straight after I-27 |
+| 7 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 8 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 9 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
+| 10 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — exit code decided 2026-09-27: exit 3 |
+| 11 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
 | 12 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
 | 13 | I-08 | Files as datasets (CSV, Parquet, JSON via DuckDB); establishes the dataset-source and executor seams | A8 | — | S | 1 | 2 | 0.8 | **2.0** | proposed |
 | 14 | I-14 | Postgres results store: the store verified on Postgres in CI (migrations, concurrent writers from two servers, column widths), documented for a shared deployment | E5 | — | S | 1 | 2 | 1.0 | **2.0** | proposed |
@@ -90,14 +91,16 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
   sentence QA's `sql.qa.test.tsx` pins. Together they may exceed S; the
   PLAN that picks I-27 decides whether to fold I-35 in or take it
   straight after.
-- **I-33 (2.0) waits on the owner, then sits after I-17.** It is loud
-  (the loader names both lines and says to add an `id:`), so a user is
-  never misled, but it stops the whole project on a common pattern. The
-  fix changes check ids, which needs the owner (see ITERATIONS.md,
-  iteration 5). If the owner chooses to change ids before the first
-  release, its gate is "before the first PyPI release" and it moves up
-  to just after I-34, because every release after that makes it cost
-  more.
+- **I-33 (2.0) ranks fourth, just after I-34 (iteration 6 PLAN).** The
+  owner chose option 1 on 2026-09-27: change the id now, before the first
+  release, with no history migration. Its gate is "before the first PyPI
+  release", because every release after that makes it cost more. It is
+  loud rather than silent (the loader names both lines and says to add an
+  `id:`), so it sits below I-34's silent pass, but it stops the whole
+  project on a common pattern. **Breaking for recorded history:** every
+  `failed_rows` and `sql_metric` check without an explicit `id:` gets a
+  new id and its history starts again; the CHANGELOG says so when it
+  ships.
 - **I-30 (2.0) sits with the store and server hardening, after I-14.**
   Its gate matters more than its rank: it must ship before Phase 4, and
   before any recommendation to serve beyond loopback. I-31 (0.5) is the
@@ -311,18 +314,20 @@ these as acceptance scenarios.
   reads "computes 6 values, used by this check and 6 others" and "used
   by this check only". Update `sql.qa.test.tsx` with the wording, not
   around it.
-- **I-33 — from iteration 5 (data-steward; owner decision pending).**
+- **I-33 — from iteration 5 (data-steward; owner chose option 1, 2026-09-27).**
   Starting scenario, reproduced by the PM: one file on dataset `orders`
   with two `failed_rows` checks (`condition: total < 0` and `condition:
   customer_id is null`) — `validate` exits 3 with "duplicate check (also
   at checks/orders.yml:4:5) — give one of them an explicit `id:`", and
   `run` runs nothing. The same for two bare `sql_metric` checks with
-  different `query:`. If the owner chooses to change ids: `condition:`
+  different `query:`. The fix (owner's option 1): `condition:`
   and `query:` feed `derive_check_id` in whitespace-normalised form (as
   `where:` does), no other metric's id changes (retail's `list` golden
   file changes only on those lines, and the spec lists them), and the
   CHANGELOG has a breaking-change note. `docs/check-language.md`'s
-  identity section changes with it.
+  identity section changes with it. Tests that pin today's
+  `failed_rows` id `ed669ca6e5532a59` ("No negative amounts", specs 005
+  and 006) are updated in the same PR.
 - **I-30 — from iteration 5 (security-reviewer, F1).** Metric errors
   that quote a row value today: `float(value)` in `metrics/base.py`
   (`could not convert string to float: 'N/A'`) and freshness's

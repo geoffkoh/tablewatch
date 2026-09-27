@@ -187,6 +187,16 @@ Options:
 
 I-33 waits for this decision; nothing else depends on it.
 
+**Owner decision, 2026-09-27: option 1.** Change the hash now, before
+the first release: `condition:` (`failed_rows`) and `query:`
+(`sql_metric`) feed the derived id; no history migration. This is a
+**breaking change for existing history**: every `failed_rows` and
+`sql_metric` check without an explicit `id:` gets a new id, and its
+recorded results no longer join its new history. The CHANGELOG carries
+a breaking-change note when it ships. Recorded by the PM in iteration 6
+PLAN: I-33 is ready to plan, gated "before the first PyPI release", and
+ranks fourth, just after I-34 (BACKLOG). I-29 stays this iteration.
+
 ### Owner instruction, 2026-09-27
 
 The owner instructed the loop to **continue iterating until all features

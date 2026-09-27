@@ -7,8 +7,8 @@
 | Phase | 2 (`0.2.0`) |
 | Size | S |
 | Depends on | I-26 (spec 005: the `CheckPage` section split, `CodeBlock`, `CopyButton`, `lib/clipboard.ts`, invisible-character marking, the `useLoads` slot pattern for a check's sections) |
-| Branch | `iter/006-check-detail-source` (to be created) |
-| Status | **draft**: carried out of spec 005 with every iteration 5 REFINE decision on the Source half already made. The next PLAN re-checks it against `main` after spec 005 merges (line numbers, ids, component names) and sets it `ready`. The security-reviewer reviews it in that REFINE (brief below); the architect and ui-engineer confirm nothing moved |
+| Branch | `iter/006-check-detail-source` |
+| Status | **ready** (iteration 6 PLAN, 2026-09-27, against `main` at `8687ebc`). Carried out of spec 005 with every iteration 5 REFINE decision on the Source half already made; re-checked against what spec 005 shipped (see "Iteration 6 PLAN re-check"). A short REFINE round remains: the security-reviewer's first look (brief below) and three confirmations (architect, ui-engineer) |
 
 Why this exists: spec 005 grew past S in REFINE (see its "Size"), so the
 pre-planned split was applied. Everything below was written and reviewed
@@ -87,6 +87,13 @@ Every field is `required` in `openapi.json` (nullable where shown).
 - **Flow style** (`checks: [a, b]`): the line(s) of the item's own node,
   no comment extension. Two checks on one line both get that whole line,
   including `checks: [`.
+- **Flow style sharing a line with another key (iteration 6 PLAN, R6):**
+  if any line of a flow-style span also holds part of a top-level key
+  other than `checks` (its key or its value), the span is **unavailable**
+  (A2: 200, `path` set, lines and `text` null). This loads today and would
+  otherwise serve `dataset:` and `filter:`:
+  `{dataset: sales.returns, filter: "status != 'test'", checks: [row_count > 0]}`.
+  See Y17.
 - **Multi-document files** are rejected by the loader today and never
   load. Unchanged.
 - **`filter`** is the dataset `filter:` from the check's own file, never
@@ -135,9 +142,14 @@ sentences drop out and nothing else changes.
 replaced by the file in Y4, plus `checks/sales/returns.yml` (Y10),
 `checks/flow.yml` and `checks/flowmulti.yml` (Y8). `tablewatch validate`
 on it: `6 datasets, 18 checks — no problems found` (data-steward,
-iteration 5 REFINE; PLAN re-confirms).
+iteration 5 REFINE; **re-confirmed in iteration 6 PLAN** by building the
+fixture and running the loader on `8687ebc`). `commented` is `tests/`'s
+existing `filtered` fixture (spec 005, which already writes Y10's
+`returns.yml`) plus Y4's `orders.yml` and Y8's two files.
 
-Check ids and spans (iteration 5, against `main`; PLAN re-confirms):
+Check ids and spans (iteration 5; **every id and start line re-confirmed
+in iteration 6 PLAN** with `load_project` on `retail` and `commented`;
+spans are by the rule above, checked by hand against the files):
 
 | id | file | check | span on `retail` | span on `commented` |
 | --- | --- | --- | --- | --- |
@@ -149,6 +161,14 @@ Check ids and spans (iteration 5, against `main`; PLAN re-confirms):
 | `b744847e7c518188` | returns.yml | `row_count > 0` | — | 6–7 |
 | `2e17ee98b3e57dc9` | returns.yml | "Every return has an order" | — | 8–10 |
 | `4a831091035ca6c6` | returns.yml | `avg(amount) between 1 and 500` | — | 11–12 |
+| `b6ecae522c1d4aaf` | customers.yml | `invalid_count(email) = 0` | 10–12 | 10–12 |
+| `e3a77b3bf2c0c560` | flow.yml | `row_count > 0` | — | 3 |
+| `db9a7d9aa48da0b3` | flow.yml | `duplicate_count(id) = 0` | — | 3 |
+| `50da186584df05e1` | flowmulti.yml | `row_count > 0` | — | 3 |
+| `1b12d65bb5987f8a` | flowmulti.yml | "Positive price" | — | 4 |
+
+`Check.location` is the item's **content** column (`  - row_count > 0`
+is `4:5`), not the dash's (column 3). D2's `c` is the dash's column.
 
 ### Identity (tech lead, pytest)
 
@@ -317,9 +337,23 @@ Check ids and spans (iteration 5, against `main`; PLAN re-confirms):
 - When `/source` for `4a831091035ca6c6`
 - Then `filter` is `{line: 3, text: "status != 'test'", applies: true}`
 - And for every `retail` check, `filter` is null
-- And given a check file with `filter: status != 'test'` and a
-  `sql_metric` check, that check's `filter.applies` is false, and a
-  `schema` check's is false too
+- And given `retail` plus `checks/sales/filtered.yml`
+
+  ```yaml
+  dataset: sales.returns
+  filter: status != 'test'
+  checks:
+    - sql_metric > 0:
+        name: Custom
+        query: SELECT 1
+    - schema:
+        required_columns: [id]
+  ```
+
+  "Custom" (`98cd31ce24b6afef`) has `filter`
+  `{line: 2, text: "status != 'test'", applies: false}`, and the `schema`
+  check (`2f9a43de2ae47ba9`) has `applies: false` too. (`failed_rows` is
+  scoped: its `applies` is true.)
 
 **Y13: a block scalar with a blank line inside** `should`
 - Given a check file
@@ -340,8 +374,11 @@ Check ids and spans (iteration 5, against `main`; PLAN re-confirms):
 
 - Then "Refund ratio" is lines 3–9 (the blank line 8 inside the query
   kept, the blank line 10 dropped), and `row_count > 0` is line 11 alone
-- And a variant whose last `query:` content line starts with `#` keeps
-  that line (it is SQL text, not a YAML comment)
+- And the variant with line 9 as `        # WHERE amount > 0` (validated:
+  it loads with no problems) is still lines 3–9: line 9 is SQL text in a
+  block scalar, not a YAML comment
+- (On `retail` plus this file as `checks/sales/refunds.yml`: "Refund
+  ratio" is `d0ebb1527db76d0e`, `row_count > 0` is `60a5659cd85bdeb3`.)
 
 **Y14: span unavailable** `must` (architect A2)
 - Given the span function patched to raise for one check
@@ -352,7 +389,11 @@ Check ids and spans (iteration 5, against `main`; PLAN re-confirms):
 **Y15: a configured checks directory** `should` (architect A3)
 - Given `retail` with its checks moved to `rules/` and `checks_path:
   rules` in `tablewatch.yml`
-- Then Y1's `path` is `"rules/sales/customers.yml"`
+- Then the `missing_percent(email) < 5%` check's `path` is
+  `"rules/sales/customers.yml"`, with Y1's lines and text. Its id is
+  **`1c895d786d75783b`**, not Y1's: the path feeds the id, so moving the
+  files starts new ids (corrected in iteration 6 PLAN; the draft reused
+  Y1's id)
 
 **Y16: symlinked check files are served under the link's path** `must`
 (documents today's behaviour; F3 is a pending owner question)
@@ -360,6 +401,31 @@ Check ids and spans (iteration 5, against `main`; PLAN re-confirms):
   project
 - Then its checks load (as today) and `/source` serves its lines under
   the link's path. The README says so plainly.
+
+**Y17: a flow-style check that shares a line with another key** `must`
+(security R6; iteration 6 PLAN)
+- Given `retail` plus `checks/sales/one.yml`, one line:
+
+  ```yaml
+  {dataset: sales.returns, filter: "status != 'test'", checks: [row_count > 0]}
+  ```
+
+  and `checks/sales/two.yml`:
+
+  ```yaml
+  dataset: sales.returns
+  checks: [row_count > 0]
+  filter: "x > 1"
+  ```
+
+  (both load today with no problems: `5 datasets, 20 checks`)
+- Then `/source` for `ec91af87c6b3495e` (`one.yml`) answers 200 with
+  `path` `"checks/sales/one.yml"`, `start_line`, `end_line` and `text`
+  null, and `filter` `{line: 1, text: "status != 'test'", applies: true}`
+- And `/source` for `05f53a5d2c6df89c` (`two.yml`) is line 2,
+  `checks: [row_count > 0]` (the `filter:` on line 3 is not on the
+  item's line)
+- And no `/source` body's `text` contains `dataset:` or `filter:`
 
 ### Exposure (tech lead; security-reviewer judges)
 
@@ -374,6 +440,13 @@ with the envelope.
   `tablewatch: warning: serving on {host} with no authentication — anyone who can reach this address can read this project's check files (comments included), the SQL each check runs, and its results: data values, database error messages that can quote row values, and owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn it on yet).`
   The README quotes it verbatim; `--host` help says "serves check files,
   SQL and results without authentication".
+- Today (spec 005's interim, `cli/main.py` and README line 432) the
+  sentence says "read this project's checks, the SQL…" and the help says
+  "serves checks, SQL and results…". Only "checks" → "check files
+  (comments included)" in the warning, and "checks" → "check files" in
+  the help, change. Security accepted the interim only until the PR that
+  starts serving check files, which is this one: this scenario ships
+  here or `/source` does not ship.
 
 ### The page (ui-engineer, vitest; data-steward by hand)
 
@@ -424,7 +497,22 @@ of loads settles; the identity panel's "Source" row links to `#source`.
   `_defaults.yml`."
 
 **P14: invisible characters** `should` (security R5): as spec 005's P14,
-for the Source block and the path.
+for the Source block and the path, using the existing `Marked`
+component (it keeps the character in the DOM and draws the marker from
+CSS, so P4's `textContent` rule still holds).
+- A vitest fixture: a comment line containing U+202E and a `path` of
+  `checks/sales/orders​.yml`; both are marked in place, Copy
+  copies `text` byte for byte
+
+**P16: long lines** `should` (checked by hand; iteration 6 PLAN)
+- The Source block does **not** soft-wrap (unlike spec 005's SQL block,
+  P12): YAML's indentation is its meaning, and a wrapped line would sit
+  under the wrong line number. It scrolls sideways inside itself; its
+  container has `min-width: 0`; it is a focusable, labelled region
+  (`tabIndex=0`, `role="region"`)
+- At a 360 px wide viewport, with a 200-character `valid_regex:` line,
+  **the page never scrolls sideways**, and the line numbers stay beside
+  their lines while the block scrolls
 
 **P15: span unavailable** `must`: given Y14's response, the section shows
 "The lines of this check could not be shown; it is in `<path>`."
@@ -444,10 +532,51 @@ for the Source block and the path.
   never a diagnostic or exception.
 - Rule 6: `/source` never touches a datasource.
 - Check identity is untouched (I1).
+- **I-33 ships after this and changes `failed_rows` ids** (owner
+  decision, 2026-09-27): `ed669ca6e5532a59` ("No negative amounts") will
+  get a new id then. This spec's tests pin today's id; I-33 updates them.
+
+### Open questions for the tech lead (iteration 6 PLAN)
+
+- **Q1: where the body ends.** The round-trip nodes do not carry end
+  marks. One option: compose the same text once more
+  (`ruamel.yaml.YAML().compose(text)`; no second file read) and take each
+  item node's `end_mark` and each block scalar's extent from it. The
+  architect confirms or names another; "next item's start − 1" stays
+  ruled out.
+- **Q2: the dash column `c`.** `Check.location` is the content column,
+  not the dash's (see the table above). Take `c` from the item line's
+  text or the sequence node; do not change `location`.
+- **Q3: `CodeBlock` gets a line-numbered, non-wrapping variant** (P4,
+  P16) or the Source section gets its own block beside it; ui-engineer's
+  call. `textContent` must equal `text`, so the newlines between line
+  elements stay in the DOM.
+
+### Iteration 6 PLAN re-check (against `8687ebc`)
+
+- Loader run on `retail`, `commented`, and the Y9, Y12, Y13, Y15 and Y17
+  variants (`load_project` and `tablewatch validate`, all no problems);
+  every id and start line in this spec is from those runs.
+- **Corrected:** Y15's id (the path feeds the id). **Added:** the
+  flow-style-sharing-a-line rule and Y17 (a real R6 leak in the draft);
+  P16 (the Source block cannot reuse `CodeBlock` as is: it soft-wraps
+  and has no line numbers); concrete fixtures for Y12, Y13 and P14; the
+  interim text X3 replaces; Q1–Q3.
+- **Unchanged:** the contract, the architect's shape, D2 rules 1–4, the
+  `filter` decision, every scenario's expected lines.
+- Spec 005's parts this reuses exist on `main`: `components/check/`
+  (`SqlSection` is the model for P6/P7/P11), `CodeBlock`, `CopyButton`,
+  `Marked`, `lib/clipboard.ts`, `lib/invisible.ts`, `Ago`, the `#sql`
+  scroll in `CheckPage.tsx`, the golden `tests/golden/retail-list.txt`,
+  and the `filtered` and `remote` fixtures in `tests/test_check_sql.py`.
+- **User docs in this PR** (data-steward): the README's `/source` row,
+  the check page's Source section, the X3 warning text, and the symlink
+  sentence (Y16).
 
 ### Brief for the security-reviewer (this spec's REFINE)
 
-1. R6 as written into Y6, including the flow-style exception.
+1. R6 as written into Y6, including the flow-style exception, and Y17
+   (a flow-style line shared with another key: span unavailable).
 2. `CheckSource.filter`: a value from the same file, already served by
    `/sql`, served as its own field. Confirm or reject (see the decision
    above).
@@ -466,6 +595,11 @@ for the Source block and the path.
 - **architect**: required (`config/loader.py`, `checks/model.py`, a new
   provisional public attribute).
 - **ui-engineer**: builder of the Source section.
+
+**REFINE round before BUILD (short):** security-reviewer (first look at
+this spec: brief items 1–4, including Y17); architect (Q1 and Q2 only:
+the shape is unchanged); ui-engineer (Q3 and P16). The data-steward's D2
+rules and fixtures are unchanged; the data-steward reviews at VERIFY.
 
 ## Size
 
