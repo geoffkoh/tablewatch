@@ -33,7 +33,7 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | 4 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
 | 5 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
 | 6 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
-| 7 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — needs an owner decision on the exit code (see below) |
+| 7 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — exit code decided 2026-09-27: exit 3 |
 | 8 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
 | 9 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
 | 10 | I-08 | Files as datasets (CSV, Parquet, JSON via DuckDB); establishes the dataset-source and executor seams | A8 | — | S | 1 | 2 | 0.8 | **2.0** | proposed |
@@ -101,8 +101,8 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 - **I-16 (3.2) comes next, not earlier.** It fixes a silent false pass — a
   misspelt folder or tag next to a real one runs the rest and exits 0 — so
   its impact is high, but it needs a typo to bite, the owner's order puts
-  the UI chain and alerting first, and it needs an owner decision before it
-  can be specified. It outranks I-10 (2.4) on score.
+  the UI chain and alerting first. The owner's exit-code decision
+  (2026-09-27: exit 3) unblocks its spec. It outranks I-10 (2.4) on score.
 - **I-17 (2.0) sits above I-10 (2.4)** because it is hardening of what is
   already shipped and pairs naturally with I-16 (both touch the CLI's error
   paths); if I-16 waits on the owner, I-17 can go alone.
@@ -359,12 +359,13 @@ these as acceptance scenarios.
 - **I-16 — from iteration 1.** Spec 001 R12 is the starting scenario. A
   partial match (`tablewatch run checks/inventory checks/inventry`) runs
   today and exits 0; making it an error means a command that exits 0 today
-  exits 3. The owner decides that before the spec is ready (see
-  ITERATIONS.md, iteration 1).
+  exits 3. **Decided 2026-09-27:** a selector that matches nothing, even
+  beside ones that match, exits 3 and runs nothing, naming the selector;
+  the same in `tw.run()`. A breaking change, called out in the CHANGELOG.
 - **I-17 — from iteration 1.** Click reports usage errors (for example
   `--fail-on bad`) with exit 2, which the contract reserves for "could not
-  evaluate". Whether usage errors should exit 3 is an exit-code question for
-  the owner, raised with I-16; the rest of I-17 does not depend on it.
+  evaluate". **Decided 2026-09-27:** usage errors exit 3 ("nothing ran").
+  A breaking change, called out in the CHANGELOG.
 - **I-17 — from iteration 2 (PM check in REVIEW).** A malformed
   `results.url` (for example a non-numeric port) makes `tablewatch runs`
   print a `ValueError` traceback and exit 1. It must be a one-line message

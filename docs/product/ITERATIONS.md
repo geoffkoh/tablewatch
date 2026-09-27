@@ -124,6 +124,8 @@ and how they were resolved, what was deferred, and what was learned.
   code for a selector that partly matches (I-16), and whether click usage
   errors exit 3 instead of 2 (I-17). They do not block the UI chain or
   I-24; I-16 cannot be specified without them.
+  *Settled 2026-09-27, after this entry: both exit 3 (see iteration 1's
+  question for the owner).*
 - **Learned:**
   - All four blocking findings were at the edges the spec's reviewer
     brief named (dotted ids, huge and near-equal values, dense marks,
@@ -476,6 +478,12 @@ decide:
    2, which the contract reserves for "could not evaluate a check".
    Proposal: exit 3, which already means "nothing ran". Scripts that test
    for exit 2 on a typo would see 3.
+
+**Decided by the owner, 2026-09-27: both proposals accepted.** (1) A
+selector that matches nothing, even beside ones that match, exits 3 and
+runs nothing, naming the selector — in the CLI and `tw.run()` alike. (2)
+Click usage errors exit 3. Both are breaking changes to exit codes and go
+in the CHANGELOG as such when they ship.
 
 ## Before the loop
 
