@@ -96,8 +96,10 @@ frontend/src/
   api/types.ts             aliases into schema.gen.ts (Project, CheckSummary, CheckDetail,
                            Rule, Condition, HistoryEntry, HistoryPage, Run, Unit, ...)
   api/api.ts               the ONE client: getProject, listChecks, listRuns, getCheck,
-                           getHistory; failureOf, isNotFound
+                           getHistory, getCheckSql; failureOf, isNotFound
   lib/route.ts             parseRoute(path), checkHref(id), the id pattern
+  lib/clipboard.ts         canCopy, copyText, selectContents: the only clipboard code
+  lib/invisible.ts         which code points are marked, and the text split into segments
   lib/useLoads.ts          the one load/refresh hook (named slots, generation guard,
                            busy, the minute clock, reload, capture)
   lib/status.ts            statuses, order, labels, SINCE_PREFIX, counting
@@ -109,11 +111,15 @@ frontend/src/
   components/              Header, ProjectProblems, Summary, LatestRun, CheckTable,
                            LatestResult (Result, When, LastEvaluatedNote), HistoryTable,
                            StatusIcon/StatusBadge, shapes (status shapes), Time (Ago),
-                           LoadError
+                           LoadError (useId heading id; `level` 2|3; `scope` page|section),
+                           CodeBlock, CopyButton, Marked (invisible characters)
+  components/check/        the check page's sections: Identity, RuleSection, LatestSection,
+                           NotFoundPanel, HistorySection, SqlSection; useOlderHistory
+                           (older pages, tagged with the load round, dropped on refresh)
   components/chart/        HistoryFigure (title, key, captions), HistoryChart (SVG and
                            interaction), ChartKey
   pages/Overview.tsx       the overview
-  pages/CheckPage.tsx      a check's page
+  pages/CheckPage.tsx      a check's page: decides which sections show from what loaded
   pages/NotFound.tsx       "Page not found"
   styles/tokens.css        colour tokens, light and dark (status and chart)
   styles/app.css           layout, components and the chart
@@ -299,6 +305,14 @@ data on screen with the error. A network failure reads "Could not reach the
 tablewatch server. Is `tablewatch serve` still running?". A failure of
 `/project` gets its own panel ("Could not load the project").
 
+`LoadError` is shared by every page. Each one takes its heading id from
+`useId`, so several failures on one page never share an id. By default it is
+page-scoped: an `<h2>` and "Nothing below is shown until it loads, so no
+count can be mistaken for the whole picture." A failure confined to one
+section of an otherwise loaded page passes `scope="section"` (it reads "Only
+this section is missing; the rest of the page loaded.") and, when nested
+under the section's own `<h2>`, `level={3}`.
+
 When refreshes overlap, only the newest one may update the page. An older
 answer that arrives late is dropped.
 
@@ -310,9 +324,11 @@ overview" link to `/`. It makes no API requests.
 
 ## 4A. The check page (`/checks/<id>`)
 
-Spec 004 (I-05, first half). It reads `GET /api/v1/project`,
-`GET /api/v1/checks/{id}`, `GET /api/v1/checks/{id}/history?limit=200` and
-`GET /api/v1/runs?limit=1` in parallel, through the shared hook. The
+Spec 004 (I-05, first half) and spec 005 (the SQL). It reads
+`GET /api/v1/project`, `GET /api/v1/checks/{id}`,
+`GET /api/v1/checks/{id}/history?limit=200`, `GET /api/v1/runs?limit=1` and
+`GET /api/v1/checks/{id}/sql` in parallel, through the shared hook, as five
+slots. Refresh reloads all five. The
 document title is "*check name* · tablewatch" ("Check not found ·
 tablewatch" for an unknown id).
 
@@ -592,6 +608,105 @@ Times in GMT+8.", and the columns **When**, **Outcome**, **Value**,
 The id is shown only after it has passed the route's id pattern, and only
 as text inside `<code>`.
 
+### 4A.9 SQL (spec 005)
+
+The last section, below the history, headed "SQL" (`<section id="sql">`).
+It is always **open**: no `<details>`, so `#sql`, find-in-page and the tests
+reach it. It shows what a run of the check's **whole dataset** sends,
+compiled from the check files as loaded; it never claims to be the query
+behind a result. Words never used in it: "produced", "latest", "this
+result", "ran", "executed" (a vitest guard runs on every fixture). It says
+"values", never "measures".
+
+**A scan** (`kind: "scan"`):
+
+> When tablewatch checks `sales.customers` on `lake` (duckdb), it reads the
+> table once with this statement. That one read computes 4 values, for this
+> check and 3 others. This check uses:
+>
+> - `m0` `count(*)`, also used by 1 other check
+> - `m1` `sum(CASE WHEN … END)`
+
+"N others" is the scan's `shared_by` ("for this check only" at 0); "also
+used by N other check(s)" is the column's, shown only above 0. Counts are
+pluralised. Then the statement in a code block, then **Copy the scan**.
+
+**A query** (`kind: "query"`): "This check sends its own statement to
+`sales.customers` on `lake` (duckdb)." plus, when `shared_by` > 0, "N other
+checks use the same statement." Then its block and **Copy the query**.
+Statements appear in the API's (run) order. **A kind the page does not
+know is skipped** without an error (the union is open, architect A4).
+
+**After the statements** ("statements" here means those of a known kind;
+a list holding only unknown kinds counts as none):
+- a schema lookup: "This check reads the list of columns in `<dataset>`
+  and their types from the database." plus, with no statements, "It reads
+  no rows, so it has no SQL.";
+- no statements, no lookup, no error: "This check sends no statement of its
+  own.";
+- keyed on the check's `unit` (from `/checks/{id}`; absent when that has
+  not answered): `percent` "The database returns counts; tablewatch
+  computes the percentage from them."; `duration` "The database returns a
+  timestamp; tablewatch computes how long ago it was at the time of each
+  run, so the same data looks older the later the run."; `count` and
+  `number` nothing;
+- a caption: "Built from the check files as loaded, for a run of every
+  check on `<dataset>`. Results do not store their SQL; a result recorded
+  before these files were loaded may have used different SQL." (without
+  the "for a run of every check" clause when there is no scan).
+
+**Cannot compile** (`error` set): "Cannot compile" and the error text in a
+code block (wrapping, lines kept, a left rule in `--tw-error-fg`). No alert,
+no page-level banner: the rest of the page is unaffected.
+
+**Code blocks** (`CodeBlock`): `<pre>` in the system monospace stack,
+`--tw-text` on `--tw-surface` with a `--tw-border` rule; `white-space:
+pre-wrap; overflow-wrap: anywhere`, no line numbers, no maximum height, no
+highlighting. The block **shows** the `;` so a hand selection equals what
+Copy copies. Each is a focusable, labelled region ("The scan, duckdb"), so
+a keyboard user can reach and scroll it; the section and blocks have
+`min-width: 0` so the page never scrolls sideways.
+
+**Invisible characters** (P14, `lib/invisible.ts`, `Marked`): U+200B–200F,
+U+202A–202E, U+2060–2069, U+FEFF, U+00AD, and C0/C1 controls (and DEL)
+except tab and newline are wrapped in a `span.invisible-char` with
+`data-cp="U+202E"`. The character stays in the DOM, isolated with
+`unicode-bidi: isolate` so it cannot reorder its neighbours; a `[U+202E]`
+marker is CSS generated content (`attr(data-cp)`), so it is not part of the
+text a selection copies. Scan columns in the list, and the dataset and
+datasource names in the sentences, are marked the same way.
+
+**Copy** (`CopyButton`, `lib/clipboard.ts`): copies the API's `sql` plus
+`;` (from the string, never the DOM). "Copied" shows for 2 seconds in a
+polite live region (`aria-live`, not a second `role="status"`); a rejected
+write shows "Could not copy. Select the text and copy it.". `canCopy()` is
+`isSecureContext` and `navigator.clipboard.writeText`; where it is false
+(plain HTTP on a LAN address) the button is **Select all** (accessible name
+"Select all of the scan"), which selects the block's text with
+`selectAllChildren`. `lib/clipboard.ts` is the only module that touches
+`navigator.clipboard`, and there is no `execCommand` fallback (both are
+source rules in `test/sql.test.tsx`). A future `Permissions-Policy` must
+keep `clipboard-write=(self)`.
+
+**Loading and failures.** The section appears once `/checks/{id}` has
+answered, and not at all for an id nobody knows.
+
+| `/checks/{id}` | `/history` | `/sql` | The SQL section shows |
+| --- | --- | --- | --- |
+| any but loading | any | loading | "Loading…" |
+| 200, 503 or network | any | 200 | the SQL, in full (a store outage does not touch `/sql`; P10's sentence is absent without `/checks/{id}`) |
+| 404 | 200 | 404 | one line: "SQL is not available: this check is not in the loaded check files." No alert |
+| 404 | 404 | any | nothing: the not-found panel is the page |
+| not 404 | any | 404, 5xx or network | a section-scoped alert (`<h3>` "The SQL could not be loaded.", the message, **Try again**); the status line reads "Could not load everything." |
+
+A late `/sql` answer from an earlier round is dropped by the hook's
+generation guard.
+
+**`#sql`.** `/checks/<id>#sql` scrolls the section into view once, after
+the first round of loads settles (the section does not exist when the
+browser first looks for the fragment). The route parser ignores the
+fragment.
+
 ## 5. Status: label, icon, colour
 
 Every status has a **text label**, an **icon shape** and a **colour**.
@@ -779,7 +894,7 @@ tooltip draws `attr(data-full)` on `:focus-visible`.
 - Status is never colour alone (§5). The tests assert labels and icon
   accessible names, not colours.
 - The check page (§4A): one `<h1>` (the check's name), labelled sections
-  (Rule, Latest result, History), the chart as `role="img"` with a title and
+  (Rule, Latest result, History, SQL), the chart as `role="img"` with a title and
   a summary description, a keyboard-operable focus group for its tooltip,
   and the history table as the chart's full text alternative.
 
@@ -829,6 +944,8 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | --- | --- |
 | `test/overview.test.tsx` | O1–O11 and W3 at component level (W3 now uses `/runs/<id>`, since `/checks/<id>` is a page) |
 | `test/qa.test.tsx` | spec 003 VERIFY edge cases (qa-engineer) |
+| `test/sql.test.tsx` | spec 005 P1–P15 and S9 on the page: words, the wording guard on every fixture, schema, cannot compile, not loaded, section-scoped failures and a late `/sql` after Refresh, text is text, copy / Copied / refused / Select all, P10, `#sql`, regions, unknown kinds; the clipboard source rules |
+| `test/loaderror.test.tsx` | `LoadError`: unique `useId` ids, heading level, section wording |
 | `test/check.test.tsx` | spec 004 D1–D20 at component level, including the rendered chart (lanes, bands, markers, streak, tooltip by keyboard and pointer, label collisions) |
 | `test/chart.test.ts` | the chart's pure functions: the D6 bands table, the D10 tick table and domain cases, series and lanes (D5, D9), rule changes and the band's span (D7), recorded outcomes (D8), other metrics (D20), label stacking and rows, hover columns, tooltip placement, the key, x ticks, the summary (D11) |
 | `test/route.test.ts` | the route table and `checkHref` (decision 7) |
@@ -852,6 +969,12 @@ histories of `b1ceb8262d8b5441` and `32c8f939b90f6367`, and spec 004's
 states, with runs C, M and N at 07:30, 08:00 and 08:30 UTC. Every fixture is typed with the generated
 types. The clock is fixed with fake `Date` only, at B + 3h 43s, so every
 age in the fixtures reads "3 hours ago" and rounding down is exercised.
+`test/fixtures/sql.ts` holds `/sql` bodies captured from the in-process app
+on a scratch copy of `examples/retail` on 2026-09-27 (`b1ceb8262d8b5441`,
+`af0289a72fedd946`, `fbc3aa0b93b66eee`, `32867fbe86f483f3`,
+`a81b0374b0b04f06`), plus `remote`'s cannot-compile answer, `broken`'s,
+and derived bodies for S10, P8, P14 and P15. The check-page stub answers
+`/sql` by default from these (404 when `/checks/{id}` is 404).
 
 ## 11. Known limits and follow-ups
 

@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/checks/{check_id}/sql": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Check Sql */
+        get: operations["get_check_sql"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/project": {
         parameters: {
             query?: never;
@@ -164,6 +181,30 @@ export interface components {
             items: components["schemas"]["CheckSummary"][];
             /** Total */
             total: number;
+        };
+        /**
+         * CheckSql
+         * @description The SQL a check compiles to, without connecting: `GET /checks/{id}/sql`.
+         *
+         *     `sql` is shown with values inlined and without a trailing `;`; a run
+         *     sends the same statement with bound parameters. Nothing about the
+         *     datasource but its name and dialect is served.
+         */
+        CheckSql: {
+            /** Check Id */
+            check_id: string;
+            /** Dataset */
+            dataset: string;
+            /** Datasource */
+            datasource: string;
+            /** Dialect */
+            dialect: string | null;
+            /** Error */
+            error: string | null;
+            /** Schema Lookup */
+            schema_lookup: boolean;
+            /** Statements */
+            statements: (components["schemas"]["ScanStatement"] | components["schemas"]["QueryStatement"])[];
         };
         /** CheckSummary */
         CheckSummary: {
@@ -387,6 +428,21 @@ export interface components {
             datasets: number;
         };
         /**
+         * QueryStatement
+         * @description A statement of the check's own, such as a duplicate count.
+         */
+        QueryStatement: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "query";
+            /** Shared By */
+            shared_by: number;
+            /** Sql */
+            sql: string;
+        };
+        /**
          * Rule
          * @description The check's conditions as this server loaded them.
          *
@@ -515,6 +571,37 @@ export interface components {
             tags: string[];
             /** Value */
             value: number | null;
+        };
+        /**
+         * ScanColumn
+         * @description A column of the scan this check uses. `shared_by` counts other checks.
+         */
+        ScanColumn: {
+            /** Label */
+            label: string;
+            /** Shared By */
+            shared_by: number;
+            /** Sql */
+            sql: string;
+        };
+        /**
+         * ScanStatement
+         * @description The dataset's single scan: every aggregate of every loaded check on it.
+         */
+        ScanStatement: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "scan";
+            /** Measures */
+            measures: number;
+            /** Shared By */
+            shared_by: number;
+            /** Sql */
+            sql: string;
+            /** Uses */
+            uses: components["schemas"]["ScanColumn"][];
         };
     };
     responses: never;
@@ -698,6 +785,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HistoryPage"];
+                };
+            };
+            /** @description invalid parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description forbidden host */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_check_sql: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                check_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckSql"];
                 };
             };
             /** @description invalid parameter */

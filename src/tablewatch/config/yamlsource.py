@@ -7,12 +7,14 @@ mapping and sequence; these helpers turn them into 1-based
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import MarkedYAMLError
+from ruamel.yaml.scalarbool import ScalarBoolean
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString, SingleQuotedScalarString
 
 from tablewatch.diagnostics import Diagnostic, SourceLocation, error
@@ -100,4 +102,26 @@ def plain(value: Any) -> Any:
         return [plain(v) for v in value]
     if isinstance(value, str):
         return str(value)
+    # ruamel's ScalarFloat/ScalarInt/ScalarBoolean/TimeStamp subclass the
+    # builtins but are not the types SQLAlchemy's `literal()` knows: bound as
+    # NULL-typed, they cannot be rendered with values inlined.
+    if isinstance(value, datetime):
+        return datetime(
+            value.year,
+            value.month,
+            value.day,
+            value.hour,
+            value.minute,
+            value.second,
+            value.microsecond,
+            tzinfo=value.tzinfo,
+        )
+    if isinstance(value, ScalarBoolean):
+        return bool(value)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
     return value

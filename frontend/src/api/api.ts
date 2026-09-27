@@ -5,7 +5,7 @@
  * by `tablewatch serve` next to the API, and the CSP allows `connect-src
  * 'self'` only.
  */
-import type { CheckDetail, CheckList, ErrorBody, ErrorCode, HistoryPage, Project, RunPage } from "./types";
+import type { CheckDetail, CheckList, CheckSql, ErrorBody, ErrorCode, HistoryPage, Project, RunPage } from "./types";
 
 const BASE = "/api/v1";
 
@@ -125,4 +125,12 @@ export function getCheck(id: string): Promise<CheckDetail> {
 export function getHistory(id: string, limit: number, cursor: string | null = null): Promise<HistoryPage> {
   const query = `limit=${encodeURIComponent(String(limit))}${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`;
   return get<HistoryPage>(`/checks/${encodeURIComponent(id)}/history?${query}`);
+}
+
+/**
+ * `GET /api/v1/checks/{id}/sql`: the SQL a run of the check's dataset sends,
+ * compiled from the check files as loaded. Answers without the results store.
+ */
+export function getCheckSql(id: string): Promise<CheckSql> {
+  return get<CheckSql>(`/checks/${encodeURIComponent(id)}/sql`);
 }

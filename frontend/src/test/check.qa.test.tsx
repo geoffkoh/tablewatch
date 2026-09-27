@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HistoryEntry } from "../api/types";
 import { detailOf, emailSummary, entry, page } from "./fixtures/detail";
 import { interrupted, STARTED } from "./fixtures/states";
+import { EMAIL_SQL } from "./fixtures/sql";
 import { CLOCK, checkUrls, ok, olderUrl, renderCheck, setClock, stubCheckServer } from "./render";
 
 beforeEach(() => {
@@ -89,6 +90,7 @@ describe("D13/D14: paging and refresh together", () => {
       [urls.project]: () => Promise.resolve(new Response(JSON.stringify(interrupted.project), { status: 200 })),
       [urls.check]: () => Promise.resolve(new Response(JSON.stringify(detailOf(interrupted, EMAIL)), { status: 200 })),
       [urls.runs]: () => Promise.resolve(new Response(JSON.stringify(interrupted.runs), { status: 200 })),
+      [urls.sql]: () => Promise.resolve(new Response(JSON.stringify({ ...EMAIL_SQL, check_id: EMAIL }), { status: 200 })),
       [urls.history]: () => refreshed.promise,
       [olderUrl(EMAIL, "OLD")]: () => Promise.resolve(new Response(JSON.stringify(page([run(3)], null)), { status: 200 })),
       [olderUrl(EMAIL, "NEW")]: () =>

@@ -150,6 +150,82 @@
         "title": "CheckList",
         "type": "object"
       },
+      "CheckSql": {
+        "description": "The SQL a check compiles to, without connecting: `GET /checks/{id}/sql`.\n\n`sql` is shown with values inlined and without a trailing `;`; a run\nsends the same statement with bound parameters. Nothing about the\ndatasource but its name and dialect is served.",
+        "properties": {
+          "check_id": {
+            "title": "Check Id",
+            "type": "string"
+          },
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "datasource": {
+            "title": "Datasource",
+            "type": "string"
+          },
+          "dialect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dialect"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "schema_lookup": {
+            "title": "Schema Lookup",
+            "type": "boolean"
+          },
+          "statements": {
+            "items": {
+              "description": "Open on `kind`: a later version may add kinds, and a client ignores a statement whose kind it does not know.",
+              "discriminator": {
+                "mapping": {
+                  "query": "#/components/schemas/QueryStatement",
+                  "scan": "#/components/schemas/ScanStatement"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ScanStatement"
+                },
+                {
+                  "$ref": "#/components/schemas/QueryStatement"
+                }
+              ]
+            },
+            "title": "Statements",
+            "type": "array"
+          }
+        },
+        "required": [
+          "check_id",
+          "dataset",
+          "datasource",
+          "dialect",
+          "statements",
+          "schema_lookup",
+          "error"
+        ],
+        "title": "CheckSql",
+        "type": "object"
+      },
       "CheckSummary": {
         "properties": {
           "dataset": {
@@ -747,6 +823,31 @@
         "title": "ProjectCounts",
         "type": "object"
       },
+      "QueryStatement": {
+        "description": "A statement of the check's own, such as a duplicate count.",
+        "properties": {
+          "kind": {
+            "const": "query",
+            "title": "Kind",
+            "type": "string"
+          },
+          "shared_by": {
+            "title": "Shared By",
+            "type": "integer"
+          },
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "sql",
+          "shared_by"
+        ],
+        "title": "QueryStatement",
+        "type": "object"
+      },
       "Rule": {
         "description": "The check's conditions as this server loaded them.\n\nBuilt only from the parsed expectation and triggers \u2014 never from options\nsuch as `valid_values`, or from `where:`/`filter:` SQL.",
         "properties": {
@@ -1200,6 +1301,68 @@
         ],
         "title": "RunResultItem",
         "type": "object"
+      },
+      "ScanColumn": {
+        "description": "A column of the scan this check uses. `shared_by` counts other checks.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "shared_by": {
+            "title": "Shared By",
+            "type": "integer"
+          },
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "sql",
+          "shared_by"
+        ],
+        "title": "ScanColumn",
+        "type": "object"
+      },
+      "ScanStatement": {
+        "description": "The dataset's single scan: every aggregate of every loaded check on it.",
+        "properties": {
+          "kind": {
+            "const": "scan",
+            "title": "Kind",
+            "type": "string"
+          },
+          "measures": {
+            "title": "Measures",
+            "type": "integer"
+          },
+          "shared_by": {
+            "title": "Shared By",
+            "type": "integer"
+          },
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          },
+          "uses": {
+            "items": {
+              "$ref": "#/components/schemas/ScanColumn"
+            },
+            "title": "Uses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "sql",
+          "measures",
+          "uses",
+          "shared_by"
+        ],
+        "title": "ScanStatement",
+        "type": "object"
       }
     }
   },
@@ -1521,6 +1684,95 @@
           }
         },
         "summary": "Get Check History"
+      }
+    },
+    "/api/v1/checks/{check_id}/sql": {
+      "get": {
+        "operationId": "get_check_sql",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "check_id",
+            "required": true,
+            "schema": {
+              "title": "Check Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckSql"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid parameter"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "forbidden host"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not found"
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "method not allowed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "store unavailable"
+          }
+        },
+        "summary": "Get Check Sql"
       }
     },
     "/api/v1/project": {

@@ -34,3 +34,14 @@ export type HistoryEntry = Schemas["HistoryEntry"];
 export type HistoryPage = Schemas["HistoryPage"];
 /** A metric's unit; `null` on a history entry whose metric this version does not know. */
 export type Unit = CheckSummary["unit"];
+
+export type CheckSql = Schemas["CheckSql"];
+export type ScanStatement = Schemas["ScanStatement"];
+export type QueryStatement = Schemas["QueryStatement"];
+export type ScanColumn = Schemas["ScanColumn"];
+/**
+ * One statement of `CheckSql`. The union is open on `kind` (spec 005, A4): a
+ * later server may send a kind this client does not know, and the page skips
+ * it (P15), so code narrows on `kind` and never assumes the list is exhaustive.
+ */
+export type Statement = CheckSql["statements"][number];

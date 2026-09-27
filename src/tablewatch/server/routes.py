@@ -1,7 +1,8 @@
-"""The six read-only endpoints under `/api/v1`, and their paging cursor.
+"""The read-only endpoints under `/api/v1`, and their paging cursor.
 
 No SQL here: every read goes through `ResultStore`, scoped to the served
-project's name, which comes from the server and never from a request.
+project's name, which comes from the server and never from a request, and
+a check's SQL comes from `engine.compiled`, which never connects.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from tablewatch._version import __version__
 from tablewatch.checks.model import Check
 from tablewatch.config.loader import ID_PATTERN, MAX_ID_LENGTH
 from tablewatch.config.loader import Project as LoadedProject
+from tablewatch.engine.compiled import compile_dataset
 from tablewatch.results.store import PageKey, ResultStore
 from tablewatch.server import schemas
 
@@ -152,6 +154,17 @@ def get_check_history(
         if more
         else None,
     )
+
+
+@router.get("/checks/{check_id}/sql", response_model=schemas.CheckSql)
+def get_check_sql(context: Context, check_id: str) -> schemas.CheckSql:
+    check = context.check(check_id) if _is_check_id(check_id) else None
+    if check is None:
+        raise _not_found("check")
+    # Compiled per request: nothing to invalidate, and no dialect is imported
+    # at startup. Every loaded check on the dataset feeds its one scan.
+    compiled = compile_dataset(check.dataset, context.project.config.datasources)
+    return schemas.CheckSql.of(check, compiled)
 
 
 @router.get("/runs", response_model=schemas.RunPage)

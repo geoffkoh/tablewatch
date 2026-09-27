@@ -6,6 +6,218 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 5 — Check detail 2: compiled SQL (I-26), 2026-09-27
+
+- **Spec:** [005-check-detail-sql-source](specs/005-check-detail-sql-source.md).
+  **Branch:** `iter/005-check-detail-sql-source`. **PR:** #10.
+- **REFINE (2026-09-27).** The architect, security-reviewer, ui-engineer
+  and data-steward reported; every finding is settled in the spec's
+  "REFINE decisions" table. Security's three blocking-for-ready items
+  (R1 a malformed datasource URL echoed with its password, R2
+  credential-free compiling and no datasource fields or logging, R3 the
+  `--host` warning's wording) are in as `must` scenarios, R1 with an
+  explicit carve-out from "`compile`'s output does not change". The spec
+  had grown past S, so the pre-planned split was applied: spec 005 ships
+  the compile path, `/sql` and the SQL section; the Source half, with its
+  REFINE decisions (the data-steward's indentation-based comment rule
+  and `filter` field, both accepted), is drafted as
+  [spec 006](specs/006-check-detail-source.md) (I-29) and ships next.
+  New backlog items: I-30 and I-31 (security F1, F2), I-32 (`duplicate_*`
+  and missing values).
+- **Shipped:** a **SQL** section on every check's page, below the
+  history: the statement(s) this check's value comes from, in the
+  datasource's dialect, exactly as `tablewatch compile` prints them. For
+  the dataset's single scan the whole `SELECT` is shown, with this
+  check's columns (`m0`, `m1`, …) named and their expressions, and how
+  many other checks ride the same read. A `schema` check says it reads
+  the column list, not rows; a dataset that cannot be compiled says so
+  and the rest of the page is unaffected. Copy buttons, with a fallback
+  where the browser has no clipboard. One new read-only endpoint, `GET
+  /api/v1/checks/{id}/sql` (`CheckSql`, an open union on `kind`;
+  additive, `v1` stays). `compile` and the endpoint share one compile
+  path (`engine/compiled.py`); it never connects, never resolves
+  `${env:}`, never reads the store or a file at request time. Security
+  fixes on the way: a datasource URL that is not `scheme://…` is no
+  longer echoed by `compile` or `/sql` (it could carry a password); the
+  `--host` warning now names the SQL and database error messages. Also
+  fixed: a float, integer, boolean or timestamp option written in YAML
+  (`valid_max: 99.5`) crashed `compile` (pre-existing on `main`) and
+  would have made `/sql` answer 500 for every check on the dataset.
+  `CheckPage.tsx` split into section components (a no-behaviour-change
+  commit first). README: the SQL section, the `/sql` row, the new
+  warning text (data-steward).
+- **Acceptance:** the data-steward ran **43/43** scenarios (34 by hand
+  against a real `serve`, including P12 at 360 px in both colour
+  schemes; 9 automated). Every `must` is an automated test. Identity
+  did not move: `tablewatch list` on `retail` is byte-identical to the
+  golden file captured on `main` (I1), as is `compile` (C1). Suite at the
+  end of VERIFY: Python 640 passed, 1 xfailed (the known uvicorn
+  connection-limit case, I-20); frontend 553 vitest tests in 14 files.
+  Gates: pytest, ruff, ruff format, strict mypy, `tsc`, `vite build`.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — FAIL, three blocking findings, all fixed.* (1) The
+    spec's own R1 regex (RFC 3986 scheme grammar) left out `_`, so real
+    driver names (`oracle+cx_oracle`, `postgresql+psycopg_async`,
+    `oracle+oracledb_async`) were reported as "not a SQLAlchemy URL" — a
+    regression of C1. `_` is allowed; the spec is corrected. (2) A float
+    option (`valid_max: 99.5`, `valid_values: [1.5]`) reached SQLAlchemy
+    as ruamel's `ScalarFloat`, which `literal()` typed as NULL, so
+    rendering failed: `/sql` answered 500 for every check on the dataset,
+    and `compile` crashed (pre-existing on `main`). Fixed where YAML
+    values become Python values (`config/yamlsource.py`): ruamel's float,
+    int and boolean scalars become builtins. (3) Re-verify found the same
+    for YAML timestamps (ruamel `TimeStamp`); fixed the same way. Ids are
+    unchanged (options do not feed the hash; `list` byte-identical).
+    Non-blocking, fixed: the copy button crashed where
+    `navigator.clipboard` is undefined; the "no statement" and "reads no
+    rows" sentences counted statements of unknown kinds (P15). QA's own
+    `mssql+python_tds` case was wrong (SQLAlchemy 2.1 ships no such
+    dialect) and now tests "unsupported". Non-blocking, pre-existing, to
+    the backlog: `valid_values: [null]` compiles to `NOT IN (NULL, …)`,
+    which is never true in SQL, so the check counts nothing invalid —
+    a silent pass (→ I-34); a diagnostic reads "must be a integer"
+    (→ I-28). Tests: `tests/test_check_sql_qa.py`,
+    `frontend/src/test/sql.qa.test.tsx`; the two existing frontend tests
+    the ui-engineer changed were confirmed not weakened.
+  - *architect — approve with follow-ups, none blocking, all adopted.*
+    Confirmed one compile path, the placement of `engine/compiled.py`,
+    `shared_by`/`uses`, `server/` holding no SQL, the open union and the
+    component split. Adopted: `CompiledDataset.dataset` dropped (unused);
+    the engine's `ScanColumn` docstring distinguishes it from the wire
+    model; the SQL section uses the filtered statement list; the
+    `HISTORY_LIMIT` re-export dropped.
+  - *security-reviewer — approve with follow-ups, none blocking.*
+    Confirmed R1 (about 30 URL shapes fuzzed), R2, R4, R5, the headers
+    and methods (HEAD, OPTIONS, PATCH, TRACE answer 405; a foreign `Host`
+    403) and the clipboard under the CSP. **Accepted X3's interim
+    wording.** Adopted: a multi-driver scheme (`a+b+c://`) raised a raw
+    `ValueError`; it now gets the fixed malformed-URL message; dataset
+    and datasource names in the SQL sentences are marked for invisible
+    characters. Carried to spec 006: its X3 must put "check files
+    (comments included)" into the warning in the same PR that starts
+    serving check files (→ I-29 requirement).
+  - *data-steward — accept with follow-ups.* README written. Not adopted
+    here (→ I-35): "cannot compile" messages are library jargon for Sam
+    (`Can't load plugin: sqlalchemy.dialects:snowflake`) and should say
+    the driver is not installed and which package to add, and the
+    malformed-URL message should name the datasource and `tablewatch.yml`;
+    a check whose datasource is not defined shows an empty Datasource row
+    and a SQL section that does not name it; "computes 6 values, for this
+    check and 6 others" is ambiguous and should read "used by this check
+    and 6 others" (QA's test pins today's wording, so it moves with the
+    rest). Pre-existing, found on the way: **two `failed_rows` checks in
+    one file get the same id** (→ I-33 and the owner question below).
+    Harmless: Chromium logs a COOP warning on a non-loopback `http`
+    origin (→ noted on I-20).
+- **Spec correction:** R1's regex (above). The regex in a spec was
+  copied from a standard rather than from the library that parses the
+  string; the builder implemented it faithfully and QA caught it.
+- **Deferred:** the check's own YAML source (→ I-29, spec 006, as the
+  REFINE split said); the data-steward's wording and naming follow-ups
+  (→ I-35); the validity NULL bug (→ I-34); the identity collision
+  (→ I-33, pending the owner).
+- **Backlog:** I-26 done; C4 has page, rule, chart and SQL, with source
+  left to I-29. New: I-33 `failed_rows`/`sql_metric` identity collision
+  (2.0, needs an owner decision before it can be specified), I-34
+  `valid_values: [null]` silent pass (4.0), I-35 SQL section in plain
+  words (1.0). Requirements added to I-29 (security X3 in the same PR),
+  I-20 (COOP warning) and I-28 ("a integer").
+- **Learned:**
+  - A regex in a spec is code nobody tested. When a spec states a rule
+    for input another library parses, it should cite that library's
+    grammar (here SQLAlchemy's `make_url`) and give a real-world example
+    that must pass, not only the canaries that must fail.
+  - A second consumer of old code found an old bug: `compile` had
+    crashed on a float option since Phase 1, but nobody ran it on such a
+    project; the page runs it for every check. Each new surface over the
+    engine has found a latent defect (iterations 1, 2, 4 and now 5), so
+    QA's "what did the old surface never exercise" angle keeps paying.
+  - The data-steward's hand run, not the spec, found the identity
+    collision, by writing a normal steward's file (two `failed_rows`
+    checks on one table). Fixtures written by the domain reviewer catch
+    what fixtures written for a feature do not.
+  - S held after the REFINE split: about 5,500 added lines across 51
+    files, mostly tests, reviewable in one sitting. Applying the
+    pre-planned split in REFINE rather than in BUILD cost nothing.
+- **Next:** I-29, check detail 3: the check's own YAML source (spec 006,
+  drafted in REFINE). It finishes C4 and the owner's UI chain while the
+  REFINE decisions are fresh, and it reuses this iteration's
+  components. Score 1.6. PLAN re-checks spec 006 against `main` after
+  #10 merges and sets it ready; security-reviewer, architect,
+  ui-engineer, qa-engineer and data-steward are required. I-24 (4.8) and
+  I-34 (4.0) follow; see BACKLOG.
+
+### Question for the owner (does not stop the loop): check identity for `failed_rows` and `sql_metric`
+
+A check's id, without an explicit `id:`, is a hash of the file path,
+dataset, expression with triggers, and `where:`. `condition:` (for
+`failed_rows`) and `query:` (for `sql_metric`) are left out, like other
+options. So two `failed_rows` checks on one table in one file, or two
+bare `sql_metric` checks with different queries, get the same id. The
+loader reports the second as a duplicate at `file:line:col` and the
+project stops: `validate` and `run` exit 3 and **nothing runs** until one
+of them gets an `id:`. Reproduced by the PM in REVIEW; the error says
+what to do, and `docs/check-language.md` documents it. It is loud, not
+silent, but it hits a normal pattern (one `failed_rows` per business
+rule), and the data-steward hit it on a first try.
+
+Fixing it means `condition:` and `query:` feed the hash. That **changes
+the id of every existing `failed_rows` and `sql_metric` check without an
+explicit `id:`**, so their recorded history starts again (other checks
+keep their ids). CLAUDE.md calls this a breaking change for every user's
+history, which is why it needs the owner.
+
+Options:
+
+1. **Change the hash now, before the first release** (the PM's
+   recommendation). tablewatch is not on PyPI yet, so the only history
+   that breaks is the owner's own; after `0.1.0` is published every
+   user pays. CHANGELOG breaking-change note; the README and
+   `docs/check-language.md` updated; `condition:`/`query:` compared in
+   the same whitespace-normalised form as `where:`, so reformatting the
+   SQL keeps the id.
+2. **Change the hash and re-key history.** As option 1, plus a
+   one-time step that moves recorded results from the old id to the new
+   one for checks in the loaded project. More work (M) and a data
+   migration in the results store; worth it only if the owner has
+   history to keep.
+3. **Keep the ids** and improve the diagnostic only (say that
+   `condition:` does not distinguish checks, and suggest an `id:`).
+   Nothing breaks; the pattern keeps failing on first try.
+
+I-33 waits for this decision; nothing else depends on it.
+
+### Owner instruction, 2026-09-27
+
+The owner instructed the loop to **continue iterating until all features
+are implemented**, rather than stopping after one iteration. The loop
+still stops for everything else in PROCESS.md's "The loop stops and asks
+the user when": anything outward-facing (a PyPI release, a new external
+service, a licence or trademark question), a PR that cannot meet the
+merge conditions, a change that would break a design rule or the
+exit-code contract, and a PM proposal outside its autonomy. It also
+stops at a phase boundary where the roadmap needs the owner (skipping
+ahead a phase or changing the roadmap).
+
+### Question for the owner (does not stop the loop): symlinked check files
+
+The security-reviewer (iteration 5, F3) found that the loader walks the
+checks directory with `rglob`, which follows file symlinks, so a check
+file that is a symlink to a file outside the project is loaded today.
+From spec 006 its lines are served over HTTP under the link's path. That
+is not a new exploit (whoever can place the link can edit the project),
+but it widens what `serve` exposes beyond the project directory.
+
+**Proposal:** the loader warns about, and skips, any check file whose
+resolved path is outside the project root (a `Diagnostic` warning at the
+link's path). This **changes `run`**: a project that relies on such a
+link today would stop running those checks, with a warning, and exit
+differently if those were its only checks. That is why it needs the
+owner. Until decided, spec 006 (Y16) documents today's behaviour and the
+README says plainly that a symlinked check file's lines are served under
+the link's path. If accepted, it becomes a backlog item with the
+security-reviewer required and a CHANGELOG breaking-change note.
+
 ## Iteration 4 — Check detail page and history chart (I-05), 2026-09-27
 
 - **Spec:** [004-check-detail-history](specs/004-check-detail-history.md).

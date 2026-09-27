@@ -899,3 +899,84 @@ a {
     color: CanvasText;
   }
 }
+
+/* The SQL section (spec 005): open, text only, no highlighting. */
+
+.sql {
+  min-width: 0;
+}
+
+.sql__statement {
+  min-width: 0;
+  margin: 0 0 1rem;
+}
+
+.sql__statement > p {
+  margin: 0 0 0.5rem;
+}
+
+.sql__uses {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.sql__uses code {
+  overflow-wrap: anywhere;
+}
+
+.sql__actions {
+  margin: 0.5rem 0 0;
+}
+
+.code-block {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--tw-text);
+  background: var(--tw-surface);
+  border: 1px solid var(--tw-border);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.code-block--error {
+  border-left: 4px solid var(--tw-error-fg);
+}
+
+/* P14: the character stays in the text, isolated so it cannot reorder what
+   surrounds it; the marker is generated content, so copying skips it. */
+.invisible-char {
+  unicode-bidi: isolate;
+}
+
+.invisible-char::before {
+  content: "[" attr(data-cp) "]";
+  padding: 0 0.125rem;
+  color: var(--tw-error-fg);
+  background: var(--tw-error-tint);
+  border-radius: 3px;
+  font-size: 0.75em;
+}
+
+.button--small {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.75rem;
+}
+
+.copy {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.copy__status {
+  color: var(--tw-text-muted);
+  font-size: 0.875rem;
+}
