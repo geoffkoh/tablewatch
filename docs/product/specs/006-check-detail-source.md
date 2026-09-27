@@ -8,7 +8,7 @@
 | Size | S |
 | Depends on | I-26 (spec 005: the `CheckPage` section split, `CodeBlock`, `CopyButton`, `lib/clipboard.ts`, invisible-character marking, the `useLoads` slot pattern for a check's sections) |
 | Branch | `iter/006-check-detail-source` |
-| Status | **ready** (iteration 6 PLAN, 2026-09-27, against `main` at `8687ebc`). Carried out of spec 005 with every iteration 5 REFINE decision on the Source half already made; re-checked against what spec 005 shipped (see "Iteration 6 PLAN re-check"). **Short REFINE settled** (iteration 6, 2026-09-27): security-reviewer (B1, B2 in; F1, F3–F5 decided), architect (Q1/Q2 shape), ui-engineer (Q3, P16, page wording). Decisions are in the contract (B1, B2), the scenarios (Y6, Y16, Y18, Y19, X3, X4, P4–P16) and Design notes (the architect's answers, SourceBlock, "Other iteration 6 REFINE decisions") |
+| Status | **shipped** (iteration 6, PR #11, 2026-09-27; see ITERATIONS.md). Before that: **ready** (iteration 6 PLAN, 2026-09-27, against `main` at `8687ebc`). Carried out of spec 005 with every iteration 5 REFINE decision on the Source half already made; re-checked against what spec 005 shipped (see "Iteration 6 PLAN re-check"). **Short REFINE settled** (iteration 6, 2026-09-27): security-reviewer (B1, B2 in; F1, F3–F5 decided), architect (Q1/Q2 shape), ui-engineer (Q3, P16, page wording). Decisions are in the contract (B1, B2), the scenarios (Y6, Y16, Y18, Y19, X3, X4, P4–P16) and Design notes (the architect's answers, SourceBlock, "Other iteration 6 REFINE decisions") |
 
 Why this exists: spec 005 grew past S in REFINE (see its "Size"), so the
 pre-planned split was applied. Everything below was written and reviewed
@@ -648,8 +648,11 @@ element only (not the line numbers, the caption or the region).
   the `schema` check (`2f9a43de2ae47ba9`) shows the first sentence only;
   so does any check while `/checks/{id}` has failed
 - On every 200 from `/source`, P15 included (`should`): "The dataset,
-  datasource, owner and tags shown at the top of the page come from this
-  file's first lines or a `_defaults.yml`." Never on P6 or P7
+  datasource, owner and tags shown at the top of the page are set
+  elsewhere in this file or in a `_defaults.yml`." Never on P6 or P7.
+  (Reworded by the data-steward in VERIFY: the REFINE text, "come from
+  this file's first lines", was false when `owner:` is written last or
+  `filter:` after `checks:`.)
 
 **P14: invisible characters** `must` (security R5; promoted from `should`
 in iteration 6 REFINE, security F3): as spec 005's P14, for the Source
@@ -668,6 +671,10 @@ character in the DOM and draws the marker from CSS, so P4's
   `checks/sales/orders​.yml` (U+200B) and one containing a C0
   control (U+001B) in the file name. Each is marked in place; the line
   count and numbering are unchanged; Copy copies `text` byte for byte
+- VERIFY (data-steward): ruamel's marks skip a leading BOM while the split
+  lines keep it, so every check in a BOM file failed the post-condition
+  and got no lines. Fixed where the item's line is checked (`_char_at`);
+  a backend test covers it. The BOM is still served and marked, as above
 
 **P16: long lines** `should` (checked by hand; iteration 6 PLAN)
 - The Source block does **not** soft-wrap (unlike spec 005's SQL block,

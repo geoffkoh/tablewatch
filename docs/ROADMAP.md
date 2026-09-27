@@ -33,7 +33,7 @@ See your data quality without a terminal, and hear about it when it changes.
   - Overview: latest run, failing checks first (C2)
   - Check explorer: a tree mirroring `checks/`, filterable by tag, owner,
     datasource and status (C3)
-  - Check detail: expression, compiled SQL, source location, metric history
+  - Check detail: expression, compiled SQL, its own YAML source, metric history
     against its threshold (C4); failed-row samples join it in Phase 2b (C7)
   - Runs: what was selected, when, by whom, what it found, and the diff
     against the previous run (C5)
