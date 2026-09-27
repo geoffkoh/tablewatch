@@ -34,15 +34,10 @@ from tablewatch.checks.model import Check, Dataset
 from tablewatch.config import Project, find_project_root, load_project
 from tablewatch.config.jsonschema import check_file_schema, project_schema
 from tablewatch.config.project import PROJECT_FILE, MissingEnvironmentVariableError
-from tablewatch.datasources import (
-    DatasourceError,
-    create_engine_for,
-    dialect_for,
-    timezone_of,
-)
+from tablewatch.datasources import DatasourceError, create_engine_for
 from tablewatch.diagnostics import ProjectError, Severity
+from tablewatch.engine.compiled import compile_dataset
 from tablewatch.engine.executor import error_message
-from tablewatch.engine.planner import plan_dataset, render
 from tablewatch.engine.runner import FAIL_ON_CHOICES, MAX_CONCURRENCY, FailOn
 from tablewatch.output import REPORTERS, console
 from tablewatch.results import ResultStore
@@ -274,25 +269,21 @@ def compile(ctx: click.Context, /, **selectors: tuple[str, ...]) -> None:  # noq
         datasets[id(check.dataset)] = check.dataset
     for key, dataset_checks in by_dataset.items():
         dataset = datasets[key]
-        config = project.config.datasources[dataset.datasource]
         click.echo(
             f"-- {dataset.name} on {dataset.datasource} ({dataset.path.as_posix()})"
         )
-        try:
-            dialect = dialect_for(config)
-            plan = plan_dataset(
-                dataset, dialect, now, timezone_of(config), dataset_checks
-            )
-        except DatasourceError as exc:
-            click.echo(f"-- cannot compile: {exc}\n")
+        compiled = compile_dataset(
+            dataset, project.config.datasources, dataset_checks, now=now
+        )
+        if compiled.error is not None:
+            click.echo(f"-- cannot compile: {compiled.error}\n")
             continue
-        scan = plan.scan()
-        if scan is not None:
-            click.echo(f"-- single scan: {len(plan.aggregates)} measures")
-            click.echo(render(scan, dialect) + ";")
-        for query in plan.queries.values():
-            click.echo(render(query.statement, dialect) + ";")
-        if plan.needs_schema:
+        if compiled.scan is not None:
+            click.echo(f"-- single scan: {len(compiled.scan.columns)} measures")
+            click.echo(compiled.scan.sql + ";")
+        for query in compiled.queries:
+            click.echo(query.sql + ";")
+        if compiled.schema_lookup:
             click.echo(f"-- plus a schema lookup of {dataset.table}")
         click.echo()
 
@@ -381,7 +372,8 @@ SERVER_PACKAGES = frozenset({"fastapi", "starlette", "uvicorn"})
     "--host",
     default="127.0.0.1",
     show_default=True,
-    help="Address to listen on. Anything but loopback serves without authentication.",
+    help="Address to listen on. Anything but loopback serves checks, SQL and "
+    "results without authentication.",
 )
 @click.option("--port", type=click.IntRange(0, 65535), default=8765, show_default=True)
 @click.option(
@@ -441,9 +433,10 @@ def serve(
         if not is_loopback(host):
             click.echo(
                 f"tablewatch: warning: serving on {host} with no authentication — anyone "
-                "who can reach this address can read this project's checks and results, "
-                "including data values and owner emails. Authentication arrives in "
-                "Phase 4 (tablewatch.yml cannot turn it on yet).",
+                "who can reach this address can read this project's checks, the SQL "
+                "each check runs, and its results: data values, database error "
+                "messages that can quote row values, and owner emails. Authentication "
+                "arrives in Phase 4 (tablewatch.yml cannot turn it on yet).",
                 err=True,
             )
         shown = f"[{host}]" if ":" in host else host

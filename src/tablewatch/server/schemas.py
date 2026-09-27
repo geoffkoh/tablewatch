@@ -24,6 +24,7 @@ from tablewatch._version import __version__
 from tablewatch.checks.model import Check
 from tablewatch.diagnostics import Diagnostic as DiagnosticModel
 from tablewatch.diagnostics import SourceLocation
+from tablewatch.engine.compiled import CompiledDataset, QueryUse, ScanUse
 from tablewatch.metrics.registry import get_metric
 from tablewatch.results.models import CheckResultRow, RunRow
 from tablewatch.results.state import Evaluated
@@ -280,6 +281,100 @@ class CheckDetail(CheckSummary):
     @classmethod
     def of_detail(cls, check: Check, latest: LatestResult | None) -> CheckDetail:
         return cls(**dict(CheckSummary.of(check, latest)), rule=Rule.of(check))
+
+
+class ScanColumn(_Model):
+    """A column of the scan this check uses. `shared_by` counts other checks."""
+
+    label: str
+    sql: str
+    shared_by: int
+
+
+class ScanStatement(_Model):
+    """The dataset's single scan: every aggregate of every loaded check on it."""
+
+    kind: Literal["scan"]
+    sql: str
+    measures: int
+    uses: list[ScanColumn]
+    shared_by: int
+
+
+class QueryStatement(_Model):
+    """A statement of the check's own, such as a duplicate count."""
+
+    kind: Literal["query"]
+    sql: str
+    shared_by: int
+
+
+Statement = Annotated[
+    ScanStatement | QueryStatement,
+    Field(
+        discriminator="kind",
+        description="Open on `kind`: a later version may add kinds, and a "
+        "client ignores a statement whose kind it does not know.",
+    ),
+]
+
+
+class CheckSql(_Model):
+    """The SQL a check compiles to, without connecting: `GET /checks/{id}/sql`.
+
+    `sql` is shown with values inlined and without a trailing `;`; a run
+    sends the same statement with bound parameters. Nothing about the
+    datasource but its name and dialect is served.
+    """
+
+    check_id: str
+    dataset: str
+    datasource: str
+    dialect: str | None
+    statements: list[Statement]
+    schema_lookup: bool
+    error: str | None
+
+    @classmethod
+    def of(cls, check: Check, compiled: CompiledDataset) -> CheckSql:
+        mine = compiled.for_check(check.id)
+        statements: list[ScanStatement | QueryStatement] = []
+        for statement in mine.statements:
+            match statement:
+                case ScanUse():
+                    statements.append(
+                        ScanStatement(
+                            kind="scan",
+                            sql=statement.sql,
+                            measures=statement.measures,
+                            uses=[
+                                ScanColumn(
+                                    label=u.label, sql=u.sql, shared_by=u.shared_by
+                                )
+                                for u in statement.uses
+                            ],
+                            shared_by=statement.shared_by,
+                        )
+                    )
+                case QueryUse():
+                    statements.append(
+                        QueryStatement(
+                            kind="query",
+                            sql=statement.sql,
+                            shared_by=statement.shared_by,
+                        )
+                    )
+                case _:
+                    assert_never(statement)
+        return cls(
+            check_id=check.id,
+            dataset=check.dataset.name,
+            datasource=check.dataset.datasource,
+            dialect=compiled.dialect,
+            statements=statements,
+            schema_lookup=mine.schema_lookup,
+            error=compiled.error,
+        )
 
 
 class CheckList(_Model):

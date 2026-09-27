@@ -47,14 +47,19 @@ class DatasetPlan:
         """The single aggregate query, columns labelled m0, m1, … in key order."""
         if not self.aggregates:
             return None
+        labels = self.labels()
         columns = [
-            measure.expression.label(f"m{i}")
-            for i, measure in enumerate(self.aggregates.values())
+            measure.expression.label(labels[key])
+            for key, measure in self.aggregates.items()
         ]
         statement = select(*columns).select_from(self.table)
         if self.dataset.filter:
             statement = statement.where(sql_condition(self.dataset.filter))
         return statement
+
+    def labels(self) -> dict[str, str]:
+        """Each aggregate's column label in the scan: measure key -> `m<i>`."""
+        return {key: f"m{i}" for i, key in enumerate(self.aggregates)}
 
     def single(self, key: str) -> Select[tuple[object, ...]]:
         """One aggregate on its own — the fallback when the batched scan fails."""

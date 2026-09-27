@@ -7,6 +7,7 @@ called when something is actually about to connect.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -27,6 +28,9 @@ from tablewatch.config.project import (
 DatasourceConfig = (
     PostgresDatasource | DuckDBDatasource | SQLiteDatasource | URLDatasource
 )
+
+
+URL_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*")
 
 
 class DatasourceError(Exception):
@@ -50,10 +54,16 @@ def dialect_for(config: DatasourceConfig) -> Dialect:
         case DuckDBDatasource():
             return _duckdb_dialect()
         case URLDatasource(url=url):
-            scheme = url.split("://", 1)[0]
+            scheme, separator, _ = url.partition("://")
             if ENV_REFERENCE.search(scheme):
                 raise DatasourceError(
                     "cannot tell the dialect of a URL whose scheme is an ${env:} reference"
+                )
+            # Only a well-formed scheme is echoed: without "://" the "scheme"
+            # is the whole URL, password included.
+            if not separator or not URL_SCHEME.fullmatch(scheme):
+                raise DatasourceError(
+                    "the url is not a SQLAlchemy URL (expected scheme://...)"
                 )
             try:
                 return make_url(f"{scheme}://").get_dialect()()
