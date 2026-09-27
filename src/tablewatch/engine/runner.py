@@ -61,7 +61,8 @@ class CheckResult:
 
     @property
     def display_value(self) -> str:
-        return format_value(self.check.metric.unit, self.value)
+        metric = self.check.metric
+        return format_value(metric.unit, self.value, metric.count_noun)
 
     def __repr__(self) -> str:
         # The dataclass repr would print the check, its dataset, and every

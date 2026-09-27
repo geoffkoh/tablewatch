@@ -113,9 +113,10 @@ def test_timezones() -> None:
 
 def test_freshness_reads_every_timestamp_shape() -> None:
     aware = datetime(2026, 1, 1, 12, tzinfo=UTC)
-    assert _as_datetime(aware) == aware
-    assert _as_datetime(date(2026, 1, 1)) == datetime(2026, 1, 1)
-    assert _as_datetime("2026-01-01 12:00:00") == datetime(2026, 1, 1, 12)
+    assert _as_datetime(aware) == (aware, False)
+    assert _as_datetime(date(2026, 1, 1)) == (datetime(2026, 1, 1), True)
+    assert _as_datetime("2026-01-01 12:00:00") == (datetime(2026, 1, 1, 12), False)
+    assert _as_datetime("2026-01-01") == (datetime(2026, 1, 1), True)
     assert _as_datetime(None) is None
     with pytest.raises(TypeError, match="needs a date or timestamp column"):
         _as_datetime(42)
