@@ -216,7 +216,10 @@ The times on each row:
 Click a check's name, or open `/checks/<id>` (for example
 `http://127.0.0.1:8765/checks/b1ceb8262d8b5441`), to see one check and its
 history. The address stays the same across reloads and restarts, so you
-can send it to a colleague. The page shows:
+can send it to a colleague. It changes if the check's id does: editing
+the expression of a check without an explicit `id:` gives it a new id and
+a new page. The old address then says the check is no longer in the
+loaded files and still shows its recorded results. The page shows:
 
 - **What the check is**: its name and expression, dataset, datasource,
   owner, tags, `file:line:col`, and id.
@@ -226,7 +229,11 @@ can send it to a colleague. The page shows:
 - **Latest result**, in the same words as the overview.
 - **History**: a chart of the recorded values over time, then a table of
   every result, newest first. The table holds everything the chart draws,
-  with the full message.
+  with the full message. Its **Rule** column reads "Current" for a result
+  recorded under today's expression, and "Different rule" with the
+  recorded expression for one that was not. The page loads the latest 200
+  results. When there are more, the chart says so, and **Load older
+  results** adds the next 200 to both.
 
 How to read the chart:
 
@@ -268,9 +275,11 @@ How to read the chart:
   datasource's `timezone`.
 
 Focus the chart and use the arrow keys, or hover, to read each result.
-If you edit a check file and restart `serve` before the next run, the page
-says that no run has used the new rule yet, draws no band, and notes that
-the latest result was judged by the earlier rule.
+If you edit the rule of a check with an explicit `id:` and restart `serve`
+before the next run, the page says that no run has used the new rule yet,
+draws no band, and notes that the latest result was judged by the earlier
+rule. (Without an `id:`, the edited check has a new id, and its page reads
+"No result recorded" until it runs.)
 
 ### The JSON API
 
