@@ -404,18 +404,13 @@ class CheckSource(_Model):
     @classmethod
     def of(cls, check: Check, loaded_at: datetime) -> CheckSource:
         dataset = check.dataset
-        span = check.span
-        lines = dataset.source_lines
-        text = (
-            "\n".join(lines[span.start_line - 1 : span.end_line])
-            if span is not None and span.end_line <= len(lines)
-            else None
-        )
+        text = check.source_text
+        span = check.span if text is not None else None
         return cls(
             check_id=check.id,
             path=dataset.path.as_posix(),
-            start_line=span.start_line if text is not None and span else None,
-            end_line=span.end_line if text is not None and span else None,
+            start_line=span.start_line if span else None,
+            end_line=span.end_line if span else None,
             text=text,
             filter=FileFilter(
                 line=dataset.filter_line,

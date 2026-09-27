@@ -40,7 +40,10 @@ def check_span(
     lines: Sequence[str], root: MappingNode, index: int
 ) -> SourceSpan | None:
     """The 1-based, inclusive lines of the `index`th item under `checks:`."""
-    checks_key, checks = _checks(root)
+    found = _checks(root)
+    if found is None:
+        return None
+    checks_key, checks = found
     if not isinstance(checks, SequenceNode) or index >= len(checks.value):
         return None
     item = checks.value[index]
@@ -60,11 +63,11 @@ def check_span(
     return SourceSpan(start + 1, end + 1)
 
 
-def _checks(root: MappingNode) -> tuple[Node, Node | None]:
+def _checks(root: MappingNode) -> tuple[Node, Node] | None:
     for key, value in root.value:
         if isinstance(key, ScalarNode) and key.value == "checks":
             return key, value
-    return root, None
+    return None
 
 
 def _last_line(lines: Sequence[str], node: Node) -> int:
@@ -161,6 +164,9 @@ def _inside_checks_only(
             first = key.start_mark.line
             if not getattr(value, "flow_style", False):
                 first += 1
+            # A block list's end mark runs past its trailing comments to the
+            # next token, so rule 2's comments are inside; its content alone
+            # would leave them out and make those spans unavailable.
             if start < first or end > max(extent_end, _end_line(value)):
                 return False
         elif start <= extent_end and end >= key.start_mark.line:

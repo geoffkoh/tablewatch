@@ -124,6 +124,14 @@ class Check:
     span: SourceSpan | None = None
 
     @property
+    def source_text(self) -> str | None:
+        """Its own lines as loaded, or None when they could not be told apart."""
+        span, lines = self.span, self.dataset.source_lines
+        if span is None or span.end_line > len(lines):
+            return None
+        return "\n".join(lines[span.start_line - 1 : span.end_line])
+
+    @property
     def canonical(self) -> str:
         return canonical_text(self.expression, self.warn, self.fail)
 
