@@ -8,7 +8,7 @@
 | Size | S (the structured-field half is split off now, as I-40; see "Size") |
 | Depends on | nothing open. Touches only code that shipped in Phase 1 and iterations 2–6 |
 | Branch | `iter/007-readable-values` |
-| Status | **ready** (iteration 7 PLAN, 2026-09-27, against `main` at `940c776`; REFINE settled the same day: data-steward and architect, see "REFINE: decisions"). Every value and message below was reproduced by running `main` |
+| Status | **shipped** (iteration 7, PR #12, reviewed 2026-09-28: 19/19 scenarios; see ITERATIONS.md). Was **ready** (iteration 7 PLAN, 2026-09-27, against `main` at `940c776`; REFINE settled the same day: data-steward and architect, see "REFINE: decisions"). Every value and message below was reproduced by running `main` |
 
 ## Problem and persona
 

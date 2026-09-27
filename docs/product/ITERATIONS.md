@@ -6,11 +6,10 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
-## Iteration 7 — Readable values and messages (I-24), in progress
+## Iteration 7 — Readable values and messages (I-24), 2026-09-28
 
 - **Spec:** [007-readable-values](specs/007-readable-values.md).
-  **Branch:** `iter/007-readable-values`. The full entry is written in
-  REVIEW.
+  **Branch:** `iter/007-readable-values`. **PR:** #12.
 - **REFINE (2026-09-27).** The data-steward answered Q2–Q5 in the spec
   and added fixture rows, F3a, F5's placeholder hint and F8 (a
   `9999-12-31` value on a non-UTC datasource errors every check on its
@@ -21,6 +20,106 @@ and how they were resolved, what was deferred, and what was learned.
   `display_value` text is not a contract (D4). The PM set the console's
   DETAIL clip to 200 (spec R3) and kept the size at S (R6). New items:
   I-42, I-43, I-44; a Q4 requirement on I-06.
+- **Shipped:** freshness messages that say what the timestamp is and
+  name its zone, to the second: `newest row at 2026-09-27 09:47:30 UTC`,
+  or `… Asia/Singapore (UTC+08:00)` on a datasource with a `timezone`,
+  showing a naive value exactly as the column holds it (never
+  round-tripped through UTC) and an aware one in the datasource's zone. A
+  date column says `newest date 2026-09-26`. A newest row more than 60 s
+  ahead gets a note: `…, 7h in the future; check the datasource's
+  timezone` up to 26 h ahead, `check for placeholder or future-dated
+  values` beyond. A `schema` value reads `0 problems` / `1 problem`
+  through the new `count_noun` hook on `Metric`; the metric's summary and
+  the docs say "problems". The console's DETAIL clip went from 70 to 200
+  characters. `format_duration` moved to `metrics/base.py` and is
+  re-exported from `engine/evaluate.py`; `metrics/` still does not import
+  `engine/`. Fixed on the way (F8): a `9999-12-31` or `0001-01-01` value
+  on a non-UTC datasource no longer errors every check on its dataset.
+  Unchanged: every `value`, outcome (except F8's), exit code, check id,
+  compiled SQL, the JSON report's shape and `schema_version` 1, the API
+  shape, the store (no revision). Stored results keep their old text.
+  README (D1, D4: message text is for people, programs read `value` and
+  `outcome`; a future-row bullet) and `docs/check-language.md` (D2).
+  Code: about 135 changed lines in `src/`; the rest is tests.
+- **Acceptance:** the data-steward ran **19/19** scenarios. H1 was
+  checked against a store written by the real previous version (`git
+  archive 940c776` recording yesterday's run), not only the synthetic
+  rows the test writes; H2 by hand in headless Chromium at GMT+8. Every
+  `must` is an automated test on DuckDB and SQLite. Suite at the end of
+  VERIFY: **851 passed, 1 xfailed** (I-20's known uvicorn case); ruff,
+  ruff format, strict mypy clean. No frontend change; the bundle is
+  untouched. Golden `list` and `compile` files unchanged (E4).
+- **Reviewer findings and resolution:**
+  - *qa-engineer — FAIL on docs only, resolved; no code finding.* 68
+    adversarial tests (`tests/test_readable_values_qa.py`): all 598 zones
+    × 20 extreme values never raise; DuckDB `infinity` gets the
+    placeholder hint; `Asia/Kolkata` and `Asia/Kathmandu`; New York's
+    year-1 offset `-04:56:02` shown as `UTC-04:56`; an aware London fold;
+    SQLite text shapes; F5's boundaries to the microsecond (−60 s no
+    note, −60.000001 s note; −93600 s timezone hint, −93600.000001 s
+    placeholder hint); empty table and all-NULL column `fail`, not
+    `error`, on both backends; `count_noun` rounding; the
+    `format_duration` re-export is the same object; JSON, JUnit and the
+    result agree; DuckDB and SQLite agree; the 200/201 console clip.
+    Blocking: D1 and D4 were not yet written and the README's sample
+    showed the old message; the data-steward wrote them and the tests
+    pass. Non-blocking, pre-existing: non-ISO SQLite text, and DuckDB
+    timestamps past year 9999 (returned as `str`), raise in `compute` and
+    error every check on the dataset (→ I-42, which gains both shapes).
+    Cosmetic, accepted: a negative offset under one minute (no real zone
+    has one) shows `UTC+00:00`; an aware value whose conversion overflows
+    shows only its own offset (the fallback the spec left to the tech
+    lead; tested).
+  - *architect — approve.* The build matches REFINE: `count_noun` is
+    data, one display path, `format_duration` moved and re-exported, the
+    dependency direction kept, rules 2, 3 and 7 held, identity, store,
+    JSON and exit codes untouched. Adopted: one date form in
+    `freshness.py` (commit `ee46f97`). Noted for later, no item yet: a
+    `count_noun` on a non-`count` metric is silently ignored (fine until
+    a plugin API exists), and when plugins are documented (H1, Phase 5)
+    `metrics.base` should be named as `format_duration`'s home.
+  - *data-steward — accept with follow-ups; 19/19.* Wrote D1 (messages
+    as recorded, zone named, old UTC form kept in history, the age in
+    the value column), the future-row bullet and D4 in both README
+    sections; reviewed D2. Follow-ups, none blocking: a future newest row
+    still passes (already the owner question below; the steward would
+    push for a default `warn`); console rows from two datasources on the
+    same table look identical, because the DATASET column does not name
+    the datasource (→ new I-45); F8's `display_value` `-2912173d 16h` is
+    hard to read (→ recorded on I-43 and I-44); the aware-overflow form
+    differs from the others (cosmetic, as QA).
+  - *security-reviewer* — not required (spec 007, Design notes: no
+    trigger touched), and none was called.
+- **Process note:** the data-steward's VERIFY was cut off by an account
+  usage limit and resumed after the reset; no work was lost.
+- **Deferred:** a structured timestamp field (I-40); `failed_rows` and
+  `row_count` nouns (I-43); DETAIL wrapping (I-44); per-check isolation
+  of a `compute` exception (I-42); a future newest row's outcome (owner
+  question below).
+- **Backlog:** I-24 done. New: I-45 console names the datasource (1.0).
+  I-42 gains QA's two shapes (score unchanged, 2.0). I-43 and I-44 carry
+  the F8 display note. E0 in FEATURES.md notes the hardening.
+- **Learned:**
+  - The steward's H1 run against a store written by the actual previous
+    release (from `git archive`) is a better test of "old results are
+    shown as recorded" than rows a test writes by hand; keep it for any
+    iteration that changes stored text or the store.
+  - QA's "every zone × every extreme" sweep found no code defect but
+    surfaced two pre-existing crash shapes in the same function. A
+    formatter's "must not raise" rule is only as strong as the parser in
+    front of it; I-42's fix (isolate `compute`) is the backstop, not
+    more formatter cases.
+  - REFINE's decisions held: nothing in VERIFY reopened the hook, the
+    placement or the clip. The docs were the only blocking item, again
+    (iteration 6 too). From now on, the spec's D-scenarios are written
+    during BUILD, not after QA reports them missing.
+  - S held: about 135 changed lines of product code.
+- **Next:** I-34, `valid_values: [null]` is a silent pass (4.0, now rank
+  1). Only I-06 (4.5) scores higher, and it waits behind the UI chain by
+  the owner's priority; correctness fixes rank above that chain's polish
+  (BACKLOG, "Why the rank departs"). A check that can never fail is the
+  worst defect a data quality tool can ship. The owner's "I-34 before
+  I-24?" question is moot now that I-24 is done.
 
 ### Question for the owner (does not stop the loop): should a future newest row warn?
 
@@ -37,7 +136,8 @@ its own spec. Options: (1) keep `pass`; the message is enough;
 (2) `warn` by default, with a per-check opt-out; (3) leave outcomes
 alone and let users write `between 0s and 6h` (documented). The PM
 leans to (2) as a Phase 2 hardening item, scored when you decide. The
-loop continues with spec 007 meanwhile.
+loop continues with spec 007 meanwhile. (Still open at iteration 7
+REVIEW; the data-steward's VERIFY adds its vote for (2).)
 
 ## Iteration 6 — Check detail 3: the check's own YAML source (I-29), 2026-09-27
 
