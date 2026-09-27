@@ -31,7 +31,8 @@ DatasourceConfig = (
 
 
 MALFORMED_URL = "the url is not a SQLAlchemy URL (expected scheme://...)"
-URL_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*")
+# SQLAlchemy's scheme grammar: driver names use "_" (`oracle+cx_oracle`).
+URL_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9_+.\-]*")
 
 
 class DatasourceError(Exception):
