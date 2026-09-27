@@ -109,11 +109,14 @@ frontend/src/
   components/              Header, ProjectProblems, Summary, LatestRun, CheckTable,
                            LatestResult (Result, When, LastEvaluatedNote), HistoryTable,
                            StatusIcon/StatusBadge, shapes (status shapes), Time (Ago),
-                           LoadError
+                           LoadError (useId heading id; `level` 2|3; `scope` page|section)
+  components/check/        the check page's sections: Identity, RuleSection, LatestSection,
+                           NotFoundPanel, HistorySection; useOlderHistory (older pages,
+                           tagged with the load round, dropped on refresh)
   components/chart/        HistoryFigure (title, key, captions), HistoryChart (SVG and
                            interaction), ChartKey
   pages/Overview.tsx       the overview
-  pages/CheckPage.tsx      a check's page
+  pages/CheckPage.tsx      a check's page: decides which sections show from what loaded
   pages/NotFound.tsx       "Page not found"
   styles/tokens.css        colour tokens, light and dark (status and chart)
   styles/app.css           layout, components and the chart
@@ -298,6 +301,14 @@ either could pass for "nothing failing". A refresh that fails replaces the
 data on screen with the error. A network failure reads "Could not reach the
 tablewatch server. Is `tablewatch serve` still running?". A failure of
 `/project` gets its own panel ("Could not load the project").
+
+`LoadError` is shared by every page. Each one takes its heading id from
+`useId`, so several failures on one page never share an id. By default it is
+page-scoped: an `<h2>` and "Nothing below is shown until it loads, so no
+count can be mistaken for the whole picture." A failure confined to one
+section of an otherwise loaded page passes `scope="section"` (it reads "Only
+this section is missing; the rest of the page loaded.") and, when nested
+under the section's own `<h2>`, `level={3}`.
 
 When refreshes overlap, only the newest one may update the page. An older
 answer that arrives late is dropped.
