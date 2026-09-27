@@ -15,8 +15,9 @@ export function canCopy(): boolean {
     typeof window !== "undefined" &&
     window.isSecureContext &&
     typeof navigator !== "undefined" &&
-    "clipboard" in navigator &&
-    typeof navigator.clipboard.writeText === "function"
+    // Typed as always present, but undefined outside a secure context and in
+    // some embedded browsers; reading it must never throw.
+    typeof (navigator.clipboard as Clipboard | undefined)?.writeText === "function"
   );
 }
 

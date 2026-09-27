@@ -23,8 +23,6 @@ import { Header } from "../components/Header";
 import { LoadError } from "../components/LoadError";
 import { useLoads, type Requests } from "../lib/useLoads";
 
-export { HISTORY_LIMIT };
-
 interface CheckSlots {
   project: Project;
   check: CheckDetail;

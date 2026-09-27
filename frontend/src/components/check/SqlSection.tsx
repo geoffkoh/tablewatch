@@ -86,18 +86,25 @@ function SqlBody({ sql, unit }: { sql: CheckSql; unit: Unit | null }): ReactElem
       )}
       {sql.schema_lookup && (
         <p data-sql-note="schema-lookup">
-          This check reads the list of columns in <code>{sql.dataset}</code> and their types from the database.
-          {sql.statements.length === 0 && " It reads no rows, so it has no SQL."}
+          This check reads the list of columns in{" "}
+          <code>
+            <Marked text={sql.dataset} />
+          </code>{" "}
+          and their types from the database.
+          {statements.length === 0 && " It reads no rows, so it has no SQL."}
         </p>
       )}
-      {sql.statements.length === 0 && !sql.schema_lookup && <p>This check sends no statement of its own.</p>}
+      {statements.length === 0 && !sql.schema_lookup && <p>This check sends no statement of its own.</p>}
       {note !== null && <p data-sql-note="computed">{note}</p>}
       {statements.length > 0 && (
         <p className="caption" data-sql-note="as-loaded">
           Built from the check files as loaded
           {hasScan && (
             <>
-              , for a run of every check on <code>{sql.dataset}</code>
+              , for a run of every check on{" "}
+              <code>
+                <Marked text={sql.dataset} />
+              </code>
             </>
           )}
           . Results do not store their SQL; a result recorded before these files were loaded may have used different
@@ -111,7 +118,13 @@ function SqlBody({ sql, unit }: { sql: CheckSql; unit: Unit | null }): ReactElem
 function Where({ sql }: { sql: CheckSql }): ReactElement {
   return (
     <>
-      <code>{sql.dataset}</code> on <code>{sql.datasource}</code>
+      <code>
+        <Marked text={sql.dataset} />
+      </code>{" "}
+      on{" "}
+      <code>
+        <Marked text={sql.datasource} />
+      </code>
       {sql.dialect !== null && <> ({sql.dialect})</>}
     </>
   );

@@ -637,7 +637,8 @@ checks use the same statement." Then its block and **Copy the query**.
 Statements appear in the API's (run) order. **A kind the page does not
 know is skipped** without an error (the union is open, architect A4).
 
-**After the statements:**
+**After the statements** ("statements" here means those of a known kind;
+a list holding only unknown kinds counts as none):
 - a schema lookup: "This check reads the list of columns in `<dataset>`
   and their types from the database." plus, with no statements, "It reads
   no rows, so it has no SQL.";
@@ -672,7 +673,8 @@ except tab and newline are wrapped in a `span.invisible-char` with
 `data-cp="U+202E"`. The character stays in the DOM, isolated with
 `unicode-bidi: isolate` so it cannot reorder its neighbours; a `[U+202E]`
 marker is CSS generated content (`attr(data-cp)`), so it is not part of the
-text a selection copies. Scan columns in the list are marked the same way.
+text a selection copies. Scan columns in the list, and the dataset and
+datasource names in the sentences, are marked the same way.
 
 **Copy** (`CopyButton`, `lib/clipboard.ts`): copies the API's `sql` plus
 `;` (from the string, never the DOM). "Copied" shows for 2 seconds in a

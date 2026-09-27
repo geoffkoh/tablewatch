@@ -382,6 +382,15 @@ describe("P14: invisible characters are marked", () => {
   });
 });
 
+describe("P14: names in the sentences are marked too", () => {
+  it("marks invisible characters in the dataset and datasource names", async () => {
+    await renderSql(EMAIL, { ...EMAIL_SQL, dataset: "sales.\u202Ecustomers", datasource: "la\u200Bke" });
+    const marks = Array.from(sqlSection().querySelectorAll("p .invisible-char")).map((m) => m.getAttribute("data-cp"));
+    expect(marks).toContain("U+202E");
+    expect(marks).toContain("U+200B");
+  });
+});
+
 describe("P15: an unknown statement kind is skipped", () => {
   it("renders the scan and the query, nothing for the unknown kind, and no error", async () => {
     await renderSql(EMAIL, UNKNOWN_KIND_SQL);
