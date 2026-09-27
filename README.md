@@ -429,7 +429,7 @@ ssh -L 8765:127.0.0.1:8765 dq-host      # then open http://127.0.0.1:8765/
 prints a warning:
 
 ```text
-tablewatch: warning: serving on 0.0.0.0 with no authentication — anyone who can reach this address can read this project's checks, the SQL each check runs, and its results: data values, database error messages that can quote row values, and owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn it on yet).
+tablewatch: warning: serving on 0.0.0.0 with no authentication — anyone who can reach this address can read this project's check files (comments included), the SQL each check runs, and its results: data values, database error messages that can quote row values, and owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn it on yet).
 ```
 
 Results can contain data values, such as a minimum price or a newest

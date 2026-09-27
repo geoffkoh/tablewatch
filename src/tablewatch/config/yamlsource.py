@@ -24,6 +24,7 @@ class YAMLSource:
     def __init__(self, path: Path, relative: Path) -> None:
         self.path = path
         self.relative = relative
+        self.text: str | None = None
 
     def load(self) -> tuple[Any, list[Diagnostic]]:
         yaml = YAML(typ="rt")
@@ -32,6 +33,7 @@ class YAMLSource:
             text = self.path.read_text(encoding="utf-8")
         except OSError as exc:
             return None, [error(f"cannot read file: {exc.strerror}", self.at(0, 0))]
+        self.text = text
         try:
             return yaml.load(text), []
         except MarkedYAMLError as exc:

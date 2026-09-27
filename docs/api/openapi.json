@@ -150,6 +150,78 @@
         "title": "CheckList",
         "type": "object"
       },
+      "CheckSource": {
+        "description": "A check's own lines in its file, as loaded: `GET /checks/{id}/source`.\n\n`text` is only the check's lines (and the comments directly around it);\n`filter` is the one other value from the same file. When the lines could\nnot be told apart, `start_line`, `end_line` and `text` are null.",
+        "properties": {
+          "check_id": {
+            "title": "Check Id",
+            "type": "string"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Line"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileFilter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "loaded_at": {
+            "format": "date-time",
+            "title": "Loaded At",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Line"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "check_id",
+          "path",
+          "start_line",
+          "end_line",
+          "text",
+          "filter",
+          "loaded_at"
+        ],
+        "title": "CheckSource",
+        "type": "object"
+      },
       "CheckSql": {
         "description": "The SQL a check compiles to, without connecting: `GET /checks/{id}/sql`.\n\n`sql` is shown with values inlined and without a trailing `;`; a run\nsends the same statement with bound parameters. Nothing about the\ndatasource but its name and dialect is served.",
         "properties": {
@@ -477,6 +549,30 @@
           "message"
         ],
         "title": "ErrorInfo",
+        "type": "object"
+      },
+      "FileFilter": {
+        "description": "The check file's dataset `filter:`, as loaded.",
+        "properties": {
+          "applies": {
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "line": {
+            "title": "Line",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "text",
+          "applies"
+        ],
+        "title": "FileFilter",
         "type": "object"
       },
       "HistoryEntry": {
@@ -1684,6 +1780,95 @@
           }
         },
         "summary": "Get Check History"
+      }
+    },
+    "/api/v1/checks/{check_id}/source": {
+      "get": {
+        "operationId": "get_check_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "check_id",
+            "required": true,
+            "schema": {
+              "title": "Check Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckSource"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid parameter"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "forbidden host"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not found"
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "method not allowed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "store unavailable"
+          }
+        },
+        "summary": "Get Check Source"
       }
     },
     "/api/v1/checks/{check_id}/sql": {

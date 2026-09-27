@@ -377,6 +377,57 @@ class CheckSql(_Model):
         )
 
 
+class FileFilter(_Model):
+    """The check file's dataset `filter:`, as loaded."""
+
+    line: int
+    text: str
+    applies: bool
+
+
+class CheckSource(_Model):
+    """A check's own lines in its file, as loaded: `GET /checks/{id}/source`.
+
+    `text` is only the check's lines (and the comments directly around it);
+    `filter` is the one other value from the same file. When the lines could
+    not be told apart, `start_line`, `end_line` and `text` are null.
+    """
+
+    check_id: str
+    path: str
+    start_line: int | None
+    end_line: int | None
+    text: str | None
+    filter: FileFilter | None
+    loaded_at: Timestamp
+
+    @classmethod
+    def of(cls, check: Check, loaded_at: datetime) -> CheckSource:
+        dataset = check.dataset
+        span = check.span
+        lines = dataset.source_lines
+        text = (
+            "\n".join(lines[span.start_line - 1 : span.end_line])
+            if span is not None and span.end_line <= len(lines)
+            else None
+        )
+        return cls(
+            check_id=check.id,
+            path=dataset.path.as_posix(),
+            start_line=span.start_line if text is not None and span else None,
+            end_line=span.end_line if text is not None and span else None,
+            text=text,
+            filter=FileFilter(
+                line=dataset.filter_line,
+                text=dataset.filter,
+                applies=check.metric.scoped,
+            )
+            if dataset.filter is not None and dataset.filter_line is not None
+            else None,
+            loaded_at=loaded_at,
+        )
+
+
 class CheckList(_Model):
     items: list[CheckSummary]
     total: int

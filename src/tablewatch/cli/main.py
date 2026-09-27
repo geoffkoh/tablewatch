@@ -372,8 +372,8 @@ SERVER_PACKAGES = frozenset({"fastapi", "starlette", "uvicorn"})
     "--host",
     default="127.0.0.1",
     show_default=True,
-    help="Address to listen on. Anything but loopback serves checks, SQL and "
-    "results without authentication.",
+    help="Address to listen on. Anything but loopback serves check files, SQL "
+    "and results without authentication.",
 )
 @click.option("--port", type=click.IntRange(0, 65535), default=8765, show_default=True)
 @click.option(
@@ -433,10 +433,11 @@ def serve(
         if not is_loopback(host):
             click.echo(
                 f"tablewatch: warning: serving on {host} with no authentication — anyone "
-                "who can reach this address can read this project's checks, the SQL "
-                "each check runs, and its results: data values, database error "
-                "messages that can quote row values, and owner emails. Authentication "
-                "arrives in Phase 4 (tablewatch.yml cannot turn it on yet).",
+                "who can reach this address can read this project's check files "
+                "(comments included), the SQL each check runs, and its results: data "
+                "values, database error messages that can quote row values, and owner "
+                "emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn "
+                "it on yet).",
                 err=True,
             )
         shown = f"[{host}]" if ":" in host else host

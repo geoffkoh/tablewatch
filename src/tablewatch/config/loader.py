@@ -8,17 +8,26 @@ everything that is wrong, each at its `file:line:col`.
 from __future__ import annotations
 
 import difflib
+import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.nodes import MappingNode
 
-from tablewatch.checks.model import Check, Dataset, canonical_text, derive_check_id
+from tablewatch.checks.model import (
+    Check,
+    Dataset,
+    SourceSpan,
+    canonical_text,
+    derive_check_id,
+)
 from tablewatch.config.project import PROJECT_FILE, ProjectConfig
+from tablewatch.config.spans import check_span, compose, split_lines
 from tablewatch.config.yamlsource import YAMLSource, plain, quote_offset
 from tablewatch.diagnostics import (
     Diagnostic,
@@ -39,6 +48,8 @@ from tablewatch.dsl.ast import values_in
 from tablewatch.metrics.base import Metric, OptionType, Unit
 from tablewatch.metrics.registry import get_metric
 from tablewatch.metrics.registry import suggest as suggest_metric
+
+log = logging.getLogger(__name__)
 
 DEFAULTS_FILES = frozenset({"_defaults.yml", "_defaults.yaml"})
 CHECK_FILE_SUFFIXES = frozenset({".yml", ".yaml"})
@@ -277,6 +288,10 @@ class _ChecksLoader:
             path=source.relative,
             location=source.of_key(node, "dataset"),
             filter=self._string(source, node, "filter"),
+            filter_line=source.of_key(node, "filter").line
+            if "filter" in node
+            else None,
+            source_lines=split_lines(source.text or ""),
             owner=self._string(source, node, "owner") or defaults.owner,
             tags=_union(defaults.tags, self._tags(source, node)),
         )
@@ -295,9 +310,12 @@ class _ChecksLoader:
                 self.diagnostics.append(
                     warning("`checks:` is empty", source.of_key(node, "checks"))
                 )
+            root = _composed(source.text or "")
             for index in range(len(checks)):
                 check = self._load_check(source, dataset, checks, index)
                 if check is not None:
+                    if root is not None:
+                        check.span = _span(dataset.source_lines, root, index)
                     dataset.checks.append(check)
         return dataset
 
@@ -646,3 +664,21 @@ def _matches(value: Any, kind: OptionType) -> bool:
             return isinstance(value, dict) and all(
                 isinstance(k, str) and isinstance(v, str) for k, v in value.items()
             )
+
+
+def _composed(text: str) -> MappingNode | None:
+    # Runs after a clean round-trip load, so it should not fail; if it does,
+    # that is tablewatch's fault, not the file's: no spans, no diagnostic.
+    try:
+        return compose(text)
+    except Exception:
+        log.debug("could not compose a check file for its source spans", exc_info=True)
+        return None
+
+
+def _span(lines: Sequence[str], root: MappingNode, index: int) -> SourceSpan | None:
+    try:
+        return check_span(lines, root, index)
+    except Exception:
+        log.debug("could not find a check's source span", exc_info=True)
+        return None
