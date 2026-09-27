@@ -9,7 +9,7 @@ the same day. Iteration 6 PLAN (2026-09-27): I-29 in progress; I-33
 re-ranked to fourth after the owner's decision. Iteration 6 REFINE: I-36 and I-37
 added from the reviews of spec 006. Iteration 6 REVIEW (2026-09-27): I-29
 done (C4 shipped in full); I-36 widened; I-39 added; re-ranked. Iteration 7 PLAN (2026-09-27): I-24
-in progress (spec 007); I-40 split from it; I-41 added. Score = reach × impact × confidence ÷ effort, × 1.25 if other
+in progress (spec 007); I-40 split from it; I-41 added. Iteration 7 REFINE: I-42 to I-44 added; an I-06 requirement added. Score = reach × impact × confidence ÷ effort, × 1.25 if other
 items depend on it (PROCESS.md). The rank follows the score except where
 the owner's priority says otherwise (below); every departure is stated.
 
@@ -21,8 +21,8 @@ every Phase 2 feature now has one. I-16 to I-18 are follow-ups from the
 iteration 1 reviews, I-19 and I-20 from iteration 2, I-21 to I-25 from
 iteration 3, I-27 and I-28 from iteration 4, I-30 to I-32 from
 iteration 5 REFINE, I-33 to I-35 from iteration 5 VERIFY, I-36 and I-37 from iteration 6
-REFINE, I-39 from iteration 6 VERIFY, and I-40 (split from I-24) and I-41 from iteration 7
-PLAN; they harden
+REFINE, I-39 from iteration 6 VERIFY, I-40 (split from I-24) and I-41 from iteration 7
+PLAN, and I-42 to I-44 from iteration 7 REFINE; they harden
 what shipped rather than add features.
 I-26 is the second half of I-05, split off in iteration 4 PLAN; I-29 is
 I-26's Source half, split off in iteration 5 REFINE by the pre-planned
@@ -44,9 +44,11 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | 3 | I-33 | Check identity for `failed_rows` and `sql_metric`: `condition:` and `query:` do not feed the derived id, so two `failed_rows` checks on one table in one file collide, the loader reports a duplicate, and nothing in the project runs until one gets an `id:` (data-steward, iteration 5) | A (language hardening) | owner decision ✓ | S | 2 | 1 | 1.0 | **2.0** | proposed — **ready to plan**: owner chose option 1 on 2026-09-27 (change the id now, no history migration). **Gate: before the first PyPI release.** Breaking for existing history of those checks (CHANGELOG note when it ships) |
 | 4 | I-36 | Check files that crash the loader get a diagnostic, not a traceback (design rule 5 is broken today in two ways). (a) A control character: `YAMLSource.load` catches only `MarkedYAMLError`, so ruamel's `ReaderError` (e.g. `\x0c`, `\x0b`, `\x1c`–`\x1e` in a comment: `unacceptable character #x000c`) escapes `validate` and `run` as a traceback. Catch `YAMLError`; place the diagnostic at `file:line:col` from `ReaderError.position` (architect F3, iteration 6 REFINE; reproduced on `8687ebc`). (b) A YAML merge key inside a check item (`- row_count:` then `<<: &base {warn: when < 5}`) raises `KeyError: 'warn'`; either merged options load as written or the merge key is a Diagnostic at its `file:line:col` (qa-engineer, iteration 6 VERIFY; pre-existing) | A, E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-33 |
 | 4a | I-41 | Freshness on a DuckDB `TIMESTAMPTZ` column is an `error` on every run: DuckDB needs `pytz` to hand back a zone-aware value and it is not installed (`Invalid Input Error: Required module 'pytz' failed to import`). Either the `duckdb` extra brings what DuckDB needs (a dependency: security review) or the value reaches Python another way that keeps rule 2 (no per-dialect date arithmetic in SQL); a test on a `TIMESTAMPTZ` column (PM, iteration 7 PLAN; reproduced on `940c776`) | A, E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-36 |
+| 4b | I-42 | An exception in one metric's `compute` errors every check on its dataset: it reaches `_run_dataset`'s safety net (`engine/runner.py`), so `row_count > 0` on the same table becomes `internal error: …` too. A `compute` failure errors only its own check, as the executor already does for a failing measure (rule 7: failures become `error` outcomes "on the checks they affect"); a test that plants a raising `compute` beside a passing `row_count` on DuckDB and SQLite (data-steward, iteration 7 REFINE; reproduced on `bce044a` with `valid_to = 9999-12-31 23:59:59` on `timezone: America/New_York`, the trigger spec 007 F8 removes) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-41 |
 | 5 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — follows I-24 (spec 005 D8: not folded into I-26) |
 | 6 | I-35 | The SQL section in plain words: "cannot compile" says the driver is not installed and which package to add, not `Can't load plugin: sqlalchemy.dialects:snowflake`; the malformed-URL message names the datasource and `tablewatch.yml`; a check whose datasource is not defined shows the name as written, marked "not defined", in the Datasource row and the SQL section; "computes 6 values, used by this check and 6 others" (data-steward, iteration 5) | C4 (hardening) | I-26 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — with or straight after I-27 |
 | 7 | I-39 | Source block polish: line numbers stay in view when the block is scrolled sideways (a sticky number column), so a long line can still be matched to its number (data-steward, iteration 6 VERIFY; spec 006 P16 allowed today's behaviour) | C4 (hardening) | I-29 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — rides with I-27 and I-35 if that PR stays S, else straight after |
+| 7a | I-43 | Count values name their unit: `failed_rows` shows `1 row` / `3 rows` and `row_count` `1,204 rows`, through spec 007's `count_noun` hook (two lines of data plus tests on both backends); `missing_count`, `duplicate_count` and `sql_metric` stay bare. Old results keep their text (data-steward, iteration 7 REFINE, spec 007 Q2) | E0, C2, C4 (hardening) | I-24 | S | 2 | 0.5 | 1.0 | **1.0** | proposed |
 | 8 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
 | 9 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
 | 10 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
@@ -73,6 +75,7 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | 31 | I-23 | Save-time check state: a state table updated when a run is recorded, so `/checks` stops reading the project's whole history per request | C1, E5 | I-14 | M | 2 | 1 | 0.5 | **0.5** | proposed — gated: not scheduled until the threshold below is crossed |
 | 31a | I-40 | The newest timestamp of a freshness result as a structured field (store column with its Alembic revision; additive in the JSON report and the API; `openapi.json`), so the page can show it in the viewer's zone next to its local-time axis instead of the datasource's zone in the message text. Split from I-24 in iteration 7 PLAN (spec 007 N1); old results have none | C4, E0 (hardening) | I-24 | M | 2 | 0.5 | 0.8 | **0.4** | proposed |
 | 32 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
+| 32a | I-44 | Console DETAIL wraps to the terminal's width instead of a fixed clip (spec 007 raises the clip from 70 to 200 characters; a long line still wraps where the terminal puts it, not under the DETAIL column) (architect, iteration 7 REFINE) | E0 (hardening) | I-24 | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
 
 ### Why the rank departs from the score
 
@@ -97,6 +100,15 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
   other loud correctness fixes (I-33, I-36) and above the UI polish.
   Reach Dana and Sam, impact 1, confidence 1.0 (reproduced), S. A fix
   that adds `pytz` is a dependency: security review.
+- **Iteration 7 REFINE: I-42 to I-44.** I-42 (2.0) ranks 4b beside the
+  other loud correctness fixes: reach Dana and Sam, impact 1 (loud, not
+  silent, but it takes `row_count` down with it), confidence 1.0
+  (reproduced), S. I-43 (1.0) ranks 7a with the other 1.0 polish: reach
+  Sam and Dana, impact 0.5, confidence 1.0, S, cheap once spec 007's
+  hook exists. I-44 (0.4) ranks with the low scorers: reach 1, impact
+  0.5 now that the clip is 200, confidence 0.8. Whether a newest row in
+  the future should `warn` by default is an owner question
+  (ITERATIONS.md, iteration 7), not an item yet: it changes outcomes.
 - **I-39 (1.0) rides with I-27 and I-35** (iteration 6 REVIEW): all
   three are check page polish from the data-steward's hand runs. Reach
   Sam and Dana, impact 0.5 (the number is one sideways scroll away),
@@ -485,6 +497,12 @@ these as acceptance scenarios.
   different rule it says why. Otherwise the UI's "failing since" and the
   alert's "failing again" disagree about the same history. (PLAN's text,
   "any different outcome, `error` included, ends the run", is superseded.)
+- **I-06 — from iteration 7 REFINE (data-steward, spec 007 Q4).** Any
+  notification that shows a result's `message` also shows its
+  `display_value` beside it. Spec 007 keeps the age out of the freshness
+  message because every surface today shows `display_value` next to it;
+  a notification that carried `message` alone would give a timestamp and
+  no age. This is an acceptance scenario in I-06's spec.
 - **I-06 — from iteration 1.** Notifiers are result sinks and follow the
   `ResultSink` rule the architect set: a sink raises only when its failure
   means tablewatch could not do its job (the results store). A notifier

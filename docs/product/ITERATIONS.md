@@ -6,6 +6,39 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 7 — Readable values and messages (I-24), in progress
+
+- **Spec:** [007-readable-values](specs/007-readable-values.md).
+  **Branch:** `iter/007-readable-values`. The full entry is written in
+  REVIEW.
+- **REFINE (2026-09-27).** The data-steward answered Q2–Q5 in the spec
+  and added fixture rows, F3a, F5's placeholder hint and F8 (a
+  `9999-12-31` value on a non-UTC datasource errors every check on its
+  dataset today). The architect approved with follow-ups: a
+  `count_noun` hook on `Metric` for the schema wording; timestamp
+  formatting private to `freshness.py`; `format_duration` moved out of
+  the engine and re-exported; a README sentence that `message` and
+  `display_value` text is not a contract (D4). The PM set the console's
+  DETAIL clip to 200 (spec R3) and kept the size at S (R6). New items:
+  I-42, I-43, I-44; a Q4 requirement on I-06.
+
+### Question for the owner (does not stop the loop): should a future newest row warn?
+
+A freshness check passes when the newest row is in the future: the age
+is negative, and `< 6h` is true. After spec 007 the message says so
+(`…, 1h 47m in the future; check the datasource's timezone`), but the
+outcome is still `pass`, so a check reading a UTC column as New York
+time, or a table whose newest value is a `9999-12-31` placeholder,
+passes every run and never alerts. The data-steward asks whether a
+newest row more than 60 seconds ahead should `warn` by default. That
+changes outcomes (and so the exit code, from 0 to 1, for anyone
+running with `--fail-on warn`), which spec 007 rules out, so it would be
+its own spec. Options: (1) keep `pass`; the message is enough;
+(2) `warn` by default, with a per-check opt-out; (3) leave outcomes
+alone and let users write `between 0s and 6h` (documented). The PM
+leans to (2) as a Phase 2 hardening item, scored when you decide. The
+loop continues with spec 007 meanwhile.
+
 ## Iteration 6 — Check detail 3: the check's own YAML source (I-29), 2026-09-27
 
 - **Spec:** [006-check-detail-source](specs/006-check-detail-source.md).
