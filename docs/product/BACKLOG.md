@@ -27,9 +27,9 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | — | I-02 | Read-only REST API: runs, results, checks, history; `tablewatch serve` (API only) — [spec 002](specs/002-read-only-api.md) | C1 | I-01 ✓ | M | 3 | 1 | 0.8 | 1.5 | done (iteration 2) |
 | — | I-03 | UI shell + overview page, bundle shipped in the wheel — [spec 003](specs/003-ui-shell-overview.md) | C2 | I-02 ✓ | M | 4 | 2 | 0.8 | 4.0 | done (iteration 3) |
 | — | I-05 | Check detail 1: identity, rule, latest result, history chart against the threshold and history table — [spec 004](specs/004-check-detail-history.md) | C4 (without SQL and source) | I-03 ✓ | M | 3 | 2 | 0.8 | 3.0 | done (iteration 4) |
-| 1 | I-26 | Check detail 2: compiled SQL and the check's own YAML source on the detail page (split from I-05 in iteration 4 PLAN) | C4 (SQL, source) | I-05 ✓ | S | 2 | 1 | 0.8 | **1.6** | proposed — next |
+| 1 | I-26 | Check detail 2: compiled SQL and the check's own YAML source on the detail page (split from I-05 in iteration 4 PLAN) — [spec 005](specs/005-check-detail-sql-source.md) | C4 (SQL, source) | I-05 ✓ | S | 2 | 1 | 0.8 | **1.6** | in-progress (iteration 5) |
 | 2 | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree | E0, C2, C4 (hardening) | — | S | 3 | 2 | 0.8 | **4.8** | proposed — runs straight after I-26 (trigger met in iteration 4 REFINE) |
-| 3 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — may ride with I-26 if that PR stays S |
+| 3 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — follows I-24 (spec 005 D8: not folded into I-26) |
 | 4 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
 | 5 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
 | 6 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
@@ -83,9 +83,11 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 - **I-27 (1.0) is check detail polish from the data-steward's
   acceptance of I-05**, and ranks with the UI chain, above I-04. It
   touches `CheckPage.tsx` and the chart's labels, which I-26 also opens
-  (and splits into section components). I-26's spec may fold it in if
-  the PR stays S; otherwise it follows I-24 as its own S. Confidence
-  1.0: every item was reproduced against a real `serve`.
+  (and splits into section components). **Iteration 5 PLAN: not folded
+  in** (spec 005 D8). I-26 is already at the top of S, and I-27 is
+  chart-label layout, where iteration 4's blocking findings were; it
+  follows I-24 as its own S. Confidence 1.0: every item was reproduced
+  against a real `serve`.
 - **I-21 (0.8) ranks with the UI chain, above I-06.** It is overview
   polish from iteration 3's acceptance run, and it touches the same
   components as I-04 (counts, filters, the `none`/`not_run` mapping). It
