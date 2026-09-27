@@ -30,6 +30,7 @@ DatasourceConfig = (
 )
 
 
+MALFORMED_URL = "the url is not a SQLAlchemy URL (expected scheme://...)"
 URL_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*")
 
 
@@ -62,15 +63,15 @@ def dialect_for(config: DatasourceConfig) -> Dialect:
             # Only a well-formed scheme is echoed: without "://" the "scheme"
             # is the whole URL, password included.
             if not separator or not URL_SCHEME.fullmatch(scheme):
-                raise DatasourceError(
-                    "the url is not a SQLAlchemy URL (expected scheme://...)"
-                )
+                raise DatasourceError(MALFORMED_URL)
             try:
                 return make_url(f"{scheme}://").get_dialect()()
             except (ArgumentError, NoSuchModuleError) as exc:
                 raise DatasourceError(
                     f"unsupported SQLAlchemy URL scheme '{scheme}': {exc}"
                 ) from None
+            except ValueError:  # e.g. "a+b+c": more than one driver
+                raise DatasourceError(MALFORMED_URL) from None
 
 
 def create_engine_for(config: DatasourceConfig, project_root: Path) -> Engine:

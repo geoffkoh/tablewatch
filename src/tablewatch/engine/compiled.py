@@ -29,7 +29,11 @@ UNDEFINED_DATASOURCE = (
 
 @dataclass(frozen=True)
 class ScanColumn:
-    """One column of the scan: its label (`m0`, …) and its expression."""
+    """One column of the dataset's scan: its label (`m0`, …) and expression.
+
+    Dataset-level; one check's use of a column, with `shared_by`, is
+    `ColumnUse` (served as the API's `ScanColumn`).
+    """
 
     label: str
     sql: str
@@ -83,7 +87,6 @@ class CheckStatements:
 class CompiledDataset:
     """A dataset's statements, or why it cannot be compiled (`error`)."""
 
-    dataset: Dataset
     dialect: str | None
     scan: CompiledScan | None
     queries: tuple[CompiledQuery, ...]
@@ -137,7 +140,7 @@ def compile_dataset(
     """
     config = datasources.get(dataset.datasource)
     if config is None:
-        return _failed(dataset, UNDEFINED_DATASOURCE)
+        return _failed(UNDEFINED_DATASOURCE)
     try:
         dialect = dialect_for(config)
         plan = plan_dataset(
@@ -148,11 +151,10 @@ def compile_dataset(
             list(checks) if checks is not None else None,
         )
     except DatasourceError as exc:
-        return _failed(dataset, str(exc))
+        return _failed(str(exc))
     scan = plan.scan()
     labels = plan.labels()
     return CompiledDataset(
-        dataset=dataset,
         dialect=dialect.name,
         scan=None
         if scan is None
@@ -173,9 +175,8 @@ def compile_dataset(
     )
 
 
-def _failed(dataset: Dataset, error: str) -> CompiledDataset:
+def _failed(error: str) -> CompiledDataset:
     return CompiledDataset(
-        dataset=dataset,
         dialect=None,
         scan=None,
         queries=(),

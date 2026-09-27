@@ -229,6 +229,8 @@ def test_a_malformed_url_is_never_echoed(
         "snow flake://dana:hunter2@acct",
         "://dana:hunter2@acct",
         "1sf://dana:hunter2@acct",
+        "a+b+c://dana:hunter2@acct",
+        "a++b://dana:hunter2@acct",
     ],
 )
 def test_dialect_for_echoes_only_a_well_formed_scheme(url: str) -> None:  # C3
