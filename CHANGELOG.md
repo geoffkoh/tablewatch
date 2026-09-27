@@ -72,6 +72,31 @@ All notable changes to tablewatch. The format follows
   `check_ids`); the 403, 405 and 500 errors are declared on every
   endpoint; timestamps are marked as date-times. Clients that generate
   code from it get precise types.
+- A page for every check. On the overview, each check's name is now a
+  link to `/checks/<id>`, an address you can reload, bookmark or send to
+  a colleague. The page shows what the check is and where it is written
+  (`file:line:col`), its rule in words ("Expected < 5%", "Warn when > 1d ·
+  Fail when > 7d"), its latest result in the overview's words, and its
+  recorded history as a chart and as a table. See "Reading a check's
+  page" in the README.
+- The history chart plots each recorded value against the check's
+  current rule, with the failing region shaded, so you can see how far
+  from the line a check is and for how long. Each result is marked by the
+  outcome it was given at the time, by shape as well as colour. Runs that
+  could not evaluate the check, and failures with no value, sit in their
+  own lanes below the plot instead of being drawn as zero. When a rule is
+  edited under an explicit `id:`, the chart marks where it changed and
+  says from what to what; values measured by a different metric are
+  listed but kept off today's axis. Hover or use the arrow keys to read
+  any point; the table below lists every result, 200 at a time, with
+  **Load older results** for more. Times are shown in your own time zone,
+  and the page says which.
+- The JSON API describes a check's rule: `GET /api/v1/checks/{id}` has a
+  new `rule` field with each condition's operator, its numbers on the
+  same scale as the recorded values (`5%` is `5.0`, `6h` is `21600.0`
+  seconds), and its text. Each entry in a check's history now says which
+  `metric`, `dataset` and `unit` it recorded. Both additions are
+  backwards-compatible; `GET /api/v1/checks` is unchanged.
 
 ### Changed
 
@@ -91,6 +116,13 @@ All notable changes to tablewatch. The format follows
   when the project loads. Before, such a check ran but could not be recorded
   on PostgreSQL. If you have one, shorten it; its history starts again under
   the new id.
+
+### Fixed
+
+- A number in a check too large to represent (for example a threshold
+  400 digits long) is now reported as "this number is too large" at its
+  `file:line:col` when the project loads, and `validate` exits 3. Before,
+  `tablewatch validate` crashed on it.
 
 ## 0.1.0 — not yet published
 

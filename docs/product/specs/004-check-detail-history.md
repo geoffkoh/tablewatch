@@ -9,7 +9,7 @@
 | Depends on | I-03 ✓ (spec 003: the UI shell, `latest.since`, `last_evaluated`, generated types) |
 | Unblocks | I-26 check detail 2 (compiled SQL and source); I-04 and I-15 link to this page |
 | Branch | `iter/004-check-detail-history` |
-| Status | planned (iteration 4 PLAN) |
+| Status | shipped (iteration 4, PR #8); one deviation from decision 13, recorded there |
 
 ## Problem and persona
 
@@ -830,7 +830,11 @@ tech lead; its rules are binding on the chart (listed in 13).
     with shape and text; text never wears the data colour. Label
     selectively (latest point, boundaries, off-range, markers). Hover and
     keyboard focus: a crosshair snapping to hit columns ≥ 24 units wide
-    and a tooltip (value first); the SVG keeps `role="img"` with
+    and a tooltip (value first) *(VERIFY: where marks are closer than 24
+    units, columns are narrower and meet at the midpoints; overlapping
+    columns showed the wrong result's tooltip. A correct tooltip wins
+    over the target size; the arrow keys and the table reach every
+    result. Accepted by the data-steward.)*; the SVG keeps `role="img"` with
     `<title>`/`<desc>`, interaction lives on a wrapping focusable group.
     The table view carries every value. Dark mode uses its own validated
     steps. New chart-only mark tokens (`--tw-{pass,warn,fail,error}-mark`,

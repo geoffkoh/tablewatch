@@ -3,20 +3,20 @@
 Ranked PR-sized increments, drawn from `FEATURES.md`. Owned by the
 product-manager; see `PROCESS.md` for scoring and statuses.
 
-Re-scored and re-ranked by the product-manager in iteration 3 REVIEW
-(2026-09-26); I-05 split into I-05 and I-26 in iteration 4 PLAN. Score =
-reach × impact × confidence ÷ effort, × 1.25 if other items depend on it
-(PROCESS.md). The rank follows the score except where the
-owner's priority says otherwise (below); every departure is stated.
+Re-scored and re-ranked by the product-manager in iteration 4 REVIEW
+(2026-09-27). Score = reach × impact × confidence ÷ effort, × 1.25 if other
+items depend on it (PROCESS.md). The rank follows the score except where
+the owner's priority says otherwise (below); every departure is stated.
 
 The backlog holds the **current phase only: Phase 2 (visibility and
 alerting, `0.2.0`)**. Phase 2b items (A1–A4, A14, B6, C7) join it when Phase
 2 is done; until then they live in `FEATURES.md`. C5 (run diff) and E5
 (Postgres store) were broken into increments in iteration 1 (I-14, I-15), so
 every Phase 2 feature now has one. I-16 to I-18 are follow-ups from the
-iteration 1 reviews, I-19 and I-20 from iteration 2, and I-21 to I-25 from
-iteration 3; they harden what shipped rather than add features. I-26 is
-the second half of I-05, split off in iteration 4 PLAN.
+iteration 1 reviews, I-19 and I-20 from iteration 2, I-21 to I-25 from
+iteration 3, and I-27 and I-28 from iteration 4; they harden what shipped
+rather than add features. I-26 is the second half of I-05, split off in
+iteration 4 PLAN.
 
 Statuses: `proposed` (not yet specified) → `ready` (spec meets the
 definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
@@ -26,14 +26,15 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | — | I-01 | Python API: `tablewatch.run()` / `load()` returning typed results; per-call `record=`; establishes the result-sink seam — [spec 001](specs/001-python-api.md) | B1, E7 (per call) | — | S | 2 | 2 | 1.0 | 5.0 | done (iteration 1) |
 | — | I-02 | Read-only REST API: runs, results, checks, history; `tablewatch serve` (API only) — [spec 002](specs/002-read-only-api.md) | C1 | I-01 ✓ | M | 3 | 1 | 0.8 | 1.5 | done (iteration 2) |
 | — | I-03 | UI shell + overview page, bundle shipped in the wheel — [spec 003](specs/003-ui-shell-overview.md) | C2 | I-02 ✓ | M | 4 | 2 | 0.8 | 4.0 | done (iteration 3) |
-| 1 | I-05 | Check detail 1: identity, rule, latest result, history chart against the threshold and history table — [spec 004](specs/004-check-detail-history.md) | C4 (without SQL and source) | I-03 ✓ | M | 3 | 2 | 0.8 | **3.0** | in-progress (iteration 4) |
-| 2 | I-26 | Check detail 2: compiled SQL and the check's own YAML source on the detail page (split from I-05 in iteration 4 PLAN) | C4 (SQL, source) | I-05 | S | 2 | 1 | 0.8 | **1.6** | proposed |
-| 3 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 4 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 5 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
-| 6 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — needs an owner decision on the exit code (see below) |
-| 7 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
-| 8 | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree | E0, C2 (hardening) | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
+| — | I-05 | Check detail 1: identity, rule, latest result, history chart against the threshold and history table — [spec 004](specs/004-check-detail-history.md) | C4 (without SQL and source) | I-03 ✓ | M | 3 | 2 | 0.8 | 3.0 | done (iteration 4) |
+| 1 | I-26 | Check detail 2: compiled SQL and the check's own YAML source on the detail page (split from I-05 in iteration 4 PLAN) | C4 (SQL, source) | I-05 ✓ | S | 2 | 1 | 0.8 | **1.6** | proposed — next |
+| 2 | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree | E0, C2, C4 (hardening) | — | S | 3 | 2 | 0.8 | **4.8** | proposed — runs straight after I-26 (trigger met in iteration 4 REFINE) |
+| 3 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — may ride with I-26 if that PR stays S |
+| 4 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 5 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 6 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
+| 7 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — needs an owner decision on the exit code (see below) |
+| 8 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
 | 9 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
 | 10 | I-08 | Files as datasets (CSV, Parquet, JSON via DuckDB); establishes the dataset-source and executor seams | A8 | — | S | 1 | 2 | 0.8 | **2.0** | proposed |
 | 11 | I-14 | Postgres results store: the store verified on Postgres in CI (migrations, concurrent writers from two servers, column widths), documented for a shared deployment | E5 | — | S | 1 | 2 | 1.0 | **2.0** | proposed |
@@ -43,52 +44,60 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | 15 | I-13 | `validate --connect`: datasets, columns, type suitability and every compiled statement checked against the target database without scanning; Diagnostics at `file:line:col` | H6 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
 | 16 | I-09 | `validate --output sarif` for inline PR annotations | H3 | — | S | 1 | 1 | 1.0 | **1.0** | proposed |
 | 17 | I-22 | CI supply chain: every GitHub Action pinned to a commit SHA (with its version in a comment) before any publishing workflow exists; a check that fails on an unpinned `uses:` | E0 (hardening) | — | S | 1 | 1 | 1.0 | **1.0** | proposed — must precede the first release workflow |
-| 18 | I-12 | Configurable result recording: `record:` in `tablewatch.yml`, `_defaults.yml` and per check | E7 | I-01 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 19 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 20 | I-15 | Run detail page and diff against the previous run ("what broke since yesterday") | C5 | I-02 ✓, I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 21 | I-25 | JSON report timestamps in the API's form (`date-time`, six fractional digits), with a `schema_version` bump and a note for consumers | E0 (hardening) | — | S | 1 | 0.5 | 1.0 | **0.5** | proposed |
-| 22 | I-23 | Save-time check state: a state table updated when a run is recorded, so `/checks` stops reading the project's whole history per request | C1, E5 | I-14 | M | 2 | 1 | 0.5 | **0.5** | proposed — gated: not scheduled until the threshold below is crossed |
-| 23 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
+| 18 | I-28 | A percent threshold written as a fraction: `missing_percent(email) < 0.05` means 0.05%, not 5%; the loader warns at `file:line:col` and suggests `5%` (a warning, not an error; the check still runs) | A (language hardening) | — | S | 2 | 0.5 | 1.0 | **1.0** | proposed |
+| 19 | I-12 | Configurable result recording: `record:` in `tablewatch.yml`, `_defaults.yml` and per check | E7 | I-01 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 20 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 21 | I-15 | Run detail page and diff against the previous run ("what broke since yesterday") | C5 | I-02 ✓, I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 22 | I-25 | JSON report timestamps in the API's form (`date-time`, six fractional digits), with a `schema_version` bump and a note for consumers | E0 (hardening) | — | S | 1 | 0.5 | 1.0 | **0.5** | proposed |
+| 23 | I-23 | Save-time check state: a state table updated when a run is recorded, so `/checks` stops reading the project's whole history per request | C1, E5 | I-14 | M | 2 | 1 | 0.5 | **0.5** | proposed — gated: not scheduled until the threshold below is crossed |
+| 24 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
 
 ### Why the rank departs from the score
 
 - **Owner priority (2026-09-26): UI first.** The UI chain (I-03, I-05,
-  I-26, I-04) comes before alerting. So I-05 (3.0), I-26 (1.6) and I-04
-  (0.8) rank above I-06 (4.5), I-16, I-17, I-24, I-10 and I-08. I-05 is
-  in progress (spec 004, iteration 4).
-- **I-05 split in iteration 4 PLAN.** I-05 whole scored 2.4 (R3, I2,
-  C0.8, M) and did not fit one reviewable PR alongside two new endpoints
-  that expose SQL and check source. It is now I-05, the page with the
-  rule, the latest result and the history chart (spec 004): 2.4 × 1.25
-  for unblocking I-26 = **3.0**. And I-26 is the compiled SQL and the
-  check's own YAML (R2: Dana, and Sam through "every number is
-  explainable"; I1; C0.8; S) = **1.6**. Sam's question (how bad, since
-  when) ships first, and the security-heavy surface gets its own small
-  review.
-- **I-24 neither goes first nor is folded into I-05 (iteration 4 PLAN).**
-  Scores: I-24 alone is 2.4 (R3, I1, C0.8, S), below I-05's 3.0. Folded
-  into I-05 it would make an L: 3 × 2 × 0.8 ÷ 4 = 1.2, worse than
-  either alone, and it would put an engine-wide formatting change into a
-  UI PR. Order costs no rework either way: the detail page shows
-  `display_value` and `message` verbatim (spec 004 D12), and the chart
-  plots `value`, not messages. Doing I-24 first would not clean the page
-  anyway, because messages from earlier runs are not rewritten. I-24
-  keeps its rank. **Trigger to move it:** if the data-steward's
-  acceptance run of spec 004 finds the freshness history (UTC
-  timestamps in messages next to local-time axis labels) misleading
-  rather than untidy, I-24's impact goes 1 → 2 (4.8), and it runs
-  straight after I-26.
+  I-26, I-04) comes before alerting. So I-26 (1.6), I-27 (1.0) and I-04
+  (0.8) rank above I-06 (4.5), I-16, I-17, I-10 and I-08. I-03 and I-05
+  are done.
+- **I-26 is next, above I-24 (4.8), although I-24 scores three times
+  higher (iteration 4 REVIEW).** I-26 finishes C4, the page Dana wants to
+  send Sam, and is the next step of the owner's UI chain; I-24 is
+  hardening that crosses every surface (console, JSON, JUnit, the store,
+  the page), not a UI item. The order costs no rework: the page shows
+  `message` and `display_value` verbatim (spec 004 D12), so I-24 changes
+  them in Python and the page follows without an edit. And the REFINE
+  decision that met I-24's trigger said "straight after I-26", not
+  before it. If the owner prefers the score's order, swapping the two
+  loses nothing.
+- **I-24 re-scored in iteration 4 REVIEW, 2.4 → 4.8** (impact 1 → 2).
+  The trigger written in iteration 4 PLAN was met by the data-steward's
+  REFINE run: on `freshness(created_at) < 6h`, a passing value of `1h`
+  sat next to a message saying `newest 2026-09-26T11:33:48…+00:00`,
+  while the chart's axis said about `20:33 GMT+8`. Read as local time,
+  the message says the check should have failed. That is misleading, on
+  the check whose whole meaning is a time. It runs straight after I-26.
+  The spec picks up REFINE's advice (spec 004, "REFINE: data-steward
+  decisions"): name the zone in words, drop the microseconds, say what
+  the timestamp is ("newest row at 2026-09-26 11:33:48 UTC"), and
+  ideally give the UI a structured field it can show in the viewer's
+  zone rather than rewriting text.
+- **I-27 (1.0) is check detail polish from the data-steward's
+  acceptance of I-05**, and ranks with the UI chain, above I-04. It
+  touches `CheckPage.tsx` and the chart's labels, which I-26 also opens
+  (and splits into section components). I-26's spec may fold it in if
+  the PR stays S; otherwise it follows I-24 as its own S. Confidence
+  1.0: every item was reproduced against a real `serve`.
 - **I-21 (0.8) ranks with the UI chain, above I-06.** It is overview
-  polish from the data-steward's acceptance run, and it touches the same
+  polish from iteration 3's acceptance run, and it touches the same
   components as I-04 (counts, filters, the `none`/`not_run` mapping). It
   can ride with I-04 if that PR stays reviewable in one sitting, or follow
-  it as its own S. It does not move ahead of I-05 or I-26.
-- **Inside the UI chain, check detail (I-05) comes before the explorer
-  (I-04)**: the overview (I-03) lists failing checks first and can link
-  straight to their detail, which answers "why is this failing"; the
-  explorer is navigation for a project large enough to need it.
+  it as its own S.
+- **Check detail (I-05, I-26) comes before the explorer (I-04)**: the
+  overview lists failing checks first and now links straight to their
+  detail, which answers "why is this failing"; the explorer is
+  navigation for a project large enough to need it.
 - **I-06 comes straight after the UI chain** as the owner asked, and is the
-  highest-scoring item left: alerting is how a failure reaches Sam at all.
+  highest-scoring feature left: alerting is how a failure reaches Sam at
+  all.
 - **I-16 (3.2) comes next, not earlier.** It fixes a silent false pass — a
   misspelt folder or tag next to a real one runs the rest and exits 0 — so
   its impact is high, but it needs a typo to bite, the owner's order puts
@@ -97,14 +106,13 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 - **I-17 (2.0) sits above I-10 (2.4)** because it is hardening of what is
   already shipped and pairs naturally with I-16 (both touch the CLI's error
   paths); if I-16 waits on the owner, I-17 can go alone.
-- **I-24 (2.4) sits above I-10 (2.4)** on the tie: it hardens what has
-  shipped, and I-05 will put these values and messages in front of Sam on
-  a full page. Its reach is 3 (Sam and Alex on the page, Dana in the
-  console). If the I-05 spec finds a raw timestamp unacceptable on the
-  detail page, the PM may pull I-24 forward to run just before I-05.
 - **I-22 (1.0) ties I-09** and follows it; its rank matters less than its
   gate: it must be done before any workflow that publishes (a release is
-  outward-facing and needs the owner anyway).
+  outward-facing and needs the owner anyway). **I-28 (1.0)** ties both and
+  follows them: the mistake it warns about already fails loudly (a
+  `< 0.05` on a percent metric fails nearly every run), so it is a
+  kindness, not a correctness fix; impact 0.5, confidence 1.0 (the
+  data-steward traced it through the loader in iteration 4 REFINE).
 - **I-23 (0.5) is gated, not ranked by its score.** The security-reviewer
   found that `latest_results` reads the project's whole history on every
   `/checks` request. P5 showed 500 checks × 50 runs (25,000 results) is
@@ -190,6 +198,8 @@ these as acceptance scenarios.
   cannot hang a test. (f) Security review is required: the same socket
   starts serving static files and `GET /` changes. (g) The CI wheel-build
   check from iteration 1, above.
+- **I-05 — all requirements below met in iteration 4** (spec 004; see
+  ITERATIONS.md). Kept for the record.
 - **I-05 — from iteration 3, placed in iteration 4 PLAN (spec 004).**
   (b) The history chart shows where the rule changed under an explicit
   `id:` → D7. (c) Overview's load/refresh state becomes a hook shared by
@@ -210,6 +220,35 @@ these as acceptance scenarios.
   the SQL shown is the dataset's whole single scan with this check's
   measures pointed out (the PM's lean: honest about cost) or only this
   check's measures.
+- **I-26 — from iteration 4.** (a) *security-reviewer:* `message` and
+  `display_value` can quote data values (a freshness timestamp, a value
+  from `sql_metric`), and the page now shows them on a second surface.
+  I-26's security review re-assesses what the server exposes as data,
+  together with the SQL and source endpoints; so does any change to a
+  non-loopback bind. (b) *architect:* `CheckPage.tsx` is split into
+  section components under `frontend/src/components/` when I-26 adds its
+  sections. (c) *architect:* if I-26 adds a third `*Detail` wire model
+  (after `RunDetail` and `CheckDetail`), extract the validate-twice
+  pattern into one helper instead of copying it. (d) *REFINE, deferred:*
+  if I-26 touches the `Check`→dict mapping, `list --output json` and the
+  API share it rather than keep two. (e) Fixtures for anything shown on
+  a time axis space their runs by hours or days, not seconds
+  (data-steward; also for I-15 and I-24).
+- **I-27 — from iteration 4 (data-steward).** Scenarios, on the spec 004
+  fixtures: on `metric-changed`, the table's rule column and the chart's
+  band agree about which results "Current" covers (reword the legend, or
+  mark only the newest segment); a `fail` with no value reads "No value
+  measured" under Latest result, as in the table and the chart, from the
+  shared component; a `between` rule's two boundary lines are labelled
+  without each repeating the full rule text, and an off-range label
+  ("10,000 above") never overlaps the latest value's label.
+- **I-28 — deferred by spec 004 REFINE.** A threshold under 1 on a
+  percent metric without `%` (`missing_percent(email) < 0.05`) is a
+  load-time warning at `file:line:col` that suggests `5%`; the check
+  still loads and runs (a warning, not an error, so `validate` still
+  exits 0 on it). `0` and `%`-suffixed values never warn. The warning
+  comes from the loader (`_check_units` already knows each metric's
+  unit), never from the parser.
 - **I-04 — from iteration 3 (architect).** The UI calls a check with no
   result `none`, the API `not_run`. When I-04 adds outcome filters, map
   between them in `frontend/src/api/api.ts` so filter values sent to the API
@@ -301,6 +340,13 @@ these as acceptance scenarios.
   UI assets under `/assets/` are served `Cache-Control: public,
   max-age=31536000, immutable`; `index.html` and the API stay `no-store`.
   Security review covers it with the rest of I-20.
+- **I-20 — from iteration 4.** (a) Absolute datasource file paths in
+  `error` messages now appear on the check page as well as the overview
+  and the API (data-steward); I-20's "no absolute server paths" scenario
+  covers the check page too. (b) `tests/test_server.py::
+  test_sigterm_stops_serve_cleanly` timed out once under the full suite
+  and passed alone. If it recurs, the process-test harness is fixed
+  first (not retried or skipped), with I-20 or on its own.
 - **I-20 — from iteration 2.** Security review required (what the server
   exposes over the network). Scenarios: `--host 0.0.0.0` prints a startup
   line with a usable URL, or says to use the machine's address; under
@@ -323,6 +369,15 @@ these as acceptance scenarios.
   `results.url` (for example a non-numeric port) makes `tablewatch runs`
   print a `ValueError` traceback and exit 1. It must be a one-line message
   that does not repeat the URL, as `serve` now does.
+- **I-15 — from iteration 4 (architect).** Run detail reuses the
+  shared load/refresh hook and status wording from spec 004; if it adds
+  a wire model, see I-26 (c) on the `*Detail` helper.
+- **Standing note — metric units (iteration 4, architect).** A history
+  entry's `unit` is the current registry's unit for the recorded metric,
+  not a recorded value. If any change ever alters a metric's unit, it
+  must first record `unit` on result rows (a store revision in
+  `results/migrations/versions/`), or old values are drawn on the wrong
+  scale.
 - **I-12 and I-07 — history needs recording.** A check that uses `change()`
   while recording is off for it is a load-time Diagnostic at
   `file:line:col`. Whichever of the two ships second adds that scenario.

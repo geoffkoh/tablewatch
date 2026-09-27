@@ -6,6 +6,157 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 4 — Check detail page and history chart (I-05), 2026-09-27
+
+- **Spec:** [004-check-detail-history](specs/004-check-detail-history.md).
+  **Branch:** `iter/004-check-detail-history`. **PR:** #8.
+- **Shipped:** every check on the overview links to its own page,
+  `/checks/<id>`, which survives a reload and can be bookmarked or sent.
+  The page shows what the check is (name, expression, dataset,
+  datasource, owner, tags, `file:line:col`, full id), its rule in words
+  ("Expected < 5%", "Warn when > 1d · Fail when > 7d"), its latest result
+  in the overview's own words, a chart of the recorded values against the
+  current rule, and the history as a table (newest first, 200 at a time,
+  "Load older results"). The chart shades the failing region, marks each
+  result by its recorded outcome in shape and colour, keeps errors and
+  missing values in their own lanes instead of plotting them as zero,
+  marks where the rule changed under an explicit `id:`, and leaves off
+  today's axis any value measured by another metric. It is hand-drawn SVG
+  (no chart library), with pure, unit-tested functions for every layout
+  decision and the table as its accessible alternative. The API gained
+  `rule` on `GET /api/v1/checks/{id}` (a new `CheckDetail`; `/checks` is
+  unchanged) and `metric`, `dataset` and `unit` on each history entry,
+  all additive; `v1` stays. A number too large for a float is now a
+  diagnostic at `file:line:col` instead of a crash in `validate`. The
+  overview and the detail page share one load/refresh hook and one set of
+  status wording. No new endpoint, dependency or migration; the CSP is
+  unchanged. README "Reading a check's page" (data-steward);
+  `docs/UI_SPECIFICATION.md` (ui-engineer).
+- **Acceptance:** 27 scenarios (26 `must`, 1 `should`: D19). Every `must`
+  is an automated test. The data-steward ran 22/22 live scenarios against
+  a real `serve` on the spec's fixtures; D8, D14, D17 and D18 are covered
+  by vitest only, and D13 was checked in code. Suite at the end of
+  VERIFY: Python 558 passed, 1 xfailed (strict; the known uvicorn
+  connection-limit limitation, I-20); frontend 449 vitest tests in 11
+  files. Gates: pytest, ruff, ruff format, strict mypy, `tsc`, `vite
+  build`. Commits after VERIFY: 479681a (verify fixes), e4d70bf (README).
+- **Reviewer findings and resolution:**
+  - *qa-engineer — FAIL, nine failing tests, all treated as blocking,
+    all fixed.* Adversarial tests added in
+    `tests/test_check_detail_qa.py`, `frontend/src/test/chart.qa.test.ts`
+    and `frontend/src/test/check.qa.test.tsx`. (1) A check link for an
+    explicit id with a dot (`/checks/sales.orders.volume`, `%3A`,
+    `/checks/v1.2/`) returned 404, because the bundle lookup read a dotted
+    last segment as a file name. Now `/checks/<id>` (exactly two
+    segments) under a named page prefix always serves the page; deeper
+    paths still 404, with a test. (2) Axis ticks: rounding to 12
+    significant digits collapsed near-equal or large values to a
+    zero-height axis with no band, and values near 1e308 overflowed the
+    tick step to Infinity. Fixed with step-relative snapping and a
+    fallback extent; labels allow more decimals, tiny steps are no longer
+    taken as whole numbers, and values from 1e21 up are shown in
+    scientific notation. (3) Hover columns widened to 24 units overlapped
+    when marks were dense, so pointing at one result showed the tooltip of
+    another four marks away. Columns now meet at the midpoints and never
+    overlap. (4) "Load older" pressed during a Refresh fetched with the
+    old cursor and lost a result from the table. It is now disabled until
+    the refresh settles.
+  - *architect — approve with follow-ups, none blocking.* Adopted: the
+    page prefixes are named in `server/ui.py`, with a pointer to the
+    frontend's `route.ts`; a comment that a history entry's `unit` is the
+    current registry's unit, not a recorded one; a comment in `bands.ts`
+    naming `dsl/ast.py` as the source of truth for what an operator
+    means. Not adopted (→ requirements on I-26 and I-15, and a standing
+    note below): the `CheckDetail`/`RunDetail` validate-twice pattern
+    becomes a helper if a third `*Detail` model appears; `CheckPage.tsx`
+    is split into section components when I-26 adds sections; recording
+    `unit` on result rows (a migration) is needed only if a metric's unit
+    ever changes.
+  - *security-reviewer — approve with follow-ups, none blocking.* No new
+    endpoint or dependency, CSP unchanged, ids validated and encoded, no
+    raw HTML sinks. Adopted: paths deeper than `/checks/<id>` answer 404.
+    Noted: a personal VS Code workspace file in `docs/product/` was kept
+    out of the commit; `message` and `display_value` can quote data
+    values, so data exposure is re-reviewed with I-26's SQL and source
+    endpoints and with any non-loopback bind (→ requirement on I-26).
+  - *data-steward — accept with follow-ups.* README fixed: an id without
+    `id:` changes when the check is edited; the "edit before a run" note
+    applies to explicit ids only; the Rule column and paging by 200 are
+    described. Not adopted (→ I-27, I-20, and a note on fixtures): after
+    a metric change the table calls the rule "Current" while the band
+    covers only the newest segment; a fail with no value shows "—" under
+    Latest result while the table and chart say "No value measured";
+    both `between` boundary lines carry the full rule text, and "10,000
+    above" crowds the latest value's label; error messages show absolute
+    datasource file paths on every surface (pre-existing; it is I-20's
+    path requirement, now visible on a second page); fixtures whose runs
+    are seconds apart give second-level x ticks.
+- **Spec deviation (decision 13):** the spec asked for hover columns at
+  least 24 units wide. Where marks are closer than 24 units, columns are
+  now narrower and meet at the midpoints. The data-steward judged this
+  right from the user's side: a tooltip for the wrong result is worse
+  than a narrow target, and the arrow keys and the table still reach
+  every result. The spec is annotated.
+- **Possible flake to watch:** `tests/test_server.py::
+  test_sigterm_stops_serve_cleanly` timed out once under the full suite
+  and passed alone. Not reproduced. If it fails again, in CI or locally,
+  it becomes a blocking test-harness item (spec 003's `serving()`
+  helper is the first suspect), not a retry.
+- **Deferred:** SQL and source on the page (→ I-26, as planned in the
+  split); the readable freshness message and the schema `0` (→ I-24,
+  now next but one); a loader warning for a percent threshold written as
+  a fraction (`< 0.05`, which means 0.05%) (→ I-28); `list --output
+  json` sharing the API's check mapping (REFINE; a refactor to take when
+  either is next touched, noted on I-26). The pre-planned split (the
+  chart as its own S) was not needed.
+- **Backlog:** I-05 done; C4 is partly shipped in FEATURES.md (page,
+  rule and chart; SQL and source remain in I-26). Re-scored: I-24 impact
+  1 → 2 (2.4 → **4.8**), because the data-steward's REFINE run met the
+  trigger recorded in iteration 4 PLAN (a UTC timestamp in a freshness
+  message, read next to local-time axis labels, suggests a check should
+  have failed when it passed). It runs straight after I-26. New: I-27
+  check detail polish (1.0), I-28 percent-as-fraction warning (1.0).
+  Requirements added to I-26 (data-exposure review of messages; split
+  `CheckPage.tsx`; the `*Detail` helper), I-20 (the flaky SIGTERM test
+  and datasource paths now on the check page) and I-15 (the `*Detail`
+  helper).
+- **Owner decisions still pending** (from iteration 1, carried): the exit
+  code for a selector that partly matches (I-16), and whether click usage
+  errors exit 3 instead of 2 (I-17). They do not block the UI chain or
+  I-24; I-16 cannot be specified without them.
+- **Learned:**
+  - All four blocking findings were at the edges the spec's reviewer
+    brief named (dotted ids, huge and near-equal values, dense marks,
+    late answers during a refresh). Naming the edges in "Reviewers
+    required" paid off; qa-engineer went straight to them. The
+    server-side one (dotted ids) is a seam between two owners: the
+    frontend's route pattern allowed `.` and the server's static-file
+    lookup assumed a dot meant a file. Where two layers each parse the
+    same path, one should name the other; the architect's pointer
+    comment does that now.
+  - A numeric requirement written into a spec ("≥ 24 units") collided
+    with a correctness requirement (the tooltip names the result under
+    the pointer). Specs should say which wins when a stated size cannot
+    be met; here correctness did, and it should have been written so.
+  - The REFINE trigger on I-24 worked as designed: a written, testable
+    condition for re-ranking, checked by the domain reviewer on real
+    data, moved an item without a debate. Keep writing triggers that way.
+  - Fixtures whose runs are seconds apart hide time-axis behaviour
+    (second-level ticks). Fixtures for time-based UI should space runs
+    by hours or days; noted for I-26, I-15 and I-24.
+  - M was right. The diff was about 7,900 lines across 62 files, most of
+    it tests and the chart's pure functions; the frontend toolchain from
+    iteration 3 was reused without change, as predicted.
+- **Next:** I-26, check detail 2: the compiled SQL and the check's own
+  YAML on the page. It finishes C4 and the page Dana wants to send Sam,
+  its dependency (I-05) is now met, and the owner's UI-first order puts
+  it ahead of alerting. Score 1.6 (R2 I1 C0.8, S). It carries iteration
+  3's security requirements (credential-free compile, no row data, only
+  the check's own lines from under `checks/`, no path from the request)
+  plus this iteration's data-exposure review. I-24 (4.8) follows it
+  directly, as REFINE decided; see BACKLOG for why the higher score does
+  not go first.
+
 ## Iteration 3 — Web UI shell and overview page (I-03), 2026-09-26
 
 - **Spec:** [003-ui-shell-overview](specs/003-ui-shell-overview.md).

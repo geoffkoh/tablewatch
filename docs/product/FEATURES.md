@@ -7,7 +7,7 @@ alerting) and 2b (language depth).
 **Size** is a first guess in iterations: S ≈ 1, M ≈ 2, L ≈ 4.
 ★ marks small, valuable items worth considering early.
 
-Status: `shipped`, `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
+Status: `shipped`, `partly shipped` (the rest is named in BACKLOG.md), `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
 
 ## A. Authoring & the check language
 
@@ -112,7 +112,7 @@ Notes:
 | C1 | Read-only REST API (runs, results, checks, history), OpenAPI | Contract for the UI and integrations | all | 2 | M | shipped (I-02) |
 | C2 | `tablewatch serve` (listens on 127.0.0.1 by default; `--host` opts in with a no-authentication warning), UI shell, overview (failing first) | Status at a glance, without a terminal | Sam, Alex | 2 | M | shipped (`serve` in I-02; UI shell and overview in I-03) |
 | C3 | Check explorer: tree mirroring `checks/`, filters, search | Find any check the way it was written | Sam | 2 | M | backlog |
-| C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | backlog (I-05: page and chart, spec 004; I-26: SQL and source) |
+| C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | partly shipped (page, rule, history chart and table in I-05; SQL and source remain in I-26, backlog) |
 | C5 | Run detail and diff against the previous run | "What broke since yesterday" | Sam | 2 | M | backlog |
 | C6 | Health scores and scorecards by domain, owner, tag; runbook links | A trust signal for consumers | Alex | 4 | M | catalogue |
 | C7 | Failed-rows viewer | See the bad rows (needs B6) | Sam | 2b | S | catalogue |
