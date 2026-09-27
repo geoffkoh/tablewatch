@@ -509,8 +509,10 @@ def test_the_readme_quotes_the_cli_warning(
     ("text", "expected"),
     [
         (
-            "dataset: x\nchecks:\n  - &a row_count > 0\n  - *a\n"
-            "  - missing_count(y) = 0\n",
+            (
+                "dataset: x\nchecks:\n  - &a row_count > 0\n  - *a\n"
+                "  - missing_count(y) = 0\n"
+            ),
             [(3, 3), None, (5, 5)],
         ),
         ("dataset: x\nchecks: [&a row_count > 0, *a]\n", [None, None]),
