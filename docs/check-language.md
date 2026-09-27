@@ -112,8 +112,8 @@ identifiers: `missing_count("Order ID") = 0`.
 
 | Option | Metrics | Meaning |
 | --- | --- | --- |
-| `missing_values` | `missing_*`, `invalid_*` | Values that count as missing, e.g. `['', 'N/A']`. |
-| `valid_values` | `invalid_*` | Allowed values. |
+| `missing_values` | `missing_*`, `invalid_*` | Values that count as missing, e.g. `['', 'N/A']`. NULL always counts as missing already, so never list it. To match the text `NULL`, quote it: `'NULL'`. |
+| `valid_values` | `invalid_*` | Allowed values. NULL is always missing and never invalid, so never list it (check NULLs with `missing_count`). To match the text `NULL`, quote it: `'NULL'`. |
 | `valid_min`, `valid_max` | `invalid_*` | Inclusive numeric bounds. |
 | `valid_length`, `valid_min_length`, `valid_max_length` | `invalid_*` | String length rules. |
 | `valid_regex` | `invalid_*` | Must match somewhere in the value. Anchor with `^…$` for a full match. This behaves the same on every database. |
@@ -124,6 +124,12 @@ identifiers: `missing_count("Order ID") = 0`.
 
 A value that is missing is never also counted as invalid, so
 `missing_count` and `invalid_count` don't report the same row twice.
+
+In YAML, an unquoted `null`, `Null`, `NULL` or `~`, and a `-` with nothing
+after it, all mean null, not text. A null item in `valid_values` or
+`missing_values` does nothing, so `validate` warns at its `file:line:col` and
+the item is ignored. A `valid_values` list with nothing but nulls is an error,
+as is an item that is itself a list or a mapping.
 
 ### Empty scopes
 
