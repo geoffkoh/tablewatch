@@ -45,7 +45,7 @@ from tablewatch.dsl import (
     parse_trigger,
 )
 from tablewatch.dsl.ast import values_in
-from tablewatch.metrics.base import Metric, OptionType, Unit
+from tablewatch.metrics.base import SINGLE_VALUES, Metric, OptionType, Unit
 from tablewatch.metrics.registry import get_metric
 from tablewatch.metrics.registry import suggest as suggest_metric
 
@@ -180,6 +180,7 @@ class _ChecksLoader:
         self.diagnostics = project.diagnostics
         self._defaults_cache: dict[Path, _Defaults] = {}
         self._ids: dict[str, SourceLocation] = {}
+        self._warned_lists: set[int] = set()
 
     def load(self) -> None:
         checks_dir = self.project.checks_dir
@@ -412,12 +413,16 @@ class _ChecksLoader:
             *metric.options,
         )
         self._reject_unknown(source, options_node, allowed, f"option for {metric.name}")
-        options = {
-            key: plain(options_node[key])
-            for key in metric.options
-            if key in options_node
-            and self._option_ok(source, options_node, key, metric.options[key])
-        }
+        options: dict[str, Any] = {}
+        for key, kind in metric.options.items():
+            if key not in options_node:
+                continue
+            if kind is OptionType.VALUE_LIST:
+                values = self._value_list(source, options_node, key, metric)
+                if values is not None:
+                    options[key] = values
+            elif self._option_ok(source, options_node, key, kind):
+                options[key] = plain(options_node[key])
 
         warn = self._trigger(source, options_node, "warn")
         fail = self._trigger(source, options_node, "fail")
@@ -629,6 +634,77 @@ class _ChecksLoader:
         )
         return ()
 
+    def _value_list(
+        self, source: YAMLSource, node: CommentedMap, key: str, metric: Metric
+    ) -> list[Any] | None:
+        """The list's values without nulls, or None when the option is invalid.
+
+        A null item is dropped with a warning (it can never match: NULL is
+        always missing); a list or mapping item is an error. Every item is
+        reported in one pass. Messages name an item by position and kind,
+        never by its content.
+        """
+        if not self._option_ok(source, node, key, OptionType.VALUE_LIST):
+            return None
+        items = node[key]
+        hint = metric.null_hints.get(key)
+        warnings: list[Diagnostic] = []
+        errors: list[Diagnostic] = []
+        kept: list[Any] = []
+        for index, item in enumerate(items):
+            number = index + 1
+            if item is None:
+                where, written = source.of_null_item(items, index)
+                if written:
+                    why = hint.ignored if hint else "null is not a value"
+                    text = (
+                        f"`{key}:` item {number} is null and is ignored: {why}. "
+                        "To match the text 'NULL', quote it"
+                    )
+                else:
+                    text = (
+                        f"`{key}:` item {number} is empty and is ignored: a `-` with "
+                        "nothing after it is null in YAML. Fill in the value you "
+                        "meant, or delete the line"
+                    )
+                warnings.append(warning(text, where))
+            elif not isinstance(value := plain(item), SINGLE_VALUES):
+                # The same test as MetricContext.one_of, so what validate
+                # accepts never errors the check at run time.
+                kind = (
+                    "a list"
+                    if isinstance(item, list)
+                    else "a mapping"
+                    if isinstance(item, dict)
+                    else "not a single value"
+                )
+                errors.append(
+                    error(
+                        f"`{key}:` items must be single values (text, a number, "
+                        f"true/false); item {number} is {kind}",
+                        source.of_item(items, index),
+                    )
+                )
+            else:
+                kept.append(value)
+        # An anchored list reused with `*alias` is one list: warn about it once.
+        if id(items) in self._warned_lists:
+            warnings = []
+        self._warned_lists.add(id(items))
+        if errors:
+            self.diagnostics.extend(warnings + errors)
+            return None
+        if not kept and hint is not None and hint.all_null is not None:
+            self.diagnostics.append(
+                error(
+                    f"`{key}:` has no values: {hint.all_null}",
+                    source.of_value_or_node(node, key),
+                )
+            )
+            return None
+        self.diagnostics.extend(warnings)
+        return kept or None
+
     def _option_ok(
         self, source: YAMLSource, node: CommentedMap, key: str, kind: OptionType
     ) -> bool:
@@ -636,7 +712,7 @@ class _ChecksLoader:
         ok = _matches(value, kind)
         if not ok:
             self.diagnostics.append(
-                error(f"`{key}:` must be a {kind}", source.of_value(node, key))
+                error(f"`{key}:` must be a {kind}", source.of_value_or_node(node, key))
             )
         return ok
 
@@ -650,7 +726,7 @@ def _matches(value: Any, kind: OptionType) -> bool:
             return is_number
         case OptionType.INTEGER:
             return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-        case OptionType.LIST:
+        case OptionType.VALUE_LIST:
             return isinstance(value, list) and len(value) > 0
         case OptionType.STRING_LIST:
             return (

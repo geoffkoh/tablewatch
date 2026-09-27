@@ -23,6 +23,7 @@ from tablewatch.metrics.base import (
     AggregateMeasure,
     Measure,
     MetricContext,
+    OptionValueError,
     QueryMeasure,
     SchemaMeasure,
     sql_condition,
@@ -42,6 +43,8 @@ class DatasetPlan:
     # check id -> (role -> measure key)
     wiring: dict[str, dict[str, str]] = field(default_factory=dict)
     contexts: dict[str, MetricContext] = field(default_factory=dict)
+    # check id -> why the check could not be planned (an OptionValueError)
+    errors: dict[str, str] = field(default_factory=dict)
 
     def scan(self) -> Select[tuple[object, ...]] | None:
         """The single aggregate query, columns labelled m0, m1, … in key order."""
@@ -89,7 +92,13 @@ def plan_dataset(
         )
         plan.contexts[check.id] = ctx
         wiring: dict[str, str] = {}
-        for role, measure in check.metric.measures(ctx).items():
+        try:
+            measures = check.metric.measures(ctx)
+        except OptionValueError as exc:
+            # This check cannot be built; the others on the dataset still run.
+            plan.errors[check.id] = str(exc)
+            measures = {}
+        for role, measure in measures.items():
             wiring[role] = _add(plan, measure, dialect)
         plan.wiring[check.id] = wiring
     return plan

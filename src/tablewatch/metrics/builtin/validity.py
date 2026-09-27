@@ -20,16 +20,20 @@ from tablewatch.metrics.base import (
     Measurement,
     Metric,
     MetricContext,
+    NullHint,
     OptionType,
     Unit,
     as_float,
     percent,
 )
-from tablewatch.metrics.builtin.completeness import missing_predicate
+from tablewatch.metrics.builtin.completeness import (
+    MISSING_VALUES_NULL,
+    missing_predicate,
+)
 from tablewatch.metrics.registry import register
 
 VALIDITY_RULES: Mapping[str, OptionType] = {
-    "valid_values": OptionType.LIST,
+    "valid_values": OptionType.VALUE_LIST,
     "valid_min": OptionType.NUMBER,
     "valid_max": OptionType.NUMBER,
     "valid_length": OptionType.INTEGER,
@@ -43,11 +47,11 @@ def valid_predicate(ctx: MetricContext, column_name: str) -> ColumnElement[bool]
     col = ctx.column(column_name)
     opts = ctx.options
     rules: list[ColumnElement[bool]] = []
+    if "valid_values" in opts:
+        rules.append(ctx.one_of(col, opts["valid_values"], "valid_values"))
     # Columns come without types (tablewatch never reflects the table), so
     # values are wrapped in literal() to carry a type of their own. A bare
     # Python value would be bound as NULL-typed and could not be rendered.
-    if "valid_values" in opts:
-        rules.append(col.in_([literal(v) for v in opts["valid_values"]]))
     if "valid_min" in opts:
         rules.append(col >= literal(opts["valid_min"]))
     if "valid_max" in opts:
@@ -70,7 +74,17 @@ class InvalidCount(Metric):
     min_args = max_args = 1
     options: ClassVar[Mapping[str, OptionType]] = {
         **VALIDITY_RULES,
-        "missing_values": OptionType.LIST,
+        "missing_values": OptionType.VALUE_LIST,
+    }
+    null_hints: ClassVar[Mapping[str, NullHint]] = {
+        # A null in valid_values can never match: NULL is missing, never
+        # invalid, so listing it made `NOT IN (…, NULL)` and a check that
+        # could never fail.
+        "valid_values": NullHint(
+            "NULL is always missing, never invalid (check it with missing_count)",
+            all_null="null is not a value (NULL is always missing, never invalid)",
+        ),
+        "missing_values": MISSING_VALUES_NULL,
     }
 
     def validate(self, options: Mapping[str, Any], args: tuple[str, ...]) -> list[str]:

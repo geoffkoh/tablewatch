@@ -209,6 +209,14 @@ def validate(ctx: click.Context) -> None:
     summary = f"{len(project.datasets)} datasets, {checks} checks"
     if errors:
         _fail(f"{summary} — {len(errors)} error{'s' if len(errors) != 1 else ''}")
+    warnings = sum(1 for d in project.diagnostics if d.severity is Severity.WARNING)
+    if warnings:
+        # A warning can mean a check that never checked: the closing line is
+        # the one people read in a CI log.
+        click.echo(
+            f"{summary} — no errors, {warnings} warning{'s' if warnings != 1 else ''}"
+        )
+        return
     click.echo(f"{summary} — no problems found")
 
 

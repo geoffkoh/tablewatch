@@ -244,6 +244,17 @@ def _run_dataset(
     )
     results = []
     for check in checks:
+        if check.id in plan.errors:
+            results.append(
+                CheckResult(
+                    check,
+                    Outcome.ERROR,
+                    None,
+                    plan.errors[check.id],
+                    measured.duration_ms,
+                )
+            )
+            continue
         wiring = plan.wiring[check.id]
         failed = [
             measured.errors[key] for key in wiring.values() if key in measured.errors

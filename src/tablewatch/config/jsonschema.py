@@ -21,7 +21,11 @@ _OPTION_SCHEMAS: dict[OptionType, dict[str, Any]] = {
     OptionType.STRING: {"type": "string", "minLength": 1},
     OptionType.NUMBER: {"type": "number"},
     OptionType.INTEGER: {"type": "integer", "minimum": 0},
-    OptionType.LIST: {"type": "array", "minItems": 1},
+    OptionType.VALUE_LIST: {
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": ["string", "number", "boolean"]},
+    },
     OptionType.STRING_LIST: {
         "type": "array",
         "minItems": 1,
