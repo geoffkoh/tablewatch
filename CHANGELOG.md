@@ -97,6 +97,23 @@ All notable changes to tablewatch. The format follows
   seconds), and its text. Each entry in a check's history now says which
   `metric`, `dataset` and `unit` it recorded. Both additions are
   backwards-compatible; `GET /api/v1/checks` is unchanged.
+- A check's page shows its SQL. A new **SQL** section, below the
+  history, shows the statement this check's value comes from, in your
+  database's dialect, exactly as `tablewatch compile` prints it. Most
+  checks share their table's single scan: the page shows the whole
+  `SELECT`, points out which of its columns (`m0`, `m1`, …) belong to this
+  check, and says how many other checks the same read serves. A `schema`
+  check says it reads the table's column list, not rows. Copy buttons
+  put the SQL on your clipboard, ready to paste into your warehouse's
+  console. If the dataset cannot be compiled (a driver that is not
+  installed, a datasource that is not defined) the section says so and
+  the rest of the page still works. See "Reading a check's page" in the
+  README.
+- The JSON API serves the same thing at `GET /api/v1/checks/{id}/sql`.
+  Like the rest of the API it is read-only: it never connects to a
+  database, needs no credentials, and returns no rows. Each statement
+  has a `kind` (`scan` or `query`); more kinds may be added within `v1`,
+  so clients should skip a kind they do not know.
 
 ### Changed
 
@@ -110,6 +127,15 @@ All notable changes to tablewatch. The format follows
 - `GET /` on `tablewatch serve` now returns the web page; unknown paths
   outside `/api` that look like page addresses return the page too, and
   unknown paths under `/api` still return the JSON error.
+- The warning `tablewatch serve --host` prints now says that anyone who
+  can reach the address can read the SQL each check runs and database
+  error messages, which can quote row values, as well as the checks,
+  results and owner emails.
+- `tablewatch compile` no longer repeats a datasource `url` that is not of
+  the form `scheme://…` (for example one missing its `://`), because such
+  a value can contain a password. It says "the url is not a SQLAlchemy
+  URL (expected scheme://...)" instead. Well-formed URLs are reported as
+  before.
 
 - An explicit check `id:` can be at most 64 characters, the width of the
   results store's column. A longer id is now reported at its `file:line:col`
@@ -123,6 +149,13 @@ All notable changes to tablewatch. The format follows
   400 digits long) is now reported as "this number is too large" at its
   `file:line:col` when the project loads, and `validate` exits 3. Before,
   `tablewatch validate` crashed on it.
+- `tablewatch compile` no longer crashes when a check option is a
+  decimal number, a whole number, a boolean or a timestamp written in
+  YAML (for example `valid_max: 99.5`). Running such checks was not
+  affected; check ids do not change.
+- Datasource URLs whose driver name contains `_`
+  (`oracle+cx_oracle://…`, `postgresql+psycopg_async://…`) are
+  recognised by `compile` and the check page.
 
 ## 0.1.0 — not yet published
 

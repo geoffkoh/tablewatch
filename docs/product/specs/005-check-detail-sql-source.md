@@ -9,7 +9,7 @@
 | Depends on | I-05 ✓ (spec 004: the check page, `CheckDetail`, the shared load hook) |
 | Unblocks | I-29 (spec 006: reuses this spec's section split, `CodeBlock`, `CopyButton`, clipboard and invisible-character handling) |
 | Branch | `iter/005-check-detail-sql-source` (name kept from PLAN) |
-| Status | **ready** (iteration 5 REFINE settled, 2026-09-27) |
+| Status | **shipped** (iteration 5, PR #10, 2026-09-27; see ITERATIONS.md) |
 
 ## REFINE outcome in brief (PM, 2026-09-27)
 
@@ -299,8 +299,13 @@ Reproduce with `tablewatch --project-dir examples/retail compile` and
 - And neither `compile`'s stdout and stderr nor any `/sql` body contains
   `hunter2`, `dana` or `acct`
 - The rule: the scheme is echoed only if it matches
-  `^[A-Za-z][A-Za-z0-9+.\-]*$` **and** was followed by `://`; otherwise
+  `^[A-Za-z][A-Za-z0-9_+.\-]*$` **and** was followed by `://`; otherwise
   the fixed message. `compile`'s exit code is unchanged (0).
+- *Corrected in VERIFY:* the regex as first written (RFC 3986's scheme
+  grammar) left out `_`, which SQLAlchemy driver names use
+  (`oracle+cx_oracle`, `postgresql+psycopg_async`); those URLs were
+  reported as malformed. `_` is allowed. A scheme with more than one `+`
+  (`a+b+c://`) also gets the fixed message.
 
 **I1: identity does not move** `must`
 - Given `retail`, and `tablewatch list` output captured on `main` before
