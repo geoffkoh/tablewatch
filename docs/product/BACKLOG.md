@@ -8,7 +8,8 @@ Re-scored and re-ranked by the product-manager in iteration 5 REVIEW
 the same day. Iteration 6 PLAN (2026-09-27): I-29 in progress; I-33
 re-ranked to fourth after the owner's decision. Iteration 6 REFINE: I-36 and I-37
 added from the reviews of spec 006. Iteration 6 REVIEW (2026-09-27): I-29
-done (C4 shipped in full); I-36 widened; I-39 added; re-ranked. Score = reach × impact × confidence ÷ effort, × 1.25 if other
+done (C4 shipped in full); I-36 widened; I-39 added; re-ranked. Iteration 7 PLAN (2026-09-27): I-24
+in progress (spec 007); I-40 split from it; I-41 added. Score = reach × impact × confidence ÷ effort, × 1.25 if other
 items depend on it (PROCESS.md). The rank follows the score except where
 the owner's priority says otherwise (below); every departure is stated.
 
@@ -20,7 +21,8 @@ every Phase 2 feature now has one. I-16 to I-18 are follow-ups from the
 iteration 1 reviews, I-19 and I-20 from iteration 2, I-21 to I-25 from
 iteration 3, I-27 and I-28 from iteration 4, I-30 to I-32 from
 iteration 5 REFINE, I-33 to I-35 from iteration 5 VERIFY, I-36 and I-37 from iteration 6
-REFINE, and I-39 from iteration 6 VERIFY; they harden
+REFINE, I-39 from iteration 6 VERIFY, and I-40 (split from I-24) and I-41 from iteration 7
+PLAN; they harden
 what shipped rather than add features.
 I-26 is the second half of I-05, split off in iteration 4 PLAN; I-29 is
 I-26's Source half, split off in iteration 5 REFINE by the pre-planned
@@ -37,10 +39,11 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | — | I-05 | Check detail 1: identity, rule, latest result, history chart against the threshold and history table — [spec 004](specs/004-check-detail-history.md) | C4 (without SQL and source) | I-03 ✓ | M | 3 | 2 | 0.8 | 3.0 | done (iteration 4) |
 | — | I-26 | Check detail 2: compiled SQL on the detail page, with this check's columns in the shared scan named (split from I-05 in iteration 4 PLAN; Source half split to I-29 in iteration 5 REFINE) — [spec 005](specs/005-check-detail-sql-source.md) | C4 (SQL) | I-05 ✓ | S | 2 | 1 | 0.8 | **2.0** | done (iteration 5) |
 | — | I-29 | Check detail 3: the check's own YAML source on the detail page, with its comments and the file's `filter:` (the Source half of I-26, split in iteration 5 REFINE) — [spec 006](specs/006-check-detail-source.md) | C4 (source) | I-26 ✓ | S | 2 | 1 | 0.8 | 1.6 | done (iteration 6) |
-| 1 | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree | E0, C2, C4 (hardening) | — | S | 3 | 2 | 0.8 | **4.8** | proposed — **next** (iteration 6 REVIEW; trigger met in iteration 4 REFINE) |
+| 1 | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree — [spec 007](specs/007-readable-values.md) (the structured field split to I-40) | E0, C2, C4 (hardening) | — | S | 3 | 2 | 0.8 | **4.8** | in-progress (iteration 7) |
 | 2 | I-34 | `valid_values: [null]` is a silent pass: it compiles to `NOT IN (NULL, …)`, which is never true in SQL, so `invalid_*` counts nothing on that column. NULL in `valid_values` (and any list option compared with `IN`) is either a Diagnostic at `file:line:col` or dropped with a warning (NULL is already missing, not invalid); the data-steward decides in the spec (qa-engineer, iteration 5) | A (language hardening) | — | S | 2 | 2 | 1.0 | **4.0** | proposed — follows I-24 |
 | 3 | I-33 | Check identity for `failed_rows` and `sql_metric`: `condition:` and `query:` do not feed the derived id, so two `failed_rows` checks on one table in one file collide, the loader reports a duplicate, and nothing in the project runs until one gets an `id:` (data-steward, iteration 5) | A (language hardening) | owner decision ✓ | S | 2 | 1 | 1.0 | **2.0** | proposed — **ready to plan**: owner chose option 1 on 2026-09-27 (change the id now, no history migration). **Gate: before the first PyPI release.** Breaking for existing history of those checks (CHANGELOG note when it ships) |
 | 4 | I-36 | Check files that crash the loader get a diagnostic, not a traceback (design rule 5 is broken today in two ways). (a) A control character: `YAMLSource.load` catches only `MarkedYAMLError`, so ruamel's `ReaderError` (e.g. `\x0c`, `\x0b`, `\x1c`–`\x1e` in a comment: `unacceptable character #x000c`) escapes `validate` and `run` as a traceback. Catch `YAMLError`; place the diagnostic at `file:line:col` from `ReaderError.position` (architect F3, iteration 6 REFINE; reproduced on `8687ebc`). (b) A YAML merge key inside a check item (`- row_count:` then `<<: &base {warn: when < 5}`) raises `KeyError: 'warn'`; either merged options load as written or the merge key is a Diagnostic at its `file:line:col` (qa-engineer, iteration 6 VERIFY; pre-existing) | A, E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-33 |
+| 4a | I-41 | Freshness on a DuckDB `TIMESTAMPTZ` column is an `error` on every run: DuckDB needs `pytz` to hand back a zone-aware value and it is not installed (`Invalid Input Error: Required module 'pytz' failed to import`). Either the `duckdb` extra brings what DuckDB needs (a dependency: security review) or the value reaches Python another way that keeps rule 2 (no per-dialect date arithmetic in SQL); a test on a `TIMESTAMPTZ` column (PM, iteration 7 PLAN; reproduced on `940c776`) | A, E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-36 |
 | 5 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — follows I-24 (spec 005 D8: not folded into I-26) |
 | 6 | I-35 | The SQL section in plain words: "cannot compile" says the driver is not installed and which package to add, not `Can't load plugin: sqlalchemy.dialects:snowflake`; the malformed-URL message names the datasource and `tablewatch.yml`; a check whose datasource is not defined shows the name as written, marked "not defined", in the Datasource row and the SQL section; "computes 6 values, used by this check and 6 others" (data-steward, iteration 5) | C4 (hardening) | I-26 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — with or straight after I-27 |
 | 7 | I-39 | Source block polish: line numbers stay in view when the block is scrolled sideways (a sticky number column), so a long line can still be matched to its number (data-steward, iteration 6 VERIFY; spec 006 P16 allowed today's behaviour) | C4 (hardening) | I-29 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — rides with I-27 and I-35 if that PR stays S, else straight after |
@@ -68,6 +71,7 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | 29 | I-25 | JSON report timestamps in the API's form (`date-time`, six fractional digits), with a `schema_version` bump and a note for consumers | E0 (hardening) | — | S | 1 | 0.5 | 1.0 | **0.5** | proposed |
 | 30 | I-31 | `results.error_detail: full \| redacted` in `tablewatch.yml`: redacted replaces driver and metric error text with its error class before it is stored (security F2, iteration 5) | E7, C1 (hardening) | — | S | 1 | 1 | 0.5 | **0.5** | proposed |
 | 31 | I-23 | Save-time check state: a state table updated when a run is recorded, so `/checks` stops reading the project's whole history per request | C1, E5 | I-14 | M | 2 | 1 | 0.5 | **0.5** | proposed — gated: not scheduled until the threshold below is crossed |
+| 31a | I-40 | The newest timestamp of a freshness result as a structured field (store column with its Alembic revision; additive in the JSON report and the API; `openapi.json`), so the page can show it in the viewer's zone next to its local-time axis instead of the datasource's zone in the message text. Split from I-24 in iteration 7 PLAN (spec 007 N1); old results have none | C4, E0 (hardening) | I-24 | M | 2 | 0.5 | 0.8 | **0.4** | proposed |
 | 32 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
 
 ### Why the rank departs from the score
@@ -82,6 +86,17 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
   silent pass should jump ahead is put to the owner in ITERATIONS.md
   (it does not stop the loop). Then I-33 (gated before the first
   release) and I-36 (rule 5), then the UI chain's polish.
+- **Iteration 7 PLAN: I-24 in progress (spec 007), split.** The
+  structured timestamp field the item asked for "ideally" needs a store
+  revision, API and JSON fields and frontend work (M), so it is **I-40**
+  (0.4: reach Sam and Alex, impact 0.5 because the message now names its
+  zone, confidence 0.8, M). It ranks with the other low scorers.
+- **I-41 (2.0) ranks 4a, straight after I-36** (iteration 7 PLAN).
+  Found while reproducing spec 007: freshness on a DuckDB `TIMESTAMPTZ`
+  column errors on every run. Loud, not silent, so it sits beside the
+  other loud correctness fixes (I-33, I-36) and above the UI polish.
+  Reach Dana and Sam, impact 1, confidence 1.0 (reproduced), S. A fix
+  that adds `pytz` is a dependency: security review.
 - **I-39 (1.0) rides with I-27 and I-35** (iteration 6 REVIEW): all
   three are check page polish from the data-steward's hand runs. Reach
   Sam and Dana, impact 0.5 (the number is one sideways scroll away),
@@ -422,6 +437,9 @@ these as acceptance scenarios.
   count exceeds the summary's because checks dropped out of the load, the
   banner says why; "failing since" reads either as a date ("since 19 Sep")
   or a duration ("for 7 days"), never "since 7 days ago".
+- **I-24 — carried into spec 007 (iteration 7 PLAN)**: every point
+  below is a scenario there (F1–F7, S1, E1–E4, H1, H2); the structured
+  field is I-40.
 - **I-24 — from iteration 3 (data-steward).** A passing schema check's
   value is not shown as a bare "0". A freshness message shows the age in
   words and the timestamp with its zone. Formatting stays in Python
