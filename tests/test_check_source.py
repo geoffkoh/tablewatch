@@ -11,7 +11,7 @@ import pytest
 
 import tablewatch as tw
 from tablewatch.config import loader as loader_module
-from tablewatch.config.spans import check_span, split_lines
+from tablewatch.config.spans import check_span, compose, split_lines
 from tests.conftest import invoke
 from tests.test_check_sql import RETURNS_YML, remote  # noqa: F401 (fixture)
 from tests.test_server import assert_error, get, served
@@ -503,3 +503,24 @@ def test_the_readme_quotes_the_cli_warning(
     assert "serves check files, SQL and results without authentication" in " ".join(
         out.split()
     )
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "dataset: x\nchecks:\n  - &a row_count > 0\n  - *a\n"
+            "  - missing_count(y) = 0\n",
+            [(3, 3), None, (5, 5)],
+        ),
+        ("dataset: x\nchecks: [&a row_count > 0, *a]\n", [None, None]),
+    ],
+)
+def test_an_alias_of_an_earlier_check_is_not_its_lines(
+    text: str, expected: list[tuple[int, int] | None]
+) -> None:  # security, iteration 6 VERIFY
+    root = compose(text)
+    assert root is not None
+    lines = split_lines(text)
+    spans = [check_span(lines, root, i) for i in range(len(expected))]
+    assert [(s.start_line, s.end_line) if s else None for s in spans] == expected

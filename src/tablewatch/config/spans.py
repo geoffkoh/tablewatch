@@ -47,6 +47,13 @@ def check_span(
     if not isinstance(checks, SequenceNode) or index >= len(checks.value):
         return None
     item = checks.value[index]
+    # An alias of an earlier item has that item's marks: its lines are not
+    # this check's own.
+    earlier = checks.value[:index]
+    if any(item is other for other in earlier) or (
+        earlier and item.start_mark.line < _last_line(lines, earlier[-1])
+    ):
+        return None
     if checks.flow_style:
         if not _starts_as_written(lines, item):
             return None
@@ -157,8 +164,14 @@ def _starts_as_written(lines: Sequence[str], node: Node) -> bool:
 def _inside_checks_only(
     root: MappingNode, lines: Sequence[str], start: int, end: int
 ) -> bool:
-    """The last guard: the span is inside `checks` and touches no other key."""
+    """The last guard: the span is inside `checks` and touches no other key.
+
+    Each key is first checked against the split lines, so a steady offset
+    between the parser's line numbers and ours cannot pass unnoticed.
+    """
     for key, value in root.value:
+        if not _starts_as_written(lines, key):
+            return False
         extent_end = _last_line(lines, value)
         if isinstance(key, ScalarNode) and key.value == "checks":
             first = key.start_mark.line
