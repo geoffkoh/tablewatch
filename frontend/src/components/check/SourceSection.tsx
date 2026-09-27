@@ -82,8 +82,8 @@ function SourceBody({ source, metric, now }: { source: CheckSource; metric: stri
       {lines}
       {source.filter !== null && <FilterNote filter={source.filter} metric={metric} />}
       <p data-source-note="defaults">
-        The dataset, datasource, owner and tags shown at the top of the page come from this file's first lines
-        or a <code>_defaults.yml</code>.
+        The dataset, datasource, owner and tags shown at the top of the page are set elsewhere in this file or in
+        a <code>_defaults.yml</code>.
       </p>
     </>
   );

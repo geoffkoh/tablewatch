@@ -55,7 +55,7 @@ const INTERNAL: Answer = {
 };
 
 const DEFAULTS_SENTENCE =
-  "The dataset, datasource, owner and tags shown at the top of the page come from this file's first lines or a _defaults.yml.";
+  "The dataset, datasource, owner and tags shown at the top of the page are set elsewhere in this file or in a _defaults.yml.";
 
 // ---- the clipboard, stubbed per test ----------------------------------------
 

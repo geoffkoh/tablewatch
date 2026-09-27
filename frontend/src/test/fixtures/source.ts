@@ -159,9 +159,14 @@ export const INVISIBLE_SOURCE = body({
   text: INVISIBLE_TEXT,
 });
 
-/** P14: a BOM stays in line 1 of a flow-style file (read as utf-8, not utf-8-sig); a C0 control (ESC) in the file name. */
+/**
+ * P14: a BOM stays in line 1 of a flow-style file (read as utf-8, not
+ * utf-8-sig). `text`, lines and id are what `/source` answered on 2026-09-27
+ * for `retail` plus `checks/sales/bom.yml` = BOM + `checks: [row_count > 0]`,
+ * `dataset: sales.returns`; the path is changed to hold a C0 control (ESC).
+ */
 export const BOM_SOURCE = body({
-  check_id: "8cc200a22eae9821",
+  check_id: "f1b6f7f30337ea68",
   path: "checks/sales/bo\u001Bm.yml",
   start_line: 1,
   end_line: 1,

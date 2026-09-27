@@ -774,7 +774,9 @@ sentences, button) on every fixture; the file's own lines are exempt.
      `/checks/{id}` has failed the metric is unknown, so the first sentence
      stands alone.
 4. On every 200: "The dataset, datasource, owner and tags shown at the top
-   of the page come from this file's first lines or a `_defaults.yml`."
+   of the page are set elsewhere in this file or in a `_defaults.yml`."
+   (Data-steward, VERIFY: not "this file's first lines", which is false when
+   `owner:` is the last line or `filter:` follows `checks:`.)
 
 **Span unavailable** (`start_line`, `end_line`, `text` null): no block, no
 Copy, no caption. "The lines of this check could not be shown; it is in
