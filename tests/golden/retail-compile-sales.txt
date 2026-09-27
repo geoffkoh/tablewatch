@@ -1,0 +1,21 @@
+-- sales.customers on lake (checks/sales/customers.yml)
+-- single scan: 4 measures
+SELECT count(*) AS m0, sum(CASE WHEN (email IS NULL OR email IN ('', 'N/A')) THEN 1 ELSE 0 END) AS m1, sum(CASE WHEN (country IS NOT NULL AND (country NOT IN ('SG', 'MY', 'ID', 'TH', 'VN', 'PH'))) THEN 1 ELSE 0 END) AS m2, sum(CASE WHEN (NOT (email IS NULL OR email IN ('', 'N/A')) AND NOT regexp_matches(email, '^[^@]+@[^@]+\.[a-z]+$')) THEN 1 ELSE 0 END) AS m3 
+FROM sales.customers;
+SELECT coalesce(sum(duplicate_groups.n - 1), 0) AS coalesce_1 
+FROM (SELECT count(*) AS n 
+FROM sales.customers 
+WHERE customer_id IS NOT NULL GROUP BY customer_id 
+HAVING count(*) > 1) AS duplicate_groups;
+
+-- sales.orders on lake (checks/sales/orders.yml)
+-- single scan: 6 measures
+SELECT count(*) AS m0, sum(CASE WHEN (customer_id IS NULL) THEN 1 ELSE 0 END) AS m1, sum(CASE WHEN (status IS NOT NULL AND (status NOT IN ('pending', 'shipped', 'delivered', 'cancelled'))) THEN 1 ELSE 0 END) AS m2, avg(amount) AS m3, max(created_at) AS m4, sum(CASE WHEN (amount < 0) THEN 1 ELSE 0 END) AS m5 
+FROM sales.orders;
+SELECT coalesce(sum(duplicate_groups.n - 1), 0) AS coalesce_1 
+FROM (SELECT count(*) AS n 
+FROM sales.orders 
+WHERE order_id IS NOT NULL GROUP BY order_id 
+HAVING count(*) > 1) AS duplicate_groups;
+-- plus a schema lookup of sales.orders
+

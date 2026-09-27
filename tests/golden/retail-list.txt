@@ -1,0 +1,21 @@
+ID            DATASET             DATASOURCE  CHECK                             SOURCE
+cd3e8103b431  inventory.products  lake        row_count between 1 and 10000     checks/inventory/products.yml:5:5
+8b9c5af854ba  inventory.products  lake        duplicate_count(sku) = 0          checks/inventory/products.yml:6:5
+ace45b91cd32  inventory.products  lake        min(price) > 0                    checks/inventory/products.yml:7:5
+41e58afff9c4  inventory.products  lake        Price feed freshness              checks/inventory/products.yml:8:5
+32c8f939b90f  sales.customers     lake        row_count > 0                     checks/sales/customers.yml:4:5
+af0289a72fed  sales.customers     lake        duplicate_count(customer_id) = 0  checks/sales/customers.yml:5:5
+b1ceb8262d8b  sales.customers     lake        missing_percent(email) < 5%       checks/sales/customers.yml:6:5
+000f8d004874  sales.customers     lake        invalid_count(country) = 0        checks/sales/customers.yml:8:5
+b6ecae522c1d  sales.customers     lake        invalid_count(email) = 0          checks/sales/customers.yml:10:5
+f81f9ff5edea  sales.orders        lake        row_count > 0                     checks/sales/orders.yml:4:5
+32867fbe86f4  sales.orders        lake        Order volume                      checks/sales/orders.yml:5:5
+fc9cc3088aca  sales.orders        lake        missing_count(customer_id) = 0    checks/sales/orders.yml:9:5
+11c20dd55fb9  sales.orders        lake        duplicate_count(order_id) = 0     checks/sales/orders.yml:10:5
+a30dacf7316e  sales.orders        lake        invalid_percent(status) < 1%      checks/sales/orders.yml:11:5
+366d9254d889  sales.orders        lake        avg(amount) between 10 and 500    checks/sales/orders.yml:13:5
+a81b0374b0b0  sales.orders        lake        freshness(created_at) < 6h        checks/sales/orders.yml:14:5
+ed669ca6e553  sales.orders        lake        No negative amounts               checks/sales/orders.yml:15:5
+fbc3aa0b93b6  sales.orders        lake        schema                            checks/sales/orders.yml:18:5
+
+18 checks
