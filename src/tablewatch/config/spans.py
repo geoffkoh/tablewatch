@@ -20,6 +20,7 @@ from tablewatch.checks.model import SourceSpan
 # \x0b, \x0c, \x1c-\x1e, U+0085, U+2028 and U+2029, which would number lines
 # differently from the parser and shift a span onto a neighbouring line.
 LINE_BREAK = re.compile(r"\r\n|\r|\n")
+BOM = "\ufeff"
 
 
 def split_lines(text: str) -> tuple[str, ...]:
@@ -144,6 +145,9 @@ def _leading(
 
 
 def _char_at(lines: Sequence[str], line: int, column: int) -> str:
+    # ruamel's marks skip a leading byte-order mark; the lines keep it.
+    if line == 0 and lines and lines[0].startswith(BOM):
+        column += 1
     if line >= len(lines) or column >= len(lines[line]):
         return ""
     return lines[line][column]

@@ -526,3 +526,17 @@ def test_an_alias_of_an_earlier_check_is_not_its_lines(
     lines = split_lines(text)
     spans = [check_span(lines, root, i) for i in range(len(expected))]
     assert [(s.start_line, s.end_line) if s else None for s in spans] == expected
+
+
+def test_a_file_with_a_byte_order_mark(retail: Path) -> None:  # P14, iteration 6 VERIFY
+    text = "﻿dataset: sales.orders\nchecks:\n  # note\n  - row_count > 5\n"
+    root = compose(text)
+    assert root is not None
+    span = check_span(split_lines(text), root, 0)
+    assert span is not None
+    assert (span.start_line, span.end_line) == (3, 4)
+    _write(retail, "checks/sales/bom.yml", text)
+    check_id = _id(retail, "checks/sales/bom.yml", "row_count > 5")
+    with served(retail) as client:
+        body = _source(client, check_id)
+    assert body["text"] == "  # note\n  - row_count > 5"
