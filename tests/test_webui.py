@@ -407,7 +407,15 @@ def test_the_api_stays_json(recorded: Recorded, path: str) -> None:  # W4
         assert_error(client.get(path), 404, "not_found")
 
 
-@pytest.mark.parametrize("path", ["/assets/does-not-exist.js", "/favicon.png"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/assets/does-not-exist.js",
+        "/favicon.png",
+        # Only `/checks/<id>` is a page whatever the id; a file below it is not.
+        "/checks/x/app.js",
+    ],
+)
 def test_missing_files_are_404(recorded: Recorded, path: str) -> None:  # W5
     with served(recorded.root, ui=FAKE_BUNDLE) as client:
         response = client.get(path)

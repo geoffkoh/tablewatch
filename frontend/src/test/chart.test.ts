@@ -146,6 +146,24 @@ describe("D10: y-axis ticks by unit", () => {
     const t = niceTicks(0, 0.3, "number");
     expect(t.values.map((v) => formatTick(v, "number", t.step))).toEqual(["0", "0.05", "0.1", "0.15", "0.2", "0.25", "0.3"]);
   });
+
+  it.each([
+    ["values that differ in their last digits", [1234567.8912345, 1234567.8912346], "number"],
+    ["large, close counts", [1e15, 1e15 + 2], "count"],
+    ["tiny percents", [1e-9, 2e-9], "percent"],
+    ["huge counts", [0, 1.7e308], "count"],
+  ] as const)("%s: every tick label is distinct and short enough for the margin", (_, values, unit) => {
+    const axis = yAxis([...values], [], unit);
+    const labels = axis.values.map((v) => formatTick(v, unit, axis.step));
+    expect(new Set(labels).size).toBe(labels.length);
+    for (const l of labels) expect(l.length).toBeLessThanOrEqual(26);
+  });
+
+  it("writes ticks from 1e21 up in scientific notation", () => {
+    expect(formatTick(1.7e308, "count")).toBe("1.7E308");
+    expect(formatTick(-2.5e21, "number")).toBe("-2.5E21");
+    expect(formatTick(1e20, "count")).toBe("100,000,000,000,000,000,000");
+  });
 });
 
 describe("D10: the y-domain", () => {

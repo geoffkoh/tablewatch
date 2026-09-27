@@ -46,7 +46,15 @@ function interval(lo: number, hi: number, loClosed: boolean, hiClosed: boolean):
   return { lo, hi, loClosed, hiClosed };
 }
 
-/** Where a condition holds. */
+/**
+ * Where a condition holds.
+ *
+ * The source of truth for what each operator means, and for `between` being
+ * inclusive at both ends (as SQL's BETWEEN is), is the engine:
+ * `src/tablewatch/dsl/ast.py`, `Compare.holds` and `Between.holds`. This
+ * must agree with them, or the chart shades as passing a value the engine
+ * failed.
+ */
 export function satisfied(condition: Condition): IntervalSet {
   if (condition.kind === "between") {
     const inside = interval(condition.low, condition.high, true, true);

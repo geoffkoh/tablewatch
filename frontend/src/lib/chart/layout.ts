@@ -22,7 +22,10 @@ export const ROW_HEIGHT = 18;
 export const LANE_HEIGHT = 22;
 /** Marks sit this far inside the plot's left and right edges. */
 export const X_INSET = 14;
-/** The minimum width of a hover/focus column (dataviz: a 24px hit target). */
+/**
+ * A hover/focus column's width when marks allow it (dataviz: a 24px hit
+ * target). Columns never overlap, so marks closer than this get their share.
+ */
 export const MIN_COLUMN = 24;
 /** A mark's box: 12 units, drawn from the 16-unit status shapes. */
 export const MARK_SIZE = 12;
@@ -315,15 +318,17 @@ export function layoutChart({ entries, check, rule, streak }: ChartInput): Chart
     groups.set(x, [...(groups.get(x) ?? []), p]);
   }
   const xs = [...groups.keys()].sort((a, b) => a - b);
+  // Neighbouring columns meet at the midpoint between their marks, so the
+  // pointer always reads the nearest result. Marks 24+ units apart get 24+
+  // unit columns; denser marks cannot without overlapping, which would show
+  // a neighbour's result, so they take their share (the arrow keys and the
+  // table reach every result). The end columns reach past the plot's edge
+  // when that is what it takes to be 24 units wide.
   const columns: Column[] = xs.map((x, i) => {
     const prev = xs[i - 1];
     const next = xs[i + 1];
-    let x0 = prev === undefined ? plotX0 : (prev + x) / 2;
-    let x1 = next === undefined ? plotX1 : (x + next) / 2;
-    if (x1 - x0 < MIN_COLUMN) {
-      x0 = x - MIN_COLUMN / 2;
-      x1 = x + MIN_COLUMN / 2;
-    }
+    const x0 = prev === undefined ? Math.min(plotX0, x - MIN_COLUMN / 2) : (prev + x) / 2;
+    const x1 = next === undefined ? Math.max(plotX1, x + MIN_COLUMN / 2) : (x + next) / 2;
     return { key: String(x), x, x0: round(x0), x1: round(x1), points: groups.get(x) ?? [] };
   });
 

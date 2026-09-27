@@ -370,7 +370,11 @@ rule, `missing_percent(email) < 15%`. The check files now say
 A panel headed "History", holding the chart figure (4A.6), then the table
 (4A.7), then, when `next_cursor` is not null, a **Load older results**
 button. It fetches the next page with the cursor and appends it to both the
-chart and the table. An answer that lands after a Refresh is dropped.
+chart and the table. An answer that lands after a Refresh is dropped. While
+a Refresh is in flight the button is disabled: the first page on screen is
+the previous round's, and paging from its cursor could skip or repeat a
+result once the new first page arrives. After the Refresh, paging follows
+the new first page's cursor.
 
 ### 4A.6 The chart
 
@@ -473,12 +477,20 @@ the condition's `text`. Tested with the D6 table.
    boundaries and 0.
 5. The domain is extended to round ticks: at most 6 intervals, steps 1-2-5
    × 10ⁿ (whole numbers for counts), and for durations 1/2/5/10/15/30 s,
-   1/2/5/10/15/30 min, 1/2/3/6/12 h, 1/2/7/14/30 d.
+   1/2/5/10/15/30 min, 1/2/3/6/12 h, 1/2/7/14/30 d. Tick positions are
+   snapped relative to the step, never to a fixed number of significant
+   digits, so values that differ only in their last digits (float sums that
+   wobble run to run, or counts near 10¹⁵) still get an axis with height.
+   Where a round tick above the values would overflow to Infinity (values
+   near 1.8 × 10³⁰⁸), the axis is exactly the values' extent with evenly
+   spaced ticks.
 
 Ticks are formatted by unit (`formatTick`): percent `20%`, `2.5%`; count
 `12,000`; duration `6h`, `1d`, `1m 30s`, `-7h` (the largest unit and the next
 one, if not zero); number `54.36`, `-1.5`; unknown unit as a plain number.
-Decimals follow the tick step. This formats **axis labels only**: every
+Decimals follow the tick step (up to 20, so ticks 2 × 10⁻⁸ apart still read
+differently). From 10²¹ up a tick is written in scientific notation,
+`1.7E308`. This formats **axis labels only**: every
 value shown for a result (tooltip, table, the latest-value label) is
 `display_value` from Python.
 
@@ -526,8 +538,15 @@ label; the right margin fits the widest right label (48–168 units).
 - The SVG sits in a focusable `role="group"` ("History chart. Use the left
   and right arrow keys to read each result."). Hovering a column, or
   focusing the group and using ←/→/Home/End, shows a 1px crosshair at the
-  result and a tooltip beside it; Escape or leaving hides it. Hover columns
-  are at least 24 units wide. Results at the same time share a column.
+  result and a tooltip beside it; Escape or leaving hides it. Neighbouring
+  hover columns meet at the midpoint between their marks and never
+  overlap, so pointing at a mark always shows that mark's result. They are
+  at least 24 units wide wherever marks are 24 or more units apart; denser
+  marks (200 runs a minute apart) take their share, since a wider column
+  would cover a neighbour and show the wrong result, and the arrow keys and
+  the table reach every result. The first and last columns reach past the
+  plot's edge when that is what it takes to be 24 units wide. Results at
+  the same time share a column.
 - The tooltip puts the value first (semibold): `display_value`, or "Could
   not evaluate", or "Fail: no value measured"; then the outcome; the full
   time in the viewer's zone with the zone named; the message (cut at 64

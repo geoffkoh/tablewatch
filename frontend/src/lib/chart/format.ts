@@ -6,18 +6,28 @@
  */
 import type { Unit } from "../../api/types";
 
-const MAX_DECIMALS = 6;
+/**
+ * Enough for a step as fine as 1e-20: ticks over values that differ only in
+ * their last digits (float sums that wobble run to run) must not all print
+ * the same label.
+ */
+const MAX_DECIMALS = 20;
+/** At and above this magnitude a tick is written 1.5E21, not 22 digits and commas. */
+const SCIENTIFIC_FROM = 1e21;
 
 function numberFormat(decimals: number): Intl.NumberFormat {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: Math.min(MAX_DECIMALS, Math.max(0, decimals)) });
 }
+
+const SCIENTIFIC = new Intl.NumberFormat("en-US", { notation: "scientific", maximumFractionDigits: 3 });
 
 /** How many decimals a tick step needs: 0.25 needs 2, 5 needs 0. */
 export function decimalsFor(step: number): number {
   if (!Number.isFinite(step) || step <= 0) return 2;
   for (let d = 0; d <= MAX_DECIMALS; d += 1) {
     const scaled = step * 10 ** d;
-    if (Math.abs(scaled - Math.round(scaled)) < 1e-9 * Math.max(1, scaled)) return d;
+    // A step that rounds to 0 is not whole yet: 5e-10 needs 10 decimals, not 0.
+    if (Math.round(scaled) !== 0 && Math.abs(scaled - Math.round(scaled)) < 1e-9 * Math.max(1, scaled)) return d;
   }
   return MAX_DECIMALS;
 }
@@ -25,6 +35,7 @@ export function decimalsFor(step: number): number {
 function plain(value: number, decimals: number): string {
   // -0 would print as "-0".
   const v = Object.is(value, -0) ? 0 : value;
+  if (Math.abs(v) >= SCIENTIFIC_FROM) return SCIENTIFIC.format(v);
   return numberFormat(decimals).format(v);
 }
 

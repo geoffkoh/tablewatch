@@ -173,7 +173,8 @@ top down, it shows:
   so its numbers can differ from the summary's. The summary is the state of
   the project. The run panel says what the last run looked at.
 - **Every check, problems first**: failing, then could not evaluate, then
-  warning, then no result recorded, then passing.
+  warning, then no result recorded, then passing. Each check's name links
+  to its own page (below).
 
 The status words mean different things and go to different people:
 
@@ -210,6 +211,67 @@ The times on each row:
   how many of those checks were failing then ("5 errors could not evaluate; 2
   were failing"). They still need attention, but not in the failing count.
 
+### A check's page
+
+Click a check's name, or open `/checks/<id>` (for example
+`http://127.0.0.1:8765/checks/b1ceb8262d8b5441`), to see one check and its
+history. The address stays the same across reloads and restarts, so you
+can send it to a colleague. The page shows:
+
+- **What the check is**: its name and expression, dataset, datasource,
+  owner, tags, `file:line:col`, and id.
+- **Rule**: the rule in the check files as `serve` loaded them, for example
+  "Expected `< 5%`", or "Warn when `> 1d`" and "Fail when `> 7d`". A
+  `schema` or `failed_rows` check with no triggers reads "Expected `= 0`".
+- **Latest result**, in the same words as the overview.
+- **History**: a chart of the recorded values over time, then a table of
+  every result, newest first. The table holds everything the chart draws,
+  with the full message.
+
+How to read the chart:
+
+- **Each point is one recorded result**, at the time its run started. Its
+  shape and colour give the outcome that run recorded, using the overview's
+  icons. The page never re-judges an old value against today's rule: a
+  point keeps the outcome its run recorded.
+- **The shaded band is where the current rule fails** (red) or warns
+  (amber), with a line at each boundary labelled with the rule's text. For
+  `= 0`, everything above 0 is shaded, and the line is at 0. When a boundary
+  is far outside the values, the chart leaves it off the axis and names it
+  at the edge instead: "10,000 above". "Current rule" above the chart
+  always states the whole rule.
+- **Lanes under the axis hold results with no value.** "Could not evaluate"
+  holds errors: tablewatch could not measure the check, which says nothing
+  about the data. "No value" holds a fail with nothing to measure, such as
+  an average over no rows or freshness with no timestamps: that is bad
+  data. Neither is drawn at 0, and the line breaks across them.
+- **"Rule changed" marks a change of rule under an explicit `id:`.** Two
+  consecutive results were judged by different expressions. The caption
+  under the chart names both, with the two runs either side, because the
+  history knows only that the edit happened between them. The band covers
+  only the results judged by the current rule, so an old result is never
+  drawn against a threshold it was not judged by. If the check's metric
+  changed (`missing_count` to `missing_percent`, say), results measured by
+  the other metric are left off the axis, and the caption says how many.
+  The table still lists them.
+- **"Failing since"** (or "Warning since") brackets the current streak, as
+  on the overview. It follows outcomes, not rules, so it can span a rule
+  change.
+- **Times on the axis, in the table and in tooltips are in your time zone,
+  and the page names it** ("times in GMT+8"). Messages are stored text and
+  keep UTC: a freshness message such as `newest 2026-09-26T11:33:48…+00:00`
+  is in UTC. Read the age in the value column, not the timestamp in the
+  message.
+- **A value below 0 is drawn below 0.** A negative freshness means the
+  newest row is in the future, which usually means naive timestamps read in
+  the wrong time zone. It passes `< 6h` every time, so check the
+  datasource's `timezone`.
+
+Focus the chart and use the arrow keys, or hover, to read each result.
+If you edit a check file and restart `serve` before the next run, the page
+says that no run has used the new rule yet, draws no band, and notes that
+the latest result was judged by the earlier rule.
+
 ### The JSON API
 
 To list what is failing right now, ask for every check whose latest
@@ -237,8 +299,8 @@ $ curl -s http://127.0.0.1:8765/api/v1/checks/b1ceb8262d8b5441/history \
 | --- | --- |
 | `project` | Name, datasources (names and types only), counts, and any check-file diagnostics |
 | `checks` | Every check, each with its latest recorded result. Filter with `?outcome=`, which is repeatable and takes `pass`, `warn`, `fail`, `error`, `skipped` or `not_run` |
-| `checks/{id}` | One check. Ids are exact: the full id from `tablewatch list` |
-| `checks/{id}/history` | That check's results, newest first, including results for checks since deleted |
+| `checks/{id}` | One check, with its `rule` as loaded: `expect`, `warn` and `fail`, each with the condition's `text` and its numbers. Ids are exact: the full id from `tablewatch list` |
+| `checks/{id}/history` | That check's results, newest first, including results for checks since deleted. Each carries the `expression`, `metric`, `unit` and `dataset` it was recorded with |
 | `runs`, `runs/{id}` | Runs, newest first, with counts. One run's detail includes its results |
 | `openapi.json` | The contract, also checked in at [docs/api/openapi.json](docs/api/openapi.json) |
 

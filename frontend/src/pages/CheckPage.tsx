@@ -217,8 +217,13 @@ export function CheckPage({ id }: { id: string }): ReactElement {
     document.title = `${name ?? (checkMissing && history.state === "failed" ? "Check not found" : "Check")} · tablewatch`;
   }, [name, checkMissing, history.state]);
 
+  // While a refresh is in flight the first page on screen is the previous
+  // round's: its cursor would append results the new first page may also hold,
+  // or skip ones it lacks. Paging waits for the round to settle (D13, D14).
+  const canLoadOlder = cursor !== null && !busy && older?.busy !== true;
+
   const loadOlder = (): void => {
-    if (cursor === null) return;
+    if (cursor === null || !canLoadOlder) return;
     const current = capture();
     const round = generation;
     const base = older?.items ?? [];
@@ -307,7 +312,13 @@ export function CheckPage({ id }: { id: string }): ReactElement {
           {older?.failure != null && <LoadError what="older results" failure={older.failure} onRetry={loadOlder} />}
           {cursor !== null && (
             <p>
-              <button type="button" className="button" onClick={loadOlder} aria-busy={older?.busy ?? false} disabled={older?.busy ?? false}>
+              <button
+                type="button"
+                className="button"
+                onClick={loadOlder}
+                aria-busy={older?.busy ?? false}
+                disabled={!canLoadOlder}
+              >
                 Load older results
               </button>
             </p>

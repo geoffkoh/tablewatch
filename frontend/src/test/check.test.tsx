@@ -631,6 +631,36 @@ describe("D14: one load/refresh hook", () => {
     expect(historyRows().map((r) => r.dataset.runId)).not.toContain("late");
   });
 
+  it("Load older is disabled while a refresh is in flight, and follows the new cursor after it", async () => {
+    let release: (r: Response) => void = () => undefined;
+    const slow = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    const urls = checkUrls(EMAIL);
+    await renderCheck(EMAIL, { check: ok(detailOf(interrupted, EMAIL)), history: ok(page(emailHistory.items, "C1")) });
+    const base = globalThis.fetch as unknown as (input: RequestInfo | URL) => Promise<Response>;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => (String(input) === urls.history ? slow : base(input))));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    const button = screen.getByRole<HTMLButtonElement>("button", { name: "Load older results" });
+    expect(button.disabled).toBe(true);
+    await act(async () => {
+      release(new Response(JSON.stringify(page(emailHistory.items, "C2")), { status: 200 }));
+      await slow;
+    });
+    await vi.waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe("Up to date.");
+    });
+    const after = stubCheckServer(EMAIL, {
+      check: ok(detailOf(interrupted, EMAIL)),
+      history: ok(page(emailHistory.items, "C2")),
+      older: { C2: ok(page([])) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load older results" }));
+    await vi.waitFor(() => {
+      expect(after.mock.calls.map((c) => String(c[0]))).toContain(olderUrl(EMAIL, "C2"));
+    });
+  });
+
   it("drops a slow first answer that arrives after a refresh", async () => {
     let release: (r: Response) => void = () => undefined;
     const slow = new Promise<Response>((resolve) => {

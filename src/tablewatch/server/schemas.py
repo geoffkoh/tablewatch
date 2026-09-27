@@ -449,6 +449,8 @@ def _outcome(value: str) -> Outcome:
 
 
 def _unit(metric: str) -> Unit | None:
+    # The metric's unit in this version, not as recorded: the store keeps no
+    # unit. A future unit change must store it on the result row first.
     found = get_metric(metric)
     return found.unit.value if found else None
 
