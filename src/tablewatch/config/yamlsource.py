@@ -58,6 +58,28 @@ class YAMLSource:
         line, column = node.lc.item(index)
         return self.at(line, column)
 
+    def of_value_or_node(self, node: CommentedMap, key: Any) -> SourceLocation:
+        """Where a key's value is; a key from a `<<:` merge has no mark of its own."""
+        try:
+            return self.of_value(node, key)
+        except (KeyError, TypeError):
+            return self.of_node(node[key])
+
+    def of_null_item(
+        self, node: CommentedSeq, index: int
+    ) -> tuple[SourceLocation, bool]:
+        """Where a null list item is, and whether it is written out (`null`, `~`).
+
+        An empty `-` is null too; ruamel marks it one column past its dash,
+        which can be past the end of the line, so it points at the dash.
+        """
+        line, column = node.lc.item(index)
+        lines = (self.text or "").split("\n")
+        text = lines[line][column:] if line < len(lines) else ""
+        if text.startswith(("null", "Null", "NULL", "~")):
+            return self.at(line, column), True
+        return self.at(line, max(column - 1, 0)), False
+
     def of_node(self, node: Any) -> SourceLocation:
         if isinstance(node, CommentedMap | CommentedSeq):
             return self.at(node.lc.line, node.lc.col)

@@ -196,7 +196,9 @@ class NullHint:
     """What to tell a user who wrote null in a value-list option."""
 
     ignored: str  # why the null is ignored
-    all_null: str | None = None  # set when a list of only nulls is an error
+    # Also a rule: when set, a list of only nulls is an error with this text;
+    # when None, such a list drops the option (each null still warns).
+    all_null: str | None = None
 
 
 class Metric(ABC):

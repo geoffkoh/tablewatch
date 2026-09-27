@@ -652,23 +652,20 @@ class _ChecksLoader:
         kept: list[Any] = []
         for index, item in enumerate(items):
             number = index + 1
-            line, column = items.lc.item(index)
             if item is None:
-                if _written_null(source, line, column):
+                where, written = source.of_null_item(items, index)
+                if written:
                     why = hint.ignored if hint else "null is not a value"
                     text = (
                         f"`{key}:` item {number} is null and is ignored: {why}. "
                         "To match the text 'NULL', quote it"
                     )
-                    where = source.at(line, column)
                 else:
                     text = (
                         f"`{key}:` item {number} is empty and is ignored: a `-` with "
                         "nothing after it is null in YAML. Fill in the value you "
                         "meant, or delete the line"
                     )
-                    # ruamel marks an empty item past its dash: point at the dash.
-                    where = source.at(line, max(column - 1, 0))
                 warnings.append(warning(text, where))
             elif isinstance(item, list | dict):
                 kind = "a list" if isinstance(item, list) else "a mapping"
@@ -676,7 +673,7 @@ class _ChecksLoader:
                     error(
                         f"`{key}:` items must be single values (text, a number, "
                         f"true/false); item {number} is {kind}",
-                        source.at(line, column),
+                        source.of_item(items, index),
                     )
                 )
             else:
@@ -688,7 +685,7 @@ class _ChecksLoader:
             self.diagnostics.append(
                 error(
                     f"`{key}:` has no values: {hint.all_null}",
-                    _value_at(source, node, key),
+                    source.of_value_or_node(node, key),
                 )
             )
             return None
@@ -702,16 +699,9 @@ class _ChecksLoader:
         ok = _matches(value, kind)
         if not ok:
             self.diagnostics.append(
-                error(f"`{key}:` must be a {kind}", _value_at(source, node, key))
+                error(f"`{key}:` must be a {kind}", source.of_value_or_node(node, key))
             )
         return ok
-
-
-def _written_null(source: YAMLSource, line: int, column: int) -> bool:
-    """Whether a null item is written out (`null`, `~`) rather than an empty `-`."""
-    lines = (source.text or "").split("\n")
-    text = lines[line][column:] if line < len(lines) else ""
-    return text.startswith(("null", "Null", "NULL", "~"))
 
 
 def _matches(value: Any, kind: OptionType) -> bool:
@@ -763,11 +753,3 @@ def _own_key_line(source: YAMLSource, node: CommentedMap, key: str) -> int | Non
         return source.of_key(node, key).line
     except KeyError:  # brought in by a `<<:` merge: it has no line here
         return None
-
-
-def _value_at(source: YAMLSource, node: CommentedMap, key: str) -> SourceLocation:
-    """Where a key's value is; an option from a `<<:` merge has no mark of its own."""
-    try:
-        return source.of_value(node, key)
-    except (KeyError, TypeError):  # ruamel has no mark for a merged key
-        return source.of_node(node[key])

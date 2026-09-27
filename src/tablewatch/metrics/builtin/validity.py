@@ -47,11 +47,11 @@ def valid_predicate(ctx: MetricContext, column_name: str) -> ColumnElement[bool]
     col = ctx.column(column_name)
     opts = ctx.options
     rules: list[ColumnElement[bool]] = []
+    if "valid_values" in opts:
+        rules.append(ctx.one_of(col, opts["valid_values"], "valid_values"))
     # Columns come without types (tablewatch never reflects the table), so
     # values are wrapped in literal() to carry a type of their own. A bare
     # Python value would be bound as NULL-typed and could not be rendered.
-    if "valid_values" in opts:
-        rules.append(ctx.one_of(col, opts["valid_values"], "valid_values"))
     if "valid_min" in opts:
         rules.append(col >= literal(opts["valid_min"]))
     if "valid_max" in opts:
