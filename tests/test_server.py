@@ -166,8 +166,8 @@ def test_other_interfaces_warn(
     warning, line = started.stderr.splitlines()
     assert warning == (
         f"tablewatch: warning: serving on {host} with no authentication — anyone who "
-        "can reach this address can read this project's checks, the SQL each check "
-        "runs, and its results: data values, database error messages that can quote "
+        "can reach this address can read this project's check files (comments "
+        "included), the SQL each check runs, and its results: data values, database error messages that can quote "
         "row values, and owner emails. Authentication arrives in Phase 4 "
         "(tablewatch.yml cannot turn it on yet)."
     )

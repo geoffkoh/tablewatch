@@ -167,6 +167,16 @@ def get_check_sql(context: Context, check_id: str) -> schemas.CheckSql:
     return schemas.CheckSql.of(check, compiled)
 
 
+@router.get("/checks/{check_id}/source", response_model=schemas.CheckSource)
+def get_check_source(context: Context, check_id: str) -> schemas.CheckSource:
+    check = context.check(check_id) if _is_check_id(check_id) else None
+    if check is None:
+        raise _not_found("check")
+    # The lines as loaded at startup: no file is read per request, and
+    # nothing about the path comes from the request.
+    return schemas.CheckSource.of(check, context.loaded_at)
+
+
 @router.get("/runs", response_model=schemas.RunPage)
 def list_runs(
     context: Context, limit: Limit = 50, cursor: Cursor = None

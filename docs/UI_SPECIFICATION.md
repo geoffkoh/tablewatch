@@ -9,6 +9,8 @@ the UI does it: wording, layout, colour, and the rules behind them.
 | --- | --- | --- |
 | I-03 | `specs/003-ui-shell-overview.md` | Shell, overview page, "page not found" |
 | I-05 (part 1) | `specs/004-check-detail-history.md` | Check page (`/checks/<id>`): identity, rule, latest result, history chart and table; links from the overview; the shared load hook |
+| I-26 | `specs/005-check-detail-sql-source.md` | The check page's SQL section: `CodeBlock`, `CopyButton`, `lib/clipboard.ts`, invisible-character marking |
+| I-29 | `specs/006-check-detail-source.md` | The check page's Source section: the check's own YAML lines (`SourceBlock`), the file's `filter:` in words, `#source` |
 
 ## 1. Who it is for
 
@@ -96,7 +98,7 @@ frontend/src/
   api/types.ts             aliases into schema.gen.ts (Project, CheckSummary, CheckDetail,
                            Rule, Condition, HistoryEntry, HistoryPage, Run, Unit, ...)
   api/api.ts               the ONE client: getProject, listChecks, listRuns, getCheck,
-                           getHistory, getCheckSql; failureOf, isNotFound
+                           getHistory, getCheckSql, getCheckSource; failureOf, isNotFound
   lib/route.ts             parseRoute(path), checkHref(id), the id pattern
   lib/clipboard.ts         canCopy, copyText, selectContents: the only clipboard code
   lib/invisible.ts         which code points are marked, and the text split into segments
@@ -112,9 +114,11 @@ frontend/src/
                            LatestResult (Result, When, LastEvaluatedNote), HistoryTable,
                            StatusIcon/StatusBadge, shapes (status shapes), Time (Ago),
                            LoadError (useId heading id; `level` 2|3; `scope` page|section),
-                           CodeBlock, CopyButton, Marked (invisible characters)
+                           CodeBlock, SourceBlock (numbered, never wraps), CopyButton,
+                           Marked (invisible characters)
   components/check/        the check page's sections: Identity, RuleSection, LatestSection,
-                           NotFoundPanel, HistorySection, SqlSection; useOlderHistory
+                           NotFoundPanel, HistorySection, SqlSection, SourceSection;
+                           useOlderHistory
                            (older pages, tagged with the load round, dropped on refresh)
   components/chart/        HistoryFigure (title, key, captions), HistoryChart (SVG and
                            interaction), ChartKey
@@ -153,7 +157,8 @@ frontend/src/
   segment and query value is built with `encodeURIComponent` in `api.ts`.
 - **One load/refresh hook** (`lib/useLoads.ts`, D14, decision 8). A page
   names its requests as independent slots (the overview: `project`,
-  `results`; the check page: `project`, `check`, `history`, `runs`). Each
+  `results`; the check page: `project`, `check`, `history`, `runs`, `sql`,
+  `source`). Each
   slot is `loading`, `ok` or `failed`. `reload` starts every slot again and
   bumps a generation counter; only the newest round writes state, so an
   older answer that lands late is dropped. `busy` holds until every slot of
@@ -324,17 +329,17 @@ overview" link to `/`. It makes no API requests.
 
 ## 4A. The check page (`/checks/<id>`)
 
-Spec 004 (I-05, first half) and spec 005 (the SQL). It reads
-`GET /api/v1/project`, `GET /api/v1/checks/{id}`,
-`GET /api/v1/checks/{id}/history?limit=200`, `GET /api/v1/runs?limit=1` and
-`GET /api/v1/checks/{id}/sql` in parallel, through the shared hook, as five
-slots. Refresh reloads all five. The
+Spec 004 (I-05, first half), spec 005 (the SQL) and spec 006 (the source).
+It reads `GET /api/v1/project`, `GET /api/v1/checks/{id}`,
+`GET /api/v1/checks/{id}/history?limit=200`, `GET /api/v1/runs?limit=1`,
+`GET /api/v1/checks/{id}/sql` and `GET /api/v1/checks/{id}/source` in
+parallel, through the shared hook, as six slots. Refresh reloads all six. The
 document title is "*check name* · tablewatch" ("Check not found ·
 tablewatch" for an unknown id).
 
 ### 4A.1 Header and back link
 
-The overview's header, with **Refresh** (it re-fetches all four endpoints
+The overview's header, with **Refresh** (it re-fetches all six endpoints
 and drops any older history pages, D14). On this page the project name is a
 paragraph, not a heading: the page's one `<h1>` is the check's name. Under
 the header, a "Back to the overview" link to `/`.
@@ -345,7 +350,10 @@ A panel headed by the check's name (`<h1>`). When the expression differs
 from the name (a named check such as "Order volume"), the expression follows
 in monospace. Then a definition list: **Dataset**, **Datasource**,
 **Owner** ("none" when null), **Tags** (pills, or "none"), **Source**
-(`file:line:col`, monospace) and **Id** (the full id, monospace).
+(`file:line:col`, monospace, invisible characters marked) and **Id** (the
+full id, monospace). The whole `file:line:col` is a link to `#source`
+whenever the Source section (§4A.10) is on the page, which is whenever this
+panel is; it is plain text otherwise (spec 006, P11).
 
 ### 4A.3 Rule (D3, D4)
 
@@ -705,7 +713,89 @@ generation guard.
 **`#sql`.** `/checks/<id>#sql` scrolls the section into view once, after
 the first round of loads settles (the section does not exist when the
 browser first looks for the fragment). The route parser ignores the
-fragment.
+fragment. `CheckPage`'s `FRAGMENTS` map (`#sql` → `sql`, `#source` →
+`source`) is the one list of fragments it scrolls to; any other fragment
+scrolls nowhere.
+
+### 4A.10 Source (spec 006)
+
+The last section, below the SQL, headed "Source" (`<section id="source">`),
+always **open**. It shows the check's own lines from its file, as loaded
+when the server started (`GET /checks/{id}/source`). The server never
+re-reads a file per request; the page says "as loaded" and never claims the
+lines are what a recorded result used. The wording guard of §4A.9 runs on
+the section's words **outside the code block** (heading, caption,
+sentences, button) on every fixture; the file's own lines are exempt.
+
+**The block** (`SourceBlock`, beside `CodeBlock`, not a mode of it):
+
+- `<pre class="code-block code-block--lines" role="region" tabIndex=0
+  aria-label="The check's lines" data-digits="N">` holding one `<code>`.
+- One `<span class="line" data-line="{start + i}">` per line of `text`
+  (split on `\n` only: the server already split on `\r\n`, `\r`, `\n`
+  and joined with `\n`), blank lines included. Every span but the last ends
+  with a `\n`, so the `<code>`'s `textContent` is `text` exactly.
+- The numbers are `.line::before { content: attr(data-line) }`, muted, right
+  aligned, `user-select: none`, with a rule to their right: generated
+  content, so selection and copy never include them. Their column is
+  `--line-digits` characters wide; the CSP forbids inline style, so
+  `data-digits` (the digit count of the last line number, capped at 6)
+  selects the value in `app.css`.
+- **No wrapping** (`white-space: pre`), unlike the SQL block: YAML's
+  indentation is its meaning, and a wrapped line would sit under the wrong
+  number. A long line scrolls sideways inside the block (`overflow-x:
+  auto`), and `.source`, `.code-block` and the panel keep `min-width: 0`,
+  so the page itself never scrolls sideways. The number column scrolls with
+  the text (it is not sticky: option (a) of spec 006 P16).
+- Invisible characters are marked with `Marked` in place (§4A.9),
+  including U+2028 and U+2029, now in `lib/invisible.ts`. U+2028, U+2029
+  and U+0085 are mandatory line breaks to some browsers even inside
+  `<pre>`, so their marked span is an inline-block one line box tall with
+  `overflow: hidden`: the character stays in the DOM (copy is exact) but
+  cannot push the text below it under the wrong number.
+
+**Below the block**, in order:
+
+1. **Copy the source** (`CopyButton`): copies `text` exactly. Where the
+   page cannot copy, **Select all** ("Select all of the source") selects the
+   `<code>` only: not the numbers, the caption or the region.
+2. The caption: "`checks/sales/orders.yml`, lines 5–8, from the check files
+   as loaded 2 hours ago." (en dash; "line 4" for a one-line span). The
+   path is in `<code>`, marked. The age is `Ago` (`<time datetime>`) from
+   **`/source`'s own `loaded_at`**, so it renders when `/project` fails.
+   A flow-style line shared by two checks gets the same caption and no
+   extra sentence (the API does not say the line is shared).
+3. The file's `filter:`, when `filter` is set (P13), as text:
+   - `applies: true`: "Only rows matching this file's
+     `filter: status != 'test'` (line 3) are checked." (the filter marked);
+   - `applies: false`: "This file's `filter:` (line 2) does not apply to
+     this check." plus " Its query runs exactly as written." only when
+     `/checks/{id}` has loaded and its `metric` is `sql_metric`. While
+     `/checks/{id}` has failed the metric is unknown, so the first sentence
+     stands alone.
+4. On every 200: "The dataset, datasource, owner and tags shown at the top
+   of the page are set elsewhere in this file or in a `_defaults.yml`."
+   (Data-steward, VERIFY: not "this file's first lines", which is false when
+   `owner:` is the last line or `filter:` follows `checks:`.)
+
+**Span unavailable** (`start_line`, `end_line`, `text` null): no block, no
+Copy, no caption. "The lines of this check could not be shown; it is in
+`<path>`." (path marked), then the filter sentence if `filter` is set, then
+sentence 4.
+
+**Loading and failures**: the same table as §4A.9, for `/source`. The
+section appears once `/checks/{id}` has answered, and not at all for an id
+nobody knows.
+
+| `/checks/{id}` | `/source` | The Source section shows |
+| --- | --- | --- |
+| any but loading | loading | "Loading…" |
+| 200, 503 or network | 200 | the lines, or the span-unavailable line, and the sentences above |
+| 404 (history 200) | 404 | one line: "The source is not available: this check is not in the loaded check files." No filter or defaults sentence, no alert |
+| not 404, or 404 with a non-404 `/source` | 404, 5xx or network | a section-scoped alert (`<h3>` "The source could not be loaded.", the message, **Try again**); no sentences; the status line reads "Could not load everything." (`sourceFailed`, beside `sqlFailed`) |
+
+**`#source`** scrolls to the section once the first round settles, as
+`#sql` does.
 
 ## 5. Status: label, icon, colour
 
@@ -894,7 +984,7 @@ tooltip draws `attr(data-full)` on `:focus-visible`.
 - Status is never colour alone (§5). The tests assert labels and icon
   accessible names, not colours.
 - The check page (§4A): one `<h1>` (the check's name), labelled sections
-  (Rule, Latest result, History, SQL), the chart as `role="img"` with a title and
+  (Rule, Latest result, History, SQL, Source), the chart as `role="img"` with a title and
   a summary description, a keyboard-operable focus group for its tooltip,
   and the history table as the chart's full text alternative.
 
@@ -931,6 +1021,11 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
   `<a>`, `<use>`, `<image>` or `<foreignObject>`, no `href` of any kind, no
   `style`, and element ids only from `useId()` (`titleId`, `descId`), never
   from data or a literal. The tooltip is positioned with an SVG `transform`.
+- **Check files are text** (spec 006, P8, P14). The Source section's lines,
+  path and filter render through React as text; a comment holding
+  `<script>` or `<img onerror>` appears literally. Invisible and
+  direction-changing characters, a BOM and control characters in a file
+  name are marked in place, never stripped.
 - **Routes** make no request for an id that fails the id pattern, and the
   not-found page shows only a well-formed id, inside `<code>`.
 - Nothing is loaded from a third party: no web fonts (system font stack),
@@ -945,6 +1040,7 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | `test/overview.test.tsx` | O1–O11 and W3 at component level (W3 now uses `/runs/<id>`, since `/checks/<id>` is a page) |
 | `test/qa.test.tsx` | spec 003 VERIFY edge cases (qa-engineer) |
 | `test/sql.test.tsx` | spec 005 P1–P15 and S9 on the page: words, the wording guard on every fixture, schema, cannot compile, not loaded, section-scoped failures and a late `/sql` after Refresh, text is text, copy / Copied / refused / Select all, P10, `#sql`, regions, unknown kinds; the clipboard source rules |
+| `test/source.test.tsx` | spec 006 P4–P16 on the page: the block (one numbered span per line, `textContent === text`, blank lines, digits), the exact captions, below the SQL, `/project` failing, the wording guard on every fixture (lines exempt), not loaded, section-scoped failures and a late `/source` after Refresh, Try again, text is text, copy and Select all of the `<code>` only, `#source` / `#sql` / other fragments, the identity link, P13's filter sentences by `applies` and metric, P14's marked characters (U+202E, U+2028, U+200B path, BOM, ESC in a file name), P15, P16's region and CSS rules; `getCheckSource`'s URL |
 | `test/loaderror.test.tsx` | `LoadError`: unique `useId` ids, heading level, section wording |
 | `test/check.test.tsx` | spec 004 D1–D20 at component level, including the rendered chart (lanes, bands, markers, streak, tooltip by keyboard and pointer, label collisions) |
 | `test/chart.test.ts` | the chart's pure functions: the D6 bands table, the D10 tick table and domain cases, series and lanes (D5, D9), rule changes and the band's span (D7), recorded outcomes (D8), other metrics (D20), label stacking and rows, hover columns, tooltip placement, the key, x ticks, the summary (D11) |
@@ -975,6 +1071,14 @@ on a scratch copy of `examples/retail` on 2026-09-27 (`b1ceb8262d8b5441`,
 `a81b0374b0b04f06`), plus `remote`'s cannot-compile answer, `broken`'s,
 and derived bodies for S10, P8, P14 and P15. The check-page stub answers
 `/sql` by default from these (404 when `/checks/{id}` is 404).
+`test/fixtures/source.ts` holds `/source` bodies captured from the
+in-process app on 2026-09-27: `retail` (`b1ceb8262d8b5441`,
+`32c8f939b90f6367`, `32867fbe86f483f3`, `fbc3aa0b93b66eee`) and spec 006's
+`commented` files (`32867fbe86f483f3` with its comment, `4a831091035ca6c6`,
+`e3a77b3bf2c0c560`, `98cd31ce24b6afef`, `2f9a43de2ae47ba9`, and
+`ec91af87c6b3495e`, span unavailable), with `loaded_at` set to 07:50 UTC so
+captions read "2 hours ago"; plus built bodies for P8 and P14. The stub
+answers `/source` by the same rule as `/sql`.
 
 ## 11. Known limits and follow-ups
 
@@ -988,6 +1092,13 @@ and derived bodies for S10, P8, P14 and P15. The check-page stub answers
   with hundreds of rows will want roving focus or a detail view instead.
   Revisit with I-04 and I-05.
 - History rows do not link to runs yet (I-15).
+- **The Source block by hand (spec 006 P16).** At a 360 px viewport with a
+  200-character line the page must not scroll sideways and each number
+  must stay level with its line; real text selection must not pick up the
+  numbers; U+2028 inside `<pre>` must not start a new visual line. jsdom
+  cannot lay out, so these are the data-steward's VERIFY run. A file of a
+  million lines or more has 7-digit numbers, which overflow the 6-digit
+  column by one character.
 - The chart's text widths are estimates (7 units per character at 12
   units). A very wide glyph run (for example many `W`s in a rule's text)
   could crowd its neighbour; the rule is also shown in full above the

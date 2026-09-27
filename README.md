@@ -36,7 +36,7 @@ All of a table's aggregate checks run in **one table scan**, however many
 there are.
 
 > **Status: alpha (`0.1.0`).** The engine and CLI are complete, and `serve`
-> has a first web page, the overview. More of the web UI, alerting, and
+> has a web page: the overview, and a page for each check. More of the web UI, alerting, and
 > scheduling come next — see the [roadmap](docs/ROADMAP.md).
 
 ## Install
@@ -223,7 +223,7 @@ a new page. The old address then says the check is no longer in the
 loaded files and still shows its recorded results. The page shows:
 
 - **What the check is**: its name and expression, dataset, datasource,
-  owner, tags, `file:line:col`, and id.
+  owner, tags, `file:line:col` (a link to the Source section), and id.
 - **Rule**: the rule in the check files as `serve` loaded them, for example
   "Expected `< 5%`", or "Warn when `> 1d`" and "Fail when `> 7d`". A
   `schema` or `failed_rows` check with no triggers reads "Expected `= 0`".
@@ -238,6 +238,9 @@ loaded files and still shows its recorded results. The page shows:
 - **SQL**: the statements tablewatch sends to the database for this check,
   in the datasource's own dialect, exactly as `tablewatch compile` prints
   them. Link straight to it with `/checks/<id>#sql`. See below.
+- **Source**: the check as written in its check file, comments included,
+  with line numbers and the file's path. Link straight to it with
+  `/checks/<id>#source`. See below.
 
 How to read the chart:
 
@@ -334,6 +337,51 @@ How to read the SQL:
   without showing, so the page marks each one where it sits with its code,
   such as `U+200B`. Copy still copies the exact text.
 
+How to read the source:
+
+- **It shows the check's own lines, numbered as in the file.** That is the
+  check's entry under `checks:`, from its `-` to its last option, plus the
+  comments that go with it. A comment goes with a check when it sits:
+  - directly above the check's `-`, with no blank line between. This is the
+    place for the note that says why the rule is 5%;
+  - directly below the check's last line, with no blank line between, and
+    indented further than its `-`, such as a commented-out option.
+
+  A comment after a blank line, or a comment at or left of the `-` after the
+  last check, goes with no check and is not shown. A comment at the end of a
+  line is always shown with that line. A `#` line inside a `query: |` block
+  is part of the query, not a comment.
+- **Nothing else in the file appears in the lines.** `dataset:`,
+  `datasource:`, `owner:`, `tags:`, `filter:` and `_defaults.yml` never do.
+  The page says where the settings at the top of the page come from instead.
+- **The file's `filter:` is stated under the lines:** "Only rows matching
+  this file's `filter: status != 'test'` (line 3) are checked." Every value
+  on the page is about those rows only. A `sql_metric` or `schema` check is
+  not narrowed by `filter:`, and the page says so ("does not apply to this
+  check").
+- **A check written on one line with others**
+  (`checks: [row_count > 0, "duplicate_count(id) = 0"]`) shows that whole
+  line, the other checks included.
+- **Sometimes the lines cannot be shown.** The page then says "The lines of
+  this check could not be shown; it is in `checks/sales/orders.yml`", so you
+  still know which file to open or ask about. This happens when the check
+  shares a line with `dataset:` or `filter:` (a whole file written on one
+  line), when the check is a YAML alias (`- *name`), or whenever tablewatch
+  cannot place the check's lines exactly: it shows no lines rather than the
+  wrong ones. The check itself loads and runs as usual.
+- **It is the file as `serve` loaded it**, like the rule and the SQL.
+  Editing or deleting the file changes nothing on the page until `serve`
+  restarts, and a result recorded before an edit may have been judged by
+  different lines.
+- **A symbolic link is shown under its own name.** A check file in `checks/`
+  that links to a file elsewhere loads like any other, and the page shows its
+  lines under the link's path (`checks/sales/linked.yml`), never the path the
+  link points to.
+- **Copy the source** copies the lines exactly, without the line numbers;
+  selecting the lines by hand skips the numbers too. Long lines do not wrap,
+  because a YAML line's indentation is part of its meaning: scroll the block
+  sideways. Invisible characters are marked, as in the SQL.
+
 ### The JSON API
 
 To list what is failing right now, ask for every check whose latest
@@ -364,6 +412,7 @@ $ curl -s http://127.0.0.1:8765/api/v1/checks/b1ceb8262d8b5441/history \
 | `checks/{id}` | One check, with its `rule` as loaded: `expect`, `warn` and `fail`, each with the condition's `text` and its numbers. Ids are exact: the full id from `tablewatch list` |
 | `checks/{id}/history` | That check's results, newest first, including results for checks since deleted. Each carries the `expression`, `metric`, `unit` and `dataset` it was recorded with |
 | `checks/{id}/sql` | The SQL a run of that check's dataset sends and this check's value comes from, compiled from the check files as loaded: `dialect`, then `statements` in run order, each a `scan` (with `measures`, the columns this check `uses`, and `shared_by`, the number of *other* checks sharing it) or a `query`. `sql` is the statement as `tablewatch compile` prints it, without the closing `;`. `schema_lookup` is `true` for a `schema` check, which has no statements. `error` says why the dataset cannot be compiled, and `statements` is then empty. Ignore a statement whose `kind` you do not know: later versions add kinds. Never connects to a datasource and does not need the results store |
+| `checks/{id}/source` | That check's own lines in its check file, as loaded: `path`, relative to the project and under the checks directory; `start_line` and `end_line`, 1-based and inclusive; and `text`, those lines joined by `\n`. `start_line`, `end_line` and `text` are all `null` when the lines cannot be placed exactly, and `path` is still set. `filter` is the file's `filter:` or `null`: its `line`, its `text` as written (a `${env:NAME}` in it is never resolved), and `applies`, which is `false` for `sql_metric` and `schema` checks. `loaded_at` equals `project`'s. Never reads a file while answering |
 | `runs`, `runs/{id}` | Runs, newest first, with counts. One run's detail includes its results |
 | `openapi.json` | The contract, also checked in at [docs/api/openapi.json](docs/api/openapi.json) |
 
@@ -429,8 +478,12 @@ ssh -L 8765:127.0.0.1:8765 dq-host      # then open http://127.0.0.1:8765/
 prints a warning:
 
 ```text
-tablewatch: warning: serving on 0.0.0.0 with no authentication — anyone who can reach this address can read this project's checks, the SQL each check runs, and its results: data values, database error messages that can quote row values, and owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn it on yet).
+tablewatch: warning: serving on 0.0.0.0 with no authentication — anyone who can reach this address can read this project's check files (comments included), the SQL each check runs, and its results: data values, database error messages that can quote row values, and owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn it on yet).
 ```
+
+Anyone who can reach the server can read your check files, comments
+included. Keep credentials in environment variables (`${env:NAME}`), never
+in a check file or a comment.
 
 Results can contain data values, such as a minimum price or a newest
 timestamp, and owners' email addresses. An error message can quote a row's

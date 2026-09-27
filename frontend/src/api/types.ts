@@ -45,3 +45,8 @@ export type ScanColumn = Schemas["ScanColumn"];
  * it (P15), so code narrows on `kind` and never assumes the list is exhaustive.
  */
 export type Statement = CheckSql["statements"][number];
+
+/** A check's own lines, as loaded (spec 006). `start_line`, `end_line` and `text` are null together when the span is unavailable. */
+export type CheckSource = Schemas["CheckSource"];
+/** The check file's dataset `filter:`; `applies` is false for metrics it never scopes. */
+export type FileFilter = Schemas["FileFilter"];

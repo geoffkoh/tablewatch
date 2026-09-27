@@ -5,7 +5,10 @@ product-manager; see `PROCESS.md` for scoring and statuses.
 
 Re-scored and re-ranked by the product-manager in iteration 5 REVIEW
 (2026-09-27); I-26 was split and I-29 to I-32 added in iteration 5 REFINE
-the same day. Score = reach × impact × confidence ÷ effort, × 1.25 if other
+the same day. Iteration 6 PLAN (2026-09-27): I-29 in progress; I-33
+re-ranked to fourth after the owner's decision. Iteration 6 REFINE: I-36 and I-37
+added from the reviews of spec 006. Iteration 6 REVIEW (2026-09-27): I-29
+done (C4 shipped in full); I-36 widened; I-39 added; re-ranked. Score = reach × impact × confidence ÷ effort, × 1.25 if other
 items depend on it (PROCESS.md). The rank follows the score except where
 the owner's priority says otherwise (below); every departure is stated.
 
@@ -16,7 +19,8 @@ alerting, `0.2.0`)**. Phase 2b items (A1–A4, A14, B6, C7) join it when Phase
 every Phase 2 feature now has one. I-16 to I-18 are follow-ups from the
 iteration 1 reviews, I-19 and I-20 from iteration 2, I-21 to I-25 from
 iteration 3, I-27 and I-28 from iteration 4, I-30 to I-32 from
-iteration 5 REFINE, and I-33 to I-35 from iteration 5 VERIFY; they harden
+iteration 5 REFINE, I-33 to I-35 from iteration 5 VERIFY, I-36 and I-37 from iteration 6
+REFINE, and I-39 from iteration 6 VERIFY; they harden
 what shipped rather than add features.
 I-26 is the second half of I-05, split off in iteration 4 PLAN; I-29 is
 I-26's Source half, split off in iteration 5 REFINE by the pre-planned
@@ -32,44 +36,62 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | — | I-03 | UI shell + overview page, bundle shipped in the wheel — [spec 003](specs/003-ui-shell-overview.md) | C2 | I-02 ✓ | M | 4 | 2 | 0.8 | 4.0 | done (iteration 3) |
 | — | I-05 | Check detail 1: identity, rule, latest result, history chart against the threshold and history table — [spec 004](specs/004-check-detail-history.md) | C4 (without SQL and source) | I-03 ✓ | M | 3 | 2 | 0.8 | 3.0 | done (iteration 4) |
 | — | I-26 | Check detail 2: compiled SQL on the detail page, with this check's columns in the shared scan named (split from I-05 in iteration 4 PLAN; Source half split to I-29 in iteration 5 REFINE) — [spec 005](specs/005-check-detail-sql-source.md) | C4 (SQL) | I-05 ✓ | S | 2 | 1 | 0.8 | **2.0** | done (iteration 5) |
-| 1 | I-29 | Check detail 3: the check's own YAML source on the detail page, with its comments and the file's `filter:` (the Source half of I-26, split in iteration 5 REFINE) — [spec 006](specs/006-check-detail-source.md) (draft) | C4 (source) | I-26 ✓ | S | 2 | 1 | 0.8 | **1.6** | proposed — spec 006 drafted in iteration 5 REFINE; next PLAN re-checks it against `main` and makes it ready; ships next |
-| 2 | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree | E0, C2, C4 (hardening) | — | S | 3 | 2 | 0.8 | **4.8** | proposed — runs after I-29 (trigger met in iteration 4 REFINE) |
-| 3 | I-34 | `valid_values: [null]` is a silent pass: it compiles to `NOT IN (NULL, …)`, which is never true in SQL, so `invalid_*` counts nothing on that column. NULL in `valid_values` (and any list option compared with `IN`) is either a Diagnostic at `file:line:col` or dropped with a warning (NULL is already missing, not invalid); the data-steward decides in the spec (qa-engineer, iteration 5) | A (language hardening) | — | S | 2 | 2 | 1.0 | **4.0** | proposed — follows I-24 |
-| 4 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — follows I-24 (spec 005 D8: not folded into I-26) |
-| 5 | I-35 | The SQL section in plain words: "cannot compile" says the driver is not installed and which package to add, not `Can't load plugin: sqlalchemy.dialects:snowflake`; the malformed-URL message names the datasource and `tablewatch.yml`; a check whose datasource is not defined shows the name as written, marked "not defined", in the Datasource row and the SQL section; "computes 6 values, used by this check and 6 others" (data-steward, iteration 5) | C4 (hardening) | I-26 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — with or straight after I-27 |
-| 6 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 7 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 8 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
-| 9 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — exit code decided 2026-09-27: exit 3 |
-| 10 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
-| 11 | I-33 | Check identity for `failed_rows` and `sql_metric`: `condition:` and `query:` do not feed the derived id, so two `failed_rows` checks on one table in one file collide, the loader reports a duplicate, and nothing in the project runs until one gets an `id:` (data-steward, iteration 5) | A (language hardening) | owner decision | S | 2 | 1 | 1.0 | **2.0** | proposed — **waits on the owner** (changes check ids: see ITERATIONS.md, iteration 5 question); if option 1, before the first release |
-| 12 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
-| 13 | I-08 | Files as datasets (CSV, Parquet, JSON via DuckDB); establishes the dataset-source and executor seams | A8 | — | S | 1 | 2 | 0.8 | **2.0** | proposed |
-| 14 | I-14 | Postgres results store: the store verified on Postgres in CI (migrations, concurrent writers from two servers, column widths), documented for a shared deployment | E5 | — | S | 1 | 2 | 1.0 | **2.0** | proposed |
-| 15 | I-30 | Metric errors stop quoting row values: `min needs a numeric column; got text` instead of `could not convert string to float: 'N/A'`, and the same for freshness's `Invalid isoformat string: '…'`; existing history is not scrubbed, and the README says so (security F1, iteration 5) | E0, C1 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — gate: before Phase 4, and before any recommendation to serve beyond loopback |
-| 16 | I-19 | CLI `runs` and `history` scoped to the project, as the server is (spec 002 R5): in a shared store they show every project's runs today; one way to open the store | E5, E0 (hardening) | — | S | 2 | 1 | 0.8 | **1.6** | proposed |
-| 17 | I-20 | `serve` polish: a startup URL a client can use when bound to `0.0.0.0` or `::`; every stderr line in JSON under `--log-format json`; no absolute server paths in error messages served over the API; the JSON error envelope and security headers past the connection limit; `immutable` caching for hashed UI assets (`should`) | C1 (hardening) | — | S | 2 | 1 | 0.8 | **1.6** | proposed |
-| 18 | I-07 | Change-over-time checks from the results store | A5 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
-| 19 | I-13 | `validate --connect`: datasets, columns, type suitability and every compiled statement checked against the target database without scanning; Diagnostics at `file:line:col` | H6 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
-| 20 | I-09 | `validate --output sarif` for inline PR annotations | H3 | — | S | 1 | 1 | 1.0 | **1.0** | proposed |
-| 21 | I-22 | CI supply chain: every GitHub Action pinned to a commit SHA (with its version in a comment) before any publishing workflow exists; a check that fails on an unpinned `uses:` | E0 (hardening) | — | S | 1 | 1 | 1.0 | **1.0** | proposed — must precede the first release workflow |
-| 22 | I-28 | A percent threshold written as a fraction: `missing_percent(email) < 0.05` means 0.05%, not 5%; the loader warns at `file:line:col` and suggests `5%` (a warning, not an error; the check still runs) | A (language hardening) | — | S | 2 | 0.5 | 1.0 | **1.0** | proposed |
-| 23 | I-32 | `duplicate_*` and missing values: today `''` and `'N/A'` count as duplicates of one another (only NULL is excluded, and there is no `missing_values` option), so a blank can be counted both missing and duplicate; decide with the data-steward whether duplicates exclude missing values (a change to recorded numbers) or gain the option (data-steward, iteration 5 REFINE) | A (language hardening) | — | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 24 | I-12 | Configurable result recording: `record:` in `tablewatch.yml`, `_defaults.yml` and per check | E7 | I-01 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 25 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 26 | I-15 | Run detail page and diff against the previous run ("what broke since yesterday") | C5 | I-02 ✓, I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 27 | I-25 | JSON report timestamps in the API's form (`date-time`, six fractional digits), with a `schema_version` bump and a note for consumers | E0 (hardening) | — | S | 1 | 0.5 | 1.0 | **0.5** | proposed |
-| 28 | I-31 | `results.error_detail: full \| redacted` in `tablewatch.yml`: redacted replaces driver and metric error text with its error class before it is stored (security F2, iteration 5) | E7, C1 (hardening) | — | S | 1 | 1 | 0.5 | **0.5** | proposed |
-| 29 | I-23 | Save-time check state: a state table updated when a run is recorded, so `/checks` stops reading the project's whole history per request | C1, E5 | I-14 | M | 2 | 1 | 0.5 | **0.5** | proposed — gated: not scheduled until the threshold below is crossed |
-| 30 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
+| — | I-29 | Check detail 3: the check's own YAML source on the detail page, with its comments and the file's `filter:` (the Source half of I-26, split in iteration 5 REFINE) — [spec 006](specs/006-check-detail-source.md) | C4 (source) | I-26 ✓ | S | 2 | 1 | 0.8 | 1.6 | done (iteration 6) |
+| 1 | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree | E0, C2, C4 (hardening) | — | S | 3 | 2 | 0.8 | **4.8** | proposed — **next** (iteration 6 REVIEW; trigger met in iteration 4 REFINE) |
+| 2 | I-34 | `valid_values: [null]` is a silent pass: it compiles to `NOT IN (NULL, …)`, which is never true in SQL, so `invalid_*` counts nothing on that column. NULL in `valid_values` (and any list option compared with `IN`) is either a Diagnostic at `file:line:col` or dropped with a warning (NULL is already missing, not invalid); the data-steward decides in the spec (qa-engineer, iteration 5) | A (language hardening) | — | S | 2 | 2 | 1.0 | **4.0** | proposed — follows I-24 |
+| 3 | I-33 | Check identity for `failed_rows` and `sql_metric`: `condition:` and `query:` do not feed the derived id, so two `failed_rows` checks on one table in one file collide, the loader reports a duplicate, and nothing in the project runs until one gets an `id:` (data-steward, iteration 5) | A (language hardening) | owner decision ✓ | S | 2 | 1 | 1.0 | **2.0** | proposed — **ready to plan**: owner chose option 1 on 2026-09-27 (change the id now, no history migration). **Gate: before the first PyPI release.** Breaking for existing history of those checks (CHANGELOG note when it ships) |
+| 4 | I-36 | Check files that crash the loader get a diagnostic, not a traceback (design rule 5 is broken today in two ways). (a) A control character: `YAMLSource.load` catches only `MarkedYAMLError`, so ruamel's `ReaderError` (e.g. `\x0c`, `\x0b`, `\x1c`–`\x1e` in a comment: `unacceptable character #x000c`) escapes `validate` and `run` as a traceback. Catch `YAMLError`; place the diagnostic at `file:line:col` from `ReaderError.position` (architect F3, iteration 6 REFINE; reproduced on `8687ebc`). (b) A YAML merge key inside a check item (`- row_count:` then `<<: &base {warn: when < 5}`) raises `KeyError: 'warn'`; either merged options load as written or the merge key is a Diagnostic at its `file:line:col` (qa-engineer, iteration 6 VERIFY; pre-existing) | A, E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-33 |
+| 5 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — follows I-24 (spec 005 D8: not folded into I-26) |
+| 6 | I-35 | The SQL section in plain words: "cannot compile" says the driver is not installed and which package to add, not `Can't load plugin: sqlalchemy.dialects:snowflake`; the malformed-URL message names the datasource and `tablewatch.yml`; a check whose datasource is not defined shows the name as written, marked "not defined", in the Datasource row and the SQL section; "computes 6 values, used by this check and 6 others" (data-steward, iteration 5) | C4 (hardening) | I-26 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — with or straight after I-27 |
+| 7 | I-39 | Source block polish: line numbers stay in view when the block is scrolled sideways (a sticky number column), so a long line can still be matched to its number (data-steward, iteration 6 VERIFY; spec 006 P16 allowed today's behaviour) | C4 (hardening) | I-29 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — rides with I-27 and I-35 if that PR stays S, else straight after |
+| 8 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 9 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 10 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
+| 11 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — exit code decided 2026-09-27: exit 3 |
+| 12 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
+| 13 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
+| 14 | I-08 | Files as datasets (CSV, Parquet, JSON via DuckDB); establishes the dataset-source and executor seams | A8 | — | S | 1 | 2 | 0.8 | **2.0** | proposed |
+| 15 | I-14 | Postgres results store: the store verified on Postgres in CI (migrations, concurrent writers from two servers, column widths), documented for a shared deployment | E5 | — | S | 1 | 2 | 1.0 | **2.0** | proposed |
+| 16 | I-30 | Metric errors stop quoting row values: `min needs a numeric column; got text` instead of `could not convert string to float: 'N/A'`, and the same for freshness's `Invalid isoformat string: '…'`; existing history is not scrubbed, and the README says so (security F1, iteration 5) | E0, C1 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — gate: before Phase 4, and before any recommendation to serve beyond loopback |
+| 17 | I-19 | CLI `runs` and `history` scoped to the project, as the server is (spec 002 R5): in a shared store they show every project's runs today; one way to open the store | E5, E0 (hardening) | — | S | 2 | 1 | 0.8 | **1.6** | proposed |
+| 18 | I-20 | `serve` polish: a startup URL a client can use when bound to `0.0.0.0` or `::`; every stderr line in JSON under `--log-format json`; no absolute server paths in error messages served over the API; the JSON error envelope and security headers past the connection limit; `immutable` caching for hashed UI assets (`should`) | C1 (hardening) | — | S | 2 | 1 | 0.8 | **1.6** | proposed |
+| 19 | I-07 | Change-over-time checks from the results store | A5 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
+| 20 | I-13 | `validate --connect`: datasets, columns, type suitability and every compiled statement checked against the target database without scanning; Diagnostics at `file:line:col` | H6 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
+| 21 | I-09 | `validate --output sarif` for inline PR annotations | H3 | — | S | 1 | 1 | 1.0 | **1.0** | proposed |
+| 22 | I-22 | CI supply chain: every GitHub Action pinned to a commit SHA (with its version in a comment) before any publishing workflow exists; a check that fails on an unpinned `uses:` | E0 (hardening) | — | S | 1 | 1 | 1.0 | **1.0** | proposed — must precede the first release workflow |
+| 23 | I-28 | A percent threshold written as a fraction: `missing_percent(email) < 0.05` means 0.05%, not 5%; the loader warns at `file:line:col` and suggests `5%` (a warning, not an error; the check still runs) | A (language hardening) | — | S | 2 | 0.5 | 1.0 | **1.0** | proposed |
+| 24 | I-37 | `checks_path` validated: today it is not, so `checks_path: ../shared` loads with `path` values starting `../` (served by `/checks` and `/source`), and an absolute `checks_path` makes `relative_to` raise at load (rule 5). Either a Diagnostic at `tablewatch.yml:line:col` for a path outside the project, or a decision to allow it with paths shown relative to the project; decide with the owner's symlink question (ITERATIONS.md, iteration 5, F3) (security F2, iteration 6 REFINE; both confirmed by the security-reviewer in iteration 6 VERIFY) | E0, C1 (hardening) | — | S | 1 | 1 | 0.8 | **0.8** | proposed — decide with the symlink question |
+| 25 | I-32 | `duplicate_*` and missing values: today `''` and `'N/A'` count as duplicates of one another (only NULL is excluded, and there is no `missing_values` option), so a blank can be counted both missing and duplicate; decide with the data-steward whether duplicates exclude missing values (a change to recorded numbers) or gain the option (data-steward, iteration 5 REFINE) | A (language hardening) | — | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 26 | I-12 | Configurable result recording: `record:` in `tablewatch.yml`, `_defaults.yml` and per check | E7 | I-01 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 27 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 28 | I-15 | Run detail page and diff against the previous run ("what broke since yesterday") | C5 | I-02 ✓, I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 29 | I-25 | JSON report timestamps in the API's form (`date-time`, six fractional digits), with a `schema_version` bump and a note for consumers | E0 (hardening) | — | S | 1 | 0.5 | 1.0 | **0.5** | proposed |
+| 30 | I-31 | `results.error_detail: full \| redacted` in `tablewatch.yml`: redacted replaces driver and metric error text with its error class before it is stored (security F2, iteration 5) | E7, C1 (hardening) | — | S | 1 | 1 | 0.5 | **0.5** | proposed |
+| 31 | I-23 | Save-time check state: a state table updated when a run is recorded, so `/checks` stops reading the project's whole history per request | C1, E5 | I-14 | M | 2 | 1 | 0.5 | **0.5** | proposed — gated: not scheduled until the threshold below is crossed |
+| 32 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
 
 ### Why the rank departs from the score
 
 - **Owner priority (2026-09-26): UI first.** The UI chain (I-03, I-05,
-  I-26, I-29, I-04) comes before alerting. So I-29 (1.6), I-27 (1.0),
-  I-35 (1.0) and I-04 (0.8) rank above I-06 (4.5), I-16, I-17, I-10 and
-  I-08. I-03, I-05 and I-26 are done.
-- **Iteration 5 REVIEW: I-29 stays next, above I-24 (4.8) and I-34
+  I-26, I-29, I-04) comes before alerting. So I-27 (1.0), I-35 (1.0),
+  I-39 (1.0) and I-04 (0.8) rank above I-06 (4.5), I-16, I-17, I-10 and
+  I-08. I-03, I-05, I-26 and I-29 are done: C4 is shipped in full.
+- **Iteration 6 REVIEW: I-24 (4.8) is next.** It is the top score among
+  items whose dependencies are met, and REFINE of iteration 3 already
+  scheduled it after the check page. I-34 (4.0) follows; whether the
+  silent pass should jump ahead is put to the owner in ITERATIONS.md
+  (it does not stop the loop). Then I-33 (gated before the first
+  release) and I-36 (rule 5), then the UI chain's polish.
+- **I-39 (1.0) rides with I-27 and I-35** (iteration 6 REVIEW): all
+  three are check page polish from the data-steward's hand runs. Reach
+  Sam and Dana, impact 0.5 (the number is one sideways scroll away),
+  confidence 1.0, S. The PLAN that picks I-27 decides how many of the
+  three fit one S.
+- **I-36 widened in iteration 6 REVIEW, score unchanged (2.0).** QA's
+  pre-existing merge-key crash is the same class of bug (a check file
+  that stops `validate` with a traceback, rule 5) in the same loader,
+  so it joins I-36 rather than becoming its own item. Still S.
+- **Iteration 5 REVIEW (history): I-29 stayed next, above I-24 (4.8) and I-34
   (4.0).** I-29 finishes C4 and the owner's UI chain, reuses the
   components I-26 just shipped, and spec 006 already holds every REFINE
   decision; delaying it means re-checking a draft against a moving
@@ -90,14 +112,28 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
   sentence QA's `sql.qa.test.tsx` pins. Together they may exceed S; the
   PLAN that picks I-27 decides whether to fold I-35 in or take it
   straight after.
-- **I-33 (2.0) waits on the owner, then sits after I-17.** It is loud
-  (the loader names both lines and says to add an `id:`), so a user is
-  never misled, but it stops the whole project on a common pattern. The
-  fix changes check ids, which needs the owner (see ITERATIONS.md,
-  iteration 5). If the owner chooses to change ids before the first
-  release, its gate is "before the first PyPI release" and it moves up
-  to just after I-34, because every release after that makes it cost
-  more.
+- **I-33 (2.0) ranks fourth, just after I-34 (iteration 6 PLAN).** The
+  owner chose option 1 on 2026-09-27: change the id now, before the first
+  release, with no history migration. Its gate is "before the first PyPI
+  release", because every release after that makes it cost more. It is
+  loud rather than silent (the loader names both lines and says to add an
+  `id:`), so it sits below I-34's silent pass, but it stops the whole
+  project on a common pattern. **Breaking for recorded history:** every
+  `failed_rows` and `sql_metric` check without an explicit `id:` gets a
+  new id and its history starts again; the CHANGELOG says so when it
+  ships.
+- **I-36 (2.0) ranks fifth, straight after I-33 (iteration 6 REFINE).**
+  It is a broken design rule (rule 5: every user mistake is a Diagnostic,
+  never a traceback), found by the architect while reviewing spec 006: a
+  form feed pasted into a comment stops `validate` with a stack trace.
+  Like I-34, a correctness fix ranks above the UI chain's polish; it sits
+  below I-34 and I-33 because it is loud and rare. Reach Dana (and every
+  CI run that validates), impact 1, confidence 1.0 (reproduced), S.
+- **I-37 (0.8) ranks by score** and is decided together with the owner's
+  pending symlink question: both are "which files outside the project may
+  a project load, and how are their paths shown". Reach 1 (a configured
+  `checks_path` outside the project is unusual), confidence 0.8 until the
+  owner answers.
 - **I-30 (2.0) sits with the store and server hardening, after I-14.**
   Its gate matters more than its rank: it must ship before Phase 4, and
   before any recommendation to serve beyond loopback. I-31 (0.5) is the
@@ -261,6 +297,19 @@ these as acceptance scenarios.
   the SQL shown is the dataset's whole single scan with this check's
   measures pointed out (the PM's lean: honest about cost) or only this
   check's measures.
+- **I-29 — all requirements below met in iteration 6** (spec 006; see
+  ITERATIONS.md): only the check's own lines from a file under the
+  checks directory, never `tablewatch.yml`, no path from the request;
+  A2, A3, R5, R6; X3's full warning in the same PR. Kept for the record.
+- **I-36 — from iteration 6.** Scenarios: (a) a check file with `\x0c`
+  in a comment: `validate` exits 3 with a Diagnostic at the character's
+  `file:line:col`, and every other file's diagnostics are still reported
+  in the same pass; (b) `- row_count:` with `<<: &base {warn: when < 5}`
+  under it: no traceback; either the merged `warn:` applies as if
+  written, or a Diagnostic at the `<<` key's `file:line:col` says merge
+  keys are not supported inside a check. The data-steward picks one in
+  the spec; the root-level `<<:` merge (which loads today, and whose
+  `filter:` spec 006 treats as having no line) keeps working.
 - **I-26 — from iteration 4.** (a) *security-reviewer:* `message` and
   `display_value` can quote data values (a freshness timestamp, a value
   from `sql_metric`), and the page now shows them on a second surface.
@@ -311,18 +360,20 @@ these as acceptance scenarios.
   reads "computes 6 values, used by this check and 6 others" and "used
   by this check only". Update `sql.qa.test.tsx` with the wording, not
   around it.
-- **I-33 — from iteration 5 (data-steward; owner decision pending).**
+- **I-33 — from iteration 5 (data-steward; owner chose option 1, 2026-09-27).**
   Starting scenario, reproduced by the PM: one file on dataset `orders`
   with two `failed_rows` checks (`condition: total < 0` and `condition:
   customer_id is null`) — `validate` exits 3 with "duplicate check (also
   at checks/orders.yml:4:5) — give one of them an explicit `id:`", and
   `run` runs nothing. The same for two bare `sql_metric` checks with
-  different `query:`. If the owner chooses to change ids: `condition:`
+  different `query:`. The fix (owner's option 1): `condition:`
   and `query:` feed `derive_check_id` in whitespace-normalised form (as
   `where:` does), no other metric's id changes (retail's `list` golden
   file changes only on those lines, and the spec lists them), and the
   CHANGELOG has a breaking-change note. `docs/check-language.md`'s
-  identity section changes with it.
+  identity section changes with it. Tests that pin today's
+  `failed_rows` id `ed669ca6e5532a59` ("No negative amounts", specs 005
+  and 006) are updated in the same PR.
 - **I-30 — from iteration 5 (security-reviewer, F1).** Metric errors
   that quote a row value today: `float(value)` in `metrics/base.py`
   (`could not convert string to float: 'N/A'`) and freshness's

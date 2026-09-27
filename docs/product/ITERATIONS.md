@@ -6,6 +6,135 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 6 — Check detail 3: the check's own YAML source (I-29), 2026-09-27
+
+- **Spec:** [006-check-detail-source](specs/006-check-detail-source.md).
+  **Branch:** `iter/006-check-detail-source`. **PR:** #11.
+- **PLAN and REFINE.** Spec 006 was drafted in iteration 5 REFINE and
+  re-checked against `main` (`8687ebc`) in PLAN. A short REFINE
+  (security-reviewer, architect, ui-engineer) added the security bar: a
+  line-splitting rule that matches the parser (B1, `\r\n|\r|\n` only,
+  never `splitlines`), a post-condition on each item's own line, and an
+  extent invariant so a span can never reach another top-level key (B2).
+  Split out: I-36 (control characters crash the loader) and I-37
+  (`checks_path` not validated). The owner stopped the three REFINE
+  agents mid-run; on "resume iteration 6" fresh ones ran the same briefs.
+- **Shipped:** a **Source** section on every check's page, below the
+  SQL: the check's own lines from its file, numbered as in the file, with
+  its leading comment and any comment indented under it, the file's path,
+  a copy button, and invisible characters marked (U+2028 and U+2029 now
+  too, which also protects the SQL block). When the file has a `filter:`,
+  a sentence says which rows the check looks at, or that it does not
+  apply (`sql_metric`, `schema`). When the lines cannot be placed exactly
+  the page shows none and names the file. One read-only endpoint, `GET
+  /api/v1/checks/{id}/source` (`CheckSource`; additive, `v1` stays),
+  served from spans captured at load time: no file is read per request,
+  no path comes from the request, and `tablewatch.yml` and
+  `_defaults.yml` are never served. The `--host` warning and help now name
+  "check files (comments included)" (security R3's full text, due in this
+  PR); a test ties the CLI string to the README. `Check.source_text`
+  holds the line slicing (architect). README: the Source section, "How to
+  read the source", the `/source` row, who can read check files and where
+  credentials belong (X4), symlinks (Y16), a stale status line.
+  **C4 is now shipped in full**, and with it the owner's UI chain up to
+  the explorer.
+- **Acceptance:** the data-steward ran **31/31** scenarios by hand
+  against a real `serve`; every `must` is an automated test. Check ids did
+  not move (`derive_check_id` untouched). Suite at the end of VERIFY:
+  Python 754 passed, 1 xfailed (the known uvicorn connection-limit case,
+  I-20); frontend 630 vitest tests in 15 files (before the last wording
+  change). Gates: pytest, ruff, ruff format, strict mypy, `tsc`,
+  `vite build`. About 3,600 added lines across 36 files, mostly tests.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — FAIL, two blocking, fixed.* (1) Regression: a
+    `filter:` brought in through a root `<<:` merge key crashed
+    `validate` (a `KeyError` from the new filter-line lookup), breaking
+    rule 5. Fixed: a merged key has no line of its own, so no filter
+    line. (2) An alias item of an earlier item's *key*
+    (`- &k row_count > 0: {where: a > 1}` then `- *k`) was given the
+    other check's line. Fixed: an item that shares any node with an
+    earlier item is unavailable, and a block item must start strictly
+    below the previous item's last line. Significant, fixed: span finding
+    was quadratic in checks per file (4,000 checks: 24 s against 0.7 s on
+    `main`, on every command that loads); now computed once per file,
+    linear. About 64 layout attacks (`|+`, `>-`, quoted continuations
+    starting with `#`, zero-indent lists, `? checks`, CR/CRLF mixes,
+    `%YAML 1.1` with NEL, U+0085/2028/2029, multi-line flow) give the
+    exact lines or none, never another line
+    (`tests/test_check_source_qa.py`). Safe (unavailable, not wrong): a
+    comment between `-` and its content; `checks: !!seq`; an anchored
+    top-level key. Pre-existing, to the backlog: a merge key *inside* a
+    check item crashes the loader (→ I-36). The second compose re-emits
+    ruamel warnings, which Python deduplicates (noted, no item).
+  - *architect — approve with follow-ups, none blocking.* Adopted: line
+    slicing moved from the wire schema to `Check.source_text`; a
+    why-comment on the extent guard; `_checks` no longer returns the
+    root as a fake key (superseded by the per-file rewrite). Not adopted:
+    holding source lines in memory for CLI runs (negligible; revisit if
+    check files ever come from somewhere other than disk); a `Map` versus
+    a `Set` in the frontend (cosmetic).
+  - *security-reviewer — one blocking README item, resolved; otherwise
+    approve.* About 10,000 fuzz cases: no span ever served `dataset:`,
+    `filter:`, `owner:`, `tags:` or a planted canary. YAML 1.1 line
+    counting is dead code in ruamel 0.19.1. Blocking: the README lacked
+    X4 (who can read check files; credentials in the environment) and Y16
+    (symlinks); the data-steward wrote both. Adopted: an alias of an
+    earlier check gets no span; every top-level key is checked against
+    the split lines, so a steady offset cannot pass. To the backlog,
+    confirmed: an absolute `checks_path` crashes loading, and `../x`
+    serves a path starting `../` (→ I-37, already there).
+  - *data-steward — accept with follow-ups.* Wrote the README. Reworded
+    P13's third sentence, which was false when `owner:` is written last
+    or `filter:` after `checks:`; it now reads "The dataset, datasource,
+    owner and tags shown at the top of the page are set elsewhere in this
+    file or in a `_defaults.yml`." (applied by the ui-engineer; spec
+    updated). Found: a file saved with a UTF-8 byte-order mark got no
+    lines for any check, because ruamel's marks skip the BOM and the
+    split lines keep it; Windows editors write BOMs. Fixed, with a
+    backend test. Non-blocking: line numbers scroll out of view when the
+    block is scrolled sideways (P16 allowed it) (→ I-39).
+- **Process slip, caught:** a `git commit -a` by the tech lead swept
+  three of the ui-engineer's in-progress frontend files into a test-fix
+  commit. Undone before push (soft reset) and recommitted by name.
+- **Deferred:** a merge key inside a check item (→ I-36, widened); sticky
+  line numbers (→ I-39); `checks_path` confinement and symlinks (→ I-37,
+  with the owner's F3 question).
+- **Backlog:** I-29 done; C4 `shipped`. I-36 widened to both loader
+  tracebacks (still S, score unchanged). New: I-39 sticky line numbers
+  (1.0, with I-27). I-37 carries the security-reviewer's confirmation.
+- **Learned:**
+  - Two parsers of one file must agree on what a line is. The span rule
+    was correct against ruamel's model and wrong against the text in
+    three ways nobody wrote down in advance: Unicode line breaks (caught
+    in REFINE), aliases and merge keys (QA), and the BOM (the steward's
+    hand run). The post-condition turned each of these from "wrong
+    lines" into "no lines". For any feature that maps parser positions
+    back to text, write the "show nothing rather than the wrong thing"
+    guard first and test against it.
+  - A new per-check computation at load time runs on every command, not
+    only on `serve`. QA's 4,000-check timing is the check to repeat
+    whenever the loader grows.
+  - Builders working in parallel on one branch need the tech lead to
+    stage by name. Written into the tech lead's habits, not the process.
+  - S held at its upper edge: the fallback split (flow style always
+    unavailable) was not needed.
+- **Next:** I-24, readable values and messages on every surface (4.8, the
+  highest score among items whose dependencies are met). It fixes the
+  freshness message that reads as a failure when a check passes, on
+  console, JSON, the store and the page. I-34 (4.0) follows; see the
+  owner question below.
+
+### Question for the owner (does not stop the loop): I-34 before I-24?
+
+I-34 is a silent pass: `valid_values: [a, null]` compiles to
+`NOT IN (…, NULL)`, which is never true, so `invalid_*` counts nothing and
+the check can never fail. I-24 (4.8) outscores it (4.0) because it reaches
+more people and its misleading freshness message is on every freshness
+check. The PM keeps the score's order. If you would rather close the
+silent pass first, say so; swapping the two costs nothing, as neither
+depends on the other. The symlink question (iteration 5, F3, below) is
+also still open and gates I-37.
+
 ## Iteration 5 — Check detail 2: compiled SQL (I-26), 2026-09-27
 
 - **Spec:** [005-check-detail-sql-source](specs/005-check-detail-sql-source.md).
@@ -186,6 +315,16 @@ Options:
    Nothing breaks; the pattern keeps failing on first try.
 
 I-33 waits for this decision; nothing else depends on it.
+
+**Owner decision, 2026-09-27: option 1.** Change the hash now, before
+the first release: `condition:` (`failed_rows`) and `query:`
+(`sql_metric`) feed the derived id; no history migration. This is a
+**breaking change for existing history**: every `failed_rows` and
+`sql_metric` check without an explicit `id:` gets a new id, and its
+recorded results no longer join its new history. The CHANGELOG carries
+a breaking-change note when it ships. Recorded by the PM in iteration 6
+PLAN: I-33 is ready to plan, gated "before the first PyPI release", and
+ranks fourth, just after I-34 (BACKLOG). I-29 stays this iteration.
 
 ### Owner instruction, 2026-09-27
 

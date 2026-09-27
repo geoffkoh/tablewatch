@@ -403,12 +403,12 @@ def test_credential_free_answer_is_fast(
     assert elapsed < 2
 
 
-# --- X3: the help and the README ------------------------------------------------
+# --- X3: the help and the README (spec 006 puts in the full wording) -------------
 
 WARNING = (
     "tablewatch: warning: serving on 0.0.0.0 with no authentication — anyone who "
-    "can reach this address can read this project's checks, the SQL each check "
-    "runs, and its results: data values, database error messages that can quote "
+    "can reach this address can read this project's check files (comments "
+    "included), the SQL each check runs, and its results: data values, database error messages that can quote "
     "row values, and owner emails. Authentication arrives in Phase 4 "
     "(tablewatch.yml cannot turn it on yet)."
 )
@@ -417,7 +417,7 @@ WARNING = (
 def test_host_help_names_the_sql(retail: Path) -> None:  # X3
     code, out, _ = invoke(retail, "serve", "--help")
     assert code == 0
-    assert "serves checks, SQL and results without authentication" in " ".join(
+    assert "serves check files, SQL and results without authentication" in " ".join(
         out.split()
     )
 

@@ -114,6 +114,22 @@ All notable changes to tablewatch. The format follows
   database, needs no credentials, and returns no rows. Each statement
   has a `kind` (`scan` or `query`); more kinds may be added within `v1`,
   so clients should skip a kind they do not know.
+- A check's page shows the check as it is written. A new **Source**
+  section, below the SQL, shows the check's own lines from its check
+  file, numbered as in the file, with the comments that go with it (the
+  one directly above that says why the rule is 5%, a commented-out option
+  below it) and the file's path. If the file has a `filter:`, the section
+  says which rows the check looks at, or that the filter does not apply
+  (`sql_metric` and `schema` checks). Copy the lines with one button. The
+  `file:line:col` at the top of the page links to it. When tablewatch
+  cannot place a check's lines exactly (a whole file on one line, a check
+  that is a YAML alias), it shows no lines rather than the wrong ones and
+  still names the file. See "How to read the source" in the README.
+- The JSON API serves the same thing at `GET /api/v1/checks/{id}/source`:
+  the path, the first and last line, the text, and the file's `filter:`.
+  It is read from the check files as `serve` loaded them; nothing is read
+  from disk while answering, and nothing from `tablewatch.yml` or
+  `_defaults.yml` is ever served.
 
 ### Changed
 
@@ -128,9 +144,11 @@ All notable changes to tablewatch. The format follows
   outside `/api` that look like page addresses return the page too, and
   unknown paths under `/api` still return the JSON error.
 - The warning `tablewatch serve --host` prints now says that anyone who
-  can reach the address can read the SQL each check runs and database
-  error messages, which can quote row values, as well as the checks,
-  results and owner emails.
+  can reach the address can read this project's check files, comments
+  included, the SQL each check runs, and database error messages, which
+  can quote row values, as well as results and owner emails. Keep
+  credentials in environment variables (`${env:NAME}`), never in a check
+  file or a comment: the check page now shows check files as written.
 - `tablewatch compile` no longer repeats a datasource `url` that is not of
   the form `scheme://…` (for example one missing its `://`), because such
   a value can contain a password. It says "the url is not a SQLAlchemy

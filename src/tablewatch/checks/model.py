@@ -62,6 +62,14 @@ class TableRef:
         return f"{self.schema}.{self.table}" if self.schema else self.table
 
 
+@dataclass(frozen=True)
+class SourceSpan:
+    """A check's own lines in its file: 1-based, inclusive."""
+
+    start_line: int
+    end_line: int
+
+
 @dataclass(eq=False)
 class Dataset:
     """One check file: a table on a datasource, and the checks against it.
@@ -78,6 +86,9 @@ class Dataset:
     owner: str | None = None
     tags: tuple[str, ...] = ()
     checks: list[Check] = field(default_factory=list)
+    # The file's lines as loaded, and the 1-based line of its `filter:`.
+    source_lines: tuple[str, ...] = field(default=(), repr=False)
+    filter_line: int | None = None
 
     @property
     def table(self) -> TableRef:
@@ -108,6 +119,17 @@ class Check:
     fail: Condition | None = None
     where: str | None = None
     options: dict[str, Any] = field(default_factory=dict)
+    # Its own lines in the file; None when they could not be told apart.
+    # Never part of its identity.
+    span: SourceSpan | None = None
+
+    @property
+    def source_text(self) -> str | None:
+        """Its own lines as loaded, or None when they could not be told apart."""
+        span, lines = self.span, self.dataset.source_lines
+        if span is None or span.end_line > len(lines):
+            return None
+        return "\n".join(lines[span.start_line - 1 : span.end_line])
 
     @property
     def canonical(self) -> str:

@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/checks/{check_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Check Source */
+        get: operations["get_check_source"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/checks/{check_id}/sql": {
         parameters: {
             query?: never;
@@ -183,6 +200,32 @@ export interface components {
             total: number;
         };
         /**
+         * CheckSource
+         * @description A check's own lines in its file, as loaded: `GET /checks/{id}/source`.
+         *
+         *     `text` is only the check's lines (and the comments directly around it);
+         *     `filter` is the one other value from the same file. When the lines could
+         *     not be told apart, `start_line`, `end_line` and `text` are null.
+         */
+        CheckSource: {
+            /** Check Id */
+            check_id: string;
+            /** End Line */
+            end_line: number | null;
+            filter: components["schemas"]["FileFilter"] | null;
+            /**
+             * Loaded At
+             * Format: date-time
+             */
+            loaded_at: string;
+            /** Path */
+            path: string;
+            /** Start Line */
+            start_line: number | null;
+            /** Text */
+            text: string | null;
+        };
+        /**
          * CheckSql
          * @description The SQL a check compiles to, without connecting: `GET /checks/{id}/sql`.
          *
@@ -297,6 +340,18 @@ export interface components {
             code: "invalid_parameter" | "forbidden_host" | "not_found" | "method_not_allowed" | "internal_error" | "store_unavailable";
             /** Message */
             message: string;
+        };
+        /**
+         * FileFilter
+         * @description The check file's dataset `filter:`, as loaded.
+         */
+        FileFilter: {
+            /** Applies */
+            applies: boolean;
+            /** Line */
+            line: number;
+            /** Text */
+            text: string;
         };
         /** HistoryEntry */
         HistoryEntry: {
@@ -785,6 +840,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HistoryPage"];
+                };
+            };
+            /** @description invalid parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description forbidden host */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_check_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                check_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckSource"];
                 };
             };
             /** @description invalid parameter */
