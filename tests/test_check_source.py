@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import builtins
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -12,7 +11,7 @@ import pytest
 
 import tablewatch as tw
 from tablewatch.config import loader as loader_module
-from tablewatch.config.spans import split_lines
+from tablewatch.config.spans import check_span, split_lines
 from tests.conftest import invoke
 from tests.test_check_sql import RETURNS_YML, remote  # noqa: F401 (fixture)
 from tests.test_server import assert_error, get, served
@@ -347,7 +346,7 @@ def test_a_block_scalar_with_a_blank_line(retail: Path, text: str) -> None:  # Y
 
 
 def test_span_unavailable(retail: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # Y14
-    real = loader_module.check_span
+    real = check_span
 
     def flaky(lines: Any, root: Any, index: int) -> Any:
         if index == 2 and "missing_percent(email)" in "\n".join(lines):
@@ -383,7 +382,7 @@ def test_symlinked_check_files(retail: Path, tmp_path: Path) -> None:  # Y16
     outside.write_text(
         "dataset: sales.orders\nchecks:\n  - row_count > 3\n", encoding="utf-8"
     )
-    os.symlink(outside, retail / "checks" / "sales" / "linked.yml")
+    (retail / "checks" / "sales" / "linked.yml").symlink_to(outside)
     check_id = _id(retail, "checks/sales/linked.yml", "row_count > 3")
     with served(retail) as client:
         response = client.get(f"/api/v1/checks/{check_id}/source")
