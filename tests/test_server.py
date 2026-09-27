@@ -558,7 +558,8 @@ def test_filter_by_latest_outcome(recorded: Recorded) -> None:  # C2
 def test_one_check(recorded: Recorded) -> None:  # C3
     with served(recorded.root) as client:
         listed = checks_by_id(client)[CUSTOMERS_EMAIL]
-        assert get(client, f"/api/v1/checks/{CUSTOMERS_EMAIL}") == listed
+        detail = get(client, f"/api/v1/checks/{CUSTOMERS_EMAIL}")
+        assert {k: v for k, v in detail.items() if k != "rule"} == listed  # spec 004
         assert_error(client.get("/api/v1/checks/b1ceb826"), 404, "not_found")
 
 

@@ -1,7 +1,7 @@
 import { render, screen, within, type RenderResult } from "@testing-library/react";
 import { vi } from "vitest";
 import { App } from "../App";
-import type { OverviewResponses } from "./fixtures/states";
+import { interrupted, type OverviewResponses } from "./fixtures/states";
 
 export type Answer = { status: number; body: unknown } | "network-error";
 
@@ -93,4 +93,72 @@ export function tile(status: string): HTMLElement {
 /** Collapse whitespace in an element's text. */
 export function text(el: Element): string {
   return (el.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+// ---- the check page (spec 004) ----------------------------------------------
+
+export interface CheckServer {
+  project?: Answer;
+  check?: Answer;
+  history?: Answer;
+  runs?: Answer;
+  /** Later history pages, by cursor. */
+  older?: Record<string, Answer>;
+}
+
+/** The URLs the check page requests for an id. */
+export function checkUrls(id: string): { project: string; check: string; history: string; runs: string } {
+  const enc = encodeURIComponent(id);
+  return {
+    project: URLS.project,
+    check: `/api/v1/checks/${enc}`,
+    history: `/api/v1/checks/${enc}/history?limit=200`,
+    runs: URLS.runs,
+  };
+}
+
+export function olderUrl(id: string, cursor: string): string {
+  return `/api/v1/checks/${encodeURIComponent(id)}/history?limit=200&cursor=${encodeURIComponent(cursor)}`;
+}
+
+export function notFound(): Answer {
+  return { status: 404, body: { error: { code: "not_found", message: "no such check" } } };
+}
+
+export const UNAVAILABLE: Answer = {
+  status: 503,
+  body: { error: { code: "store_unavailable", message: "results store: unavailable — see the server log" } },
+};
+
+/** Replace `fetch` with one that answers the check page's endpoints for an id. */
+export function stubCheckServer(id: string, server: CheckServer, base: OverviewResponses = interrupted): ReturnType<typeof vi.fn> {
+  const urls = checkUrls(id);
+  const answers: Record<string, Answer> = {
+    [urls.project]: server.project ?? ok(base.project),
+    [urls.check]: server.check ?? notFound(),
+    [urls.history]: server.history ?? notFound(),
+    [urls.runs]: server.runs ?? ok(base.runs),
+  };
+  for (const [cursor, answer] of Object.entries(server.older ?? {})) answers[olderUrl(id, cursor)] = answer;
+  const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const answer = answers[url];
+    if (answer === undefined) return Promise.reject(new Error(`unexpected request: ${url}`));
+    if (answer === "network-error") return Promise.reject(new TypeError("Failed to fetch"));
+    return Promise.resolve(
+      new Response(JSON.stringify(answer.body), { status: answer.status, headers: { "Content-Type": "application/json" } }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+/** Render `/checks/<id>` and wait until it has loaded. */
+export async function renderCheck(id: string, server: CheckServer, path?: string): Promise<RenderResult> {
+  stubCheckServer(id, server);
+  const result = render(<App path={path ?? `/checks/${encodeURIComponent(id)}`} />);
+  await vi.waitFor(() => {
+    if (screen.getByRole("status").textContent === "Loading…") throw new Error("still loading");
+  });
+  return result;
 }

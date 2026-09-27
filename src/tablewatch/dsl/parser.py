@@ -13,6 +13,8 @@ every error names what was expected, at the column it was expected.
 
 from __future__ import annotations
 
+import math
+
 from tablewatch.dsl.ast import (
     Between,
     CheckExpr,
@@ -163,11 +165,18 @@ class _Parser:
             )
         self.advance()
         amount = float(token.text)
+        value: Value
         if token.suffix == "%":
-            return Number(amount, percent=True)
-        if token.suffix:
-            return Duration(amount, token.suffix)
-        return Number(amount)
+            value = Number(amount, percent=True)
+        elif token.suffix:
+            value = Duration(amount, token.suffix)
+        else:
+            value = Number(amount)
+        # A literal too large for a float becomes infinity, which no metric
+        # can be compared with meaningfully and JSON cannot carry.
+        if not math.isfinite(value.magnitude):
+            raise DSLSyntaxError("this number is too large", token.offset)
+        return value
 
 
 def _describe(token: Token) -> str:

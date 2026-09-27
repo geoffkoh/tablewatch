@@ -110,6 +110,54 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BetweenCondition */
+        BetweenCondition: {
+            /** High */
+            high: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "between";
+            /** Low */
+            low: number;
+            /** Negated */
+            negated: boolean;
+            /** Text */
+            text: string;
+        };
+        /**
+         * CheckDetail
+         * @description One check with its rule: what `GET /checks/{id}` serves.
+         */
+        CheckDetail: {
+            /** Dataset */
+            dataset: string;
+            /** Datasource */
+            datasource: string;
+            /** Expression */
+            expression: string;
+            /** Id */
+            id: string;
+            latest: components["schemas"]["LatestResult"] | null;
+            location: components["schemas"]["Location"];
+            /** Metric */
+            metric: string;
+            /** Name */
+            name: string;
+            /** Owner */
+            owner: string | null;
+            rule: components["schemas"]["Rule"];
+            /** Source */
+            source: string;
+            /** Tags */
+            tags: string[];
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "count" | "percent" | "duration" | "number";
+        };
         /** CheckList */
         CheckList: {
             /** Items */
@@ -144,6 +192,23 @@ export interface components {
              * @enum {string}
              */
             unit: "count" | "percent" | "duration" | "number";
+        };
+        /** CompareCondition */
+        CompareCondition: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "compare";
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "=" | "!=" | "<" | "<=" | ">" | ">=";
+            /** Text */
+            text: string;
+            /** Value */
+            value: number;
         };
         /** Counts */
         Counts: {
@@ -194,6 +259,8 @@ export interface components {
         };
         /** HistoryEntry */
         HistoryEntry: {
+            /** Dataset */
+            dataset: string;
             /** Display Value */
             display_value: string;
             /** Duration Ms */
@@ -202,6 +269,8 @@ export interface components {
             expression: string;
             /** Message */
             message: string | null;
+            /** Metric */
+            metric: string;
             /** Name */
             name: string;
             /**
@@ -220,6 +289,8 @@ export interface components {
             started_at: string;
             /** Trigger */
             trigger: string;
+            /** Unit */
+            unit: ("count" | "percent" | "duration" | "number") | null;
             /** Value */
             value: number | null;
         };
@@ -314,6 +385,21 @@ export interface components {
             checks: number;
             /** Datasets */
             datasets: number;
+        };
+        /**
+         * Rule
+         * @description The check's conditions as this server loaded them.
+         *
+         *     Built only from the parsed expectation and triggers — never from options
+         *     such as `valid_values`, or from `where:`/`filter:` SQL.
+         */
+        Rule: {
+            /** Expect */
+            expect: (components["schemas"]["CompareCondition"] | components["schemas"]["BetweenCondition"]) | null;
+            /** Fail */
+            fail: (components["schemas"]["CompareCondition"] | components["schemas"]["BetweenCondition"]) | null;
+            /** Warn */
+            warn: (components["schemas"]["CompareCondition"] | components["schemas"]["BetweenCondition"]) | null;
         };
         /** Run */
         Run: {
@@ -532,7 +618,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CheckSummary"];
+                    "application/json": components["schemas"]["CheckDetail"];
                 };
             };
             /** @description invalid parameter */

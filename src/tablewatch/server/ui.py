@@ -28,6 +28,10 @@ CONTENT_TYPES = {
     ".txt": "text/plain; charset=utf-8",
 }
 INDEX = "index.html"
+# Client pages whose one segment after the prefix is an id, not a file name:
+# an explicit `id:` may hold dots (`sales.orders.volume`, `report.txt`).
+# Keep in step with `frontend/src/lib/route.ts`.
+PAGE_PREFIXES = ("checks",)
 
 
 @dataclass(frozen=True)
@@ -52,13 +56,16 @@ class Bundle:
         Exact files first. Any other path is a page of the app and gets
         `index.html` — unless it names a file (its last segment has an
         extension, or it ends in "/" after one), because a script tag handed
-        HTML fails confusingly.
+        HTML fails confusingly. `<prefix>/<id>` under `PAGE_PREFIXES` is
+        always a page, whatever its id looks like.
         """
         if path == "":
             return self.index
         if asset := self.assets.get(path):
             return asset
         segments = [s for s in path.split("/") if s]
+        if len(segments) == 2 and segments[0] in PAGE_PREFIXES:
+            return self.index
         if segments and "." in segments[-1]:
             return None
         return self.index

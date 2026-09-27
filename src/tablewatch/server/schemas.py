@@ -15,14 +15,16 @@ from __future__ import annotations
 import math
 from dataclasses import fields
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, assert_never
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, WithJsonSchema
 
+from tablewatch import dsl
 from tablewatch._version import __version__
 from tablewatch.checks.model import Check
 from tablewatch.diagnostics import Diagnostic as DiagnosticModel
 from tablewatch.diagnostics import SourceLocation
+from tablewatch.metrics.registry import get_metric
 from tablewatch.results.models import CheckResultRow, RunRow
 from tablewatch.results.state import Evaluated
 from tablewatch.results.store import Latest
@@ -210,6 +212,76 @@ class CheckSummary(_Model):
         )
 
 
+class CompareCondition(_Model):
+    kind: Literal["compare"]
+    op: Literal["=", "!=", "<", "<=", ">", ">="]
+    value: float
+    text: str
+
+
+class BetweenCondition(_Model):
+    kind: Literal["between"]
+    low: float
+    high: float
+    negated: bool
+    text: str
+
+
+Condition = Annotated[CompareCondition | BetweenCondition, Field(discriminator="kind")]
+
+
+def _condition(condition: dsl.Condition | None) -> Condition | None:
+    # Numbers are the DSL's magnitudes: exactly what each recorded value was
+    # judged against (engine/evaluate.py), so a client can draw both on one axis.
+    match condition:
+        case None:
+            return None
+        case dsl.Compare(op=op, value=value):
+            return CompareCondition(
+                kind="compare", op=op.value, value=value.magnitude, text=str(condition)
+            )
+        case dsl.Between(low=low, high=high, negated=negated):
+            return BetweenCondition(
+                kind="between",
+                low=low.magnitude,
+                high=high.magnitude,
+                negated=negated,
+                text=str(condition),
+            )
+        case _:
+            assert_never(condition)
+
+
+class Rule(_Model):
+    """The check's conditions as this server loaded them.
+
+    Built only from the parsed expectation and triggers — never from options
+    such as `valid_values`, or from `where:`/`filter:` SQL.
+    """
+
+    expect: Condition | None
+    warn: Condition | None
+    fail: Condition | None
+
+    @classmethod
+    def of(cls, check: Check) -> Rule:
+        return cls(
+            expect=_condition(check.expectation),
+            warn=_condition(check.warn),
+            fail=_condition(check.fail),
+        )
+
+
+class CheckDetail(CheckSummary):
+    """One check with its rule: what `GET /checks/{id}` serves."""
+
+    rule: Rule
+
+    @classmethod
+    def of_detail(cls, check: Check, latest: LatestResult | None) -> CheckDetail:
+        return cls(**dict(CheckSummary.of(check, latest)), rule=Rule.of(check))
+
+
 class CheckList(_Model):
     items: list[CheckSummary]
     total: int
@@ -224,10 +296,14 @@ class HistoryEntry(_Model):
     display_value: str
     message: str | None
     duration_ms: float
-    # As recorded in that run: a check with an explicit id can outlive edits.
+    # As recorded in that run: a check with an explicit id can outlive edits,
+    # including a change of metric, so each entry says what it measured.
     name: str
     expression: str
     source: str
+    metric: str
+    dataset: str
+    unit: Unit | None  # None for a metric this version doesn't know
 
     @classmethod
     def of(cls, result: CheckResultRow, run: RunRow) -> HistoryEntry:
@@ -243,6 +319,9 @@ class HistoryEntry(_Model):
             name=result.check_name,
             expression=result.expression,
             source=result.source,
+            metric=result.metric,
+            dataset=result.dataset,
+            unit=_unit(result.metric),
         )
 
 
@@ -367,6 +446,13 @@ def _outcome(value: str) -> Outcome:
         case "pass" | "warn" | "fail" | "error" | "skipped":
             return value
     return "error"
+
+
+def _unit(metric: str) -> Unit | None:
+    # The metric's unit in this version, not as recorded: the store keeps no
+    # unit. A future unit change must store it on the result row first.
+    found = get_metric(metric)
+    return found.unit.value if found else None
 
 
 def _evaluated(value: str) -> EvaluatedOutcome:

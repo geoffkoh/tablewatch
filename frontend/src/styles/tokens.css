@@ -8,6 +8,12 @@
  * signal: every status also has its own icon shape and text label.
  *
  * -fg is the status colour for text and icons; -tint is the badge background.
+ *
+ * Chart-only tokens (spec 004, decision 13): -mark colours the history
+ * chart's marks, boundary lines and band washes, and is never used for text.
+ * The four mark colours were validated with the dataviz skill's
+ * validate_palette.js against --tw-bg in each scheme (docs/UI_SPECIFICATION.md
+ * section 12). --tw-series is the neutral value line; --tw-grid the hairlines.
  */
 :root {
   color-scheme: light dark;
@@ -33,6 +39,13 @@
   --tw-skipped-tint: #e7eef7;
   --tw-pass-fg: #17743a;
   --tw-pass-tint: #e6f4ea;
+
+  --tw-pass-mark: #0c7f5c;
+  --tw-warn-mark: #ac7d1b;
+  --tw-fail-mark: #b42318;
+  --tw-error-mark: #6b2fbf;
+  --tw-series: #6b7480;
+  --tw-grid: #e4e7eb;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -58,5 +71,12 @@
     --tw-skipped-tint: #1c2835;
     --tw-pass-fg: #6ddc8e;
     --tw-pass-tint: #0f2e1a;
+
+    --tw-pass-mark: #23a58a;
+    --tw-warn-mark: #bd8630;
+    --tw-fail-mark: #d02b31;
+    --tw-error-mark: #9677e0;
+    --tw-series: #8b95a1;
+    --tw-grid: #262c34;
   }
 }

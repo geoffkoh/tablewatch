@@ -1,13 +1,22 @@
 import type { ReactElement } from "react";
+import { parseRoute } from "./lib/route";
+import { CheckPage } from "./pages/CheckPage";
 import { NotFound } from "./pages/NotFound";
 import { Overview } from "./pages/Overview";
 
 /**
- * Routing without a router library: this increment has one page. Every other
- * path is a client route the server answers with index.html (W3), so it gets
- * "page not found" here.
+ * Routing without a router library (spec 004, decision 7): `lib/route.ts`
+ * parses the path, and links are plain `<a href>` with full page loads. Every
+ * client path is answered with index.html by the server (spec 003, W3).
  */
 export function App({ path }: { path: string }): ReactElement {
-  if (path === "/" || path === "/index.html") return <Overview />;
-  return <NotFound path={path} />;
+  const route = parseRoute(path);
+  switch (route.page) {
+    case "overview":
+      return <Overview />;
+    case "check":
+      return <CheckPage id={route.id} />;
+    case "not-found":
+      return <NotFound path={path} />;
+  }
 }
