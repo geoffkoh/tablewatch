@@ -137,8 +137,9 @@ with the datasource's credentials.
 
 `tablewatch serve` publishes one project's checks and recorded results as a
 web page for people and a read-only JSON API for dashboards and scripts. It
-reads the results store only. It never connects to a datasource, never
-starts a run, and needs no credentials.
+reads the check files once, at startup, and the results store on each
+request. It never connects to a datasource, never starts a run, and needs no
+credentials: the SQL it shows is compiled, not run.
 
 ```bash
 pip install 'tablewatch[duckdb,server]'
@@ -234,6 +235,9 @@ loaded files and still shows its recorded results. The page shows:
   recorded expression for one that was not. The page loads the latest 200
   results. When there are more, the chart says so, and **Load older
   results** adds the next 200 to both.
+- **SQL**: the statements tablewatch sends to the database for this check,
+  in the datasource's own dialect, exactly as `tablewatch compile` prints
+  them. Link straight to it with `/checks/<id>#sql`. See below.
 
 How to read the chart:
 
@@ -281,6 +285,55 @@ draws no band, and notes that the latest result was judged by the earlier
 rule. (Without an `id:`, the edited check has a new id, and its page reads
 "No result recorded" until it runs.)
 
+How to read the SQL:
+
+- **Most checks share one read of the table.** tablewatch reads each
+  dataset once per run: one `SELECT` computes a value for every check on
+  that dataset that it can (the *scan*). The page shows that whole
+  statement, so you can see what the read costs, and says how many values
+  it computes and for how many other checks ("That one read computes 4
+  values, for this check and 3 others").
+- **"This check uses" names this check's part of the scan.** The scan's
+  columns are labelled `m0`, `m1`, and so on, as in `tablewatch compile`.
+  For `missing_percent(email) < 5%` the page lists `m0` `count(*)` and `m1`
+  `sum(CASE WHEN (email IS NULL OR email IN ('', 'N/A')) THEN 1 ELSE 0
+  END)`: the rows, and the rows with no email. "Also used by 1 other check"
+  means another check reads the same column, so it is computed once.
+- **The database returns counts; tablewatch does the arithmetic.** For a
+  percentage the page says so, and for freshness it says the database
+  returns a timestamp and tablewatch computes its age at the time of each
+  run. The same data looks older the later the run.
+- **Some checks send their own statement.** `duplicate_count` needs a
+  `GROUP BY`, so it cannot ride the scan. Its page shows "This check sends
+  its own statement" and that query, and says how many other checks send
+  the same one.
+- **A `schema` check has no SQL.** It reads the list of columns and their
+  types from the database, not rows, and the page says so.
+- **`filter:` and `where:` appear in the SQL.** A file's `filter:` is the
+  scan's `WHERE`. A check's `where:` narrows only that check's columns, as a
+  `CASE WHEN` inside them.
+- **"Cannot compile"** means tablewatch cannot build the SQL for this
+  dataset, and says why: the datasource is not defined (run
+  `tablewatch validate`), or its URL names a database tablewatch has no
+  driver for. It affects only that dataset's checks. The message never
+  repeats the URL beyond its scheme.
+- **It is the SQL as the check files were loaded, not a record of what a
+  past run sent.** Results do not store their SQL. The statement is built
+  from the check files `serve` loaded at startup, for a run of every check
+  on the dataset. A run narrowed with a path or `--check` sends a smaller
+  scan, and a result recorded before the files were edited may have used
+  different SQL. Values are written into the statement so you can read it;
+  a run sends the same statement with bound parameters.
+- **Copy the scan** (or **Copy the query**) copies the statement, with its
+  closing `;`, ready to paste into the warehouse's console. If the page is
+  opened over plain `http://` on an address other than this machine, the
+  browser does not allow copying, and the button reads **Select all**
+  instead: it selects the statement for you to copy with your keyboard.
+- **Invisible characters are marked.** A zero-width space or a
+  right-to-left override in a check file would change what the SQL means
+  without showing, so the page marks each one where it sits with its code,
+  such as `U+200B`. Copy still copies the exact text.
+
 ### The JSON API
 
 To list what is failing right now, ask for every check whose latest
@@ -310,6 +363,7 @@ $ curl -s http://127.0.0.1:8765/api/v1/checks/b1ceb8262d8b5441/history \
 | `checks` | Every check, each with its latest recorded result. Filter with `?outcome=`, which is repeatable and takes `pass`, `warn`, `fail`, `error`, `skipped` or `not_run` |
 | `checks/{id}` | One check, with its `rule` as loaded: `expect`, `warn` and `fail`, each with the condition's `text` and its numbers. Ids are exact: the full id from `tablewatch list` |
 | `checks/{id}/history` | That check's results, newest first, including results for checks since deleted. Each carries the `expression`, `metric`, `unit` and `dataset` it was recorded with |
+| `checks/{id}/sql` | The SQL a run of that check's dataset sends and this check's value comes from, compiled from the check files as loaded: `dialect`, then `statements` in run order, each a `scan` (with `measures`, the columns this check `uses`, and `shared_by`, the number of *other* checks sharing it) or a `query`. `sql` is the statement as `tablewatch compile` prints it, without the closing `;`. `schema_lookup` is `true` for a `schema` check, which has no statements. `error` says why the dataset cannot be compiled, and `statements` is then empty. Ignore a statement whose `kind` you do not know: later versions add kinds. Never connects to a datasource and does not need the results store |
 | `runs`, `runs/{id}` | Runs, newest first, with counts. One run's detail includes its results |
 | `openapi.json` | The contract, also checked in at [docs/api/openapi.json](docs/api/openapi.json) |
 
@@ -375,11 +429,14 @@ ssh -L 8765:127.0.0.1:8765 dq-host      # then open http://127.0.0.1:8765/
 prints a warning:
 
 ```text
-tablewatch: warning: serving on 0.0.0.0 with no authentication — anyone who can reach this address can read this project's checks and results, including data values and owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn it on yet).
+tablewatch: warning: serving on 0.0.0.0 with no authentication — anyone who can reach this address can read this project's checks, the SQL each check runs, and its results: data values, database error messages that can quote row values, and owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn it on yet).
 ```
 
 Results can contain data values, such as a minimum price or a newest
-timestamp, and owners' email addresses.
+timestamp, and owners' email addresses. An error message can quote a row's
+value verbatim (`could not convert string to float: 'N/A'`). The SQL shows
+your table and column names, and the values written in your checks:
+`valid_values`, `missing_values`, `filter:` and `where:`.
 
 The server answers requests addressed to an IP address or to `localhost`.
 To guard against DNS rebinding, it rejects any other host name with
