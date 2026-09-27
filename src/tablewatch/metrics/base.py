@@ -10,14 +10,14 @@ split is what lets the planner combine every aggregate on a table into one
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, ClassVar
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Boolean, and_, case, func, literal_column
+from sqlalchemy import Boolean, and_, case, false, func, literal, literal_column
 from sqlalchemy.engine import Dialect
 from sqlalchemy.sql import ColumnElement, Select, column
 from sqlalchemy.sql.expression import TableClause, TextClause
@@ -41,7 +41,7 @@ class OptionType(StrEnum):
     STRING = "string"
     NUMBER = "number"
     INTEGER = "integer"
-    LIST = "list"
+    VALUE_LIST = "list of values"
     STRING_LIST = "list of strings"
     MAPPING = "mapping of strings"
 
@@ -117,6 +117,28 @@ class MetricContext:
     def count_where(self, predicate: ColumnElement[bool]) -> ColumnElement[Any]:
         return func.sum(case((self.scoped(predicate), 1), else_=0))
 
+    def one_of(
+        self, col: ColumnElement[Any], values: Iterable[Any], option: str
+    ) -> ColumnElement[bool]:
+        """`col IN (values)`: the one way a value list reaches SQL.
+
+        NULL never enters the list (`x NOT IN (…, NULL)` is never true, so a
+        check could never fail), and an empty list is `false()`, never
+        `IN ()`, whose SQL differs by dialect. Values from YAML arrive clean;
+        this is the backstop for the Python API. Values are wrapped in
+        literal() (rule 4).
+        """
+        kept = []
+        for value in values:
+            if value is None:
+                continue
+            if isinstance(value, list | tuple | set | dict):
+                # A fixed message: an array bind makes the database quote a
+                # row value in its error.
+                raise OptionValueError(f"{option}: an item is not a single value")
+            kept.append(literal(value))
+        return col.in_(kept) if kept else false()
+
     def scoped_value(self, value: ColumnElement[Any]) -> ColumnElement[Any]:
         """`value` for rows in scope, NULL otherwise — for MIN/MAX/AVG/SUM."""
         scope = self.scope
@@ -160,6 +182,18 @@ def sql_condition(text: str) -> ColumnElement[bool]:
 # --- the metric contract ---------------------------------------------------
 
 
+class OptionValueError(ValueError):
+    """An option the check cannot be built from; the check alone is an error."""
+
+
+@dataclass(frozen=True)
+class NullHint:
+    """What to tell a user who wrote null in a value-list option."""
+
+    ignored: str  # why the null is ignored
+    all_null: str | None = None  # set when a list of only nulls is an error
+
+
 class Metric(ABC):
     name: ClassVar[str]
     unit: ClassVar[Unit]
@@ -171,6 +205,9 @@ class Metric(ABC):
     scoped: ClassVar[bool] = True
     # (singular, plural) shown after a count value: `0 problems`, `1 problem`.
     count_noun: ClassVar[tuple[str, str] | None] = None
+    # Why a null in each value-list option is ignored, in words for people;
+    # the loader words the rest of the warning.
+    null_hints: ClassVar[Mapping[str, NullHint]] = {}
     # The expectation used when a check gives neither a comparison nor
     # warn/fail triggers. Only metrics with an obvious "good" value have one.
     default_condition: ClassVar[Condition | None] = None

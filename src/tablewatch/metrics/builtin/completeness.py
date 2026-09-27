@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from sqlalchemy import literal, or_
+from sqlalchemy import or_
 from sqlalchemy.sql import ColumnElement
 
 from tablewatch.metrics.base import (
@@ -18,6 +18,7 @@ from tablewatch.metrics.base import (
     Measurement,
     Metric,
     MetricContext,
+    NullHint,
     OptionType,
     Unit,
     as_float,
@@ -30,8 +31,12 @@ def missing_predicate(ctx: MetricContext, column_name: str) -> ColumnElement[boo
     col = ctx.column(column_name)
     missing_values = ctx.options.get("missing_values")
     if missing_values:
-        return or_(col.is_(None), col.in_([literal(v) for v in missing_values]))
+        return or_(col.is_(None), ctx.one_of(col, missing_values, "missing_values"))
     return col.is_(None)
+
+
+# NULL is always missing; listing it adds nothing (and today it never did).
+MISSING_VALUES_NULL = NullHint("NULL always counts as missing already")
 
 
 class MissingCount(Metric):
@@ -39,7 +44,12 @@ class MissingCount(Metric):
     unit = Unit.COUNT
     summary = "Rows where the column is NULL or one of `missing_values`."
     min_args = max_args = 1
-    options: ClassVar[Mapping[str, OptionType]] = {"missing_values": OptionType.LIST}
+    options: ClassVar[Mapping[str, OptionType]] = {
+        "missing_values": OptionType.VALUE_LIST
+    }
+    null_hints: ClassVar[Mapping[str, NullHint]] = {
+        "missing_values": MISSING_VALUES_NULL
+    }
 
     def measures(self, ctx: MetricContext) -> dict[str, Measure]:
         return {
