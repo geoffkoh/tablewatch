@@ -8,7 +8,7 @@
 | Size | S |
 | Depends on | nothing. The code involved shipped in Phase 1 |
 | Branch | `iter/008-valid-values-null` |
-| Status | **ready** (iteration 8 PLAN, 2026-09-28, against `main` at `faa1eee`; REFINE the same day: data-steward chose **option B**; architect and security-reviewer approved with follow-ups, all folded in below, see "Design (settled in REFINE)"). Every "today" value and every diagnostic position below was measured on `main` on DuckDB **and** SQLite, by running the CLI and reading ruamel's marks on the exact files |
+| Status | **shipped** (iteration 8, PR #13, reviewed 2026-09-28: 17/17 scenarios on DuckDB and SQLite; see ITERATIONS.md). Was **ready** (iteration 8 PLAN, 2026-09-28, against `main` at `faa1eee`; REFINE the same day: data-steward chose **option B**; architect and security-reviewer approved with follow-ups, all folded in below, see "Design (settled in REFINE)"). Every "today" value and every diagnostic position below was measured on `main` on DuckDB **and** SQLite, by running the CLI and reading ruamel's marks on the exact files |
 
 ## Problem and persona
 

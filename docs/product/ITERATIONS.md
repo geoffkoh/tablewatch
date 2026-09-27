@@ -6,6 +6,134 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 8 — A null in a value list is never a silent pass (I-34), 2026-09-28
+
+### Owner instruction, 2026-09-28: backlog freeze
+
+"Tell the product manager to stop adding in new features. Let's finish
+implementing all the existing backlog first."
+
+What it means for the loop, from this REVIEW on:
+
+- The PM adds **no new backlog items** (no new I-numbers). A follow-up
+  from a review that fits an existing item is folded into that item as a
+  requirement; one that does not is listed in the iteration's entry under
+  **"Not added (backlog freeze)"**, for the owner to decide.
+- Phase 2b and later phases are **not itemised** while the freeze holds;
+  they stay in `FEATURES.md` as `catalogue`.
+- The next item is always picked from the existing backlog, by rank.
+- When the existing backlog is done (or only gated items remain), the
+  loop stops and asks the owner, rather than drawing new items.
+
+### The iteration
+
+- **Spec:** [008-valid-values-null](specs/008-valid-values-null.md).
+  **Branch:** `iter/008-valid-values-null`. **PR:** #13.
+- **REFINE (2026-09-28).** The data-steward chose **option B** (drop a
+  null item with a warning at its `file:line:col`) over A (an error that
+  would stop every run of the project) and C (drop silently, which never
+  tells Sam his unquoted `NULL` is not text). REFINE promoted N8 (a list
+  or mapping inside a value list) to a must, because its run-time error
+  quoted a row value. The architect settled the design: one helper,
+  `MetricContext.one_of`, as the only way into `IN`; `OptionType.LIST`
+  redefined as `VALUE_LIST`; option-specific hints live with the
+  option's definition. The data-steward stalled once (about 10 minutes,
+  a hung command) and was resumed; nothing was lost.
+- **Shipped:** a null in `valid_values` or `missing_values` can no longer
+  reach SQL. `one_of` drops `None`, wraps every kept item in `literal()`
+  (rule 4), returns `false()` for an empty list, and is the only `.in_(`
+  in `metrics/builtin/` (a test enforces it). In the loader, every null
+  item (`null`, `Null`, `NULL`, `~`, or an empty `-`) is a warning at its
+  own `file:line:col` and is dropped, so `compile` prints the cleaned
+  SQL; an empty `-` is pointed at its dash and told to fill it in or
+  delete it; an unquoted `NULL` is told to quote it. A `valid_values`
+  list of only nulls, and an item that is not a single value (a list, a
+  mapping, `!!binary`), are load errors (new exit-3 cases for files that
+  never worked). `missing_values` of only nulls is a warning and keeps
+  the check's number. `validate`'s closing line now counts warnings (`1
+  datasets, 1 checks — no errors, 1 warning`). The editor schema
+  requires a non-empty list of text, numbers or booleans. A check that
+  gets a non-single value some other way (the Python API) gets an `error`
+  with a fixed, data-free message, on that check only
+  (`DatasetPlan.errors`). Unchanged: check ids, `missing_*` numbers,
+  every list without a null (M1: byte-identical SQL), the exit-code
+  contract, the store. Docs: `docs/check-language.md` (option rows and a
+  null paragraph); the README needed no change. Code: about 225 changed
+  lines in `src/` across nine files; the rest is tests.
+- **Acceptance:** the data-steward ran **17/17** scenarios (M1–M6,
+  N1–N11) through the real CLI on DuckDB and SQLite. Dana's check (N1)
+  goes from PASS 0 to FAIL 2; Sam's `missing_count` (N3) stays at 2 with
+  a warning at `7:11`, and at 3 once quoted. Every `must` is an
+  automated test on both backends. Suite at the end of VERIFY: **952
+  passed, 1 xfailed** (I-20's known uvicorn case); ruff, ruff format,
+  strict mypy clean. No frontend change. Golden `list` file unchanged.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — pass with follow-ups; four edge cases in this
+    iteration's code fixed (`fa99057`).* An anchored list reused through
+    `*alias` warned once per check, now once per list; an explicit
+    `!!null` item got the "empty" message at the wrong column, now "is
+    null" at the tag; an option arriving through a `<<:` merge was
+    reported at `1:1`, now at its value in the merged mapping; the loader
+    accepted `!!binary` that `one_of` then rejected on every run, now the
+    loader applies the same single-value test. Gaps filled in
+    `tests/test_value_lists_qa.py`: M1 byte-identical on both backends;
+    `missing_values` of only nulls reduces to `IS NULL`; the nested-item
+    error on both dialects; N1's block (dbt) form; N11 with errors and
+    warnings; N9 exact. Not in scope: see "Not added" below.
+  - *security-reviewer — approve.* Every REFINE requirement met: no
+    message quotes an item, the non-single-value error is data-free,
+    `literal()` escaping kept (M6). Follow-up adopted (`3c737d1`):
+    `one_of` keeps only single values (text, numbers, decimals, dates,
+    times) and raises one constant error for anything else, rather than
+    excluding only lists and mappings.
+  - *architect — approve with follow-ups.* Approved `NullHint` on
+    `Metric` and per-check isolation through `DatasetPlan.errors`.
+    Adopted (`2413597`): YAML position helpers moved into `YAMLSource`
+    (`of_null_item`, `of_value_or_node`); `all_null` documented as a
+    rule too; a stale `literal()` comment moved. Folded: (5) `validate`'s
+    warning count is built in the CLI; it should come from `Project`
+    once a second surface reports validation, which is I-09's SARIF
+    output, so it is now a requirement on I-09. Not added: (1), below.
+  - *data-steward — accept; 17/17.* Wrote the docs (`47bff6a`). Folded
+    into I-28 (loader and `validate` wording): a block list of only empty
+    `-` items says "null is not a value" rather than "empty" (it points
+    at the first dash, which is right); `validate`'s summary says
+    "1 datasets", "1 checks". As the spec says, with errors the closing
+    line counts only errors; no change.
+- **Not added (backlog freeze).** For the owner; none blocks anything.
+  1. *architect (1):* `compile_dataset` ignores `plan.errors`, so a check
+     that the planner errors (reachable only through the Python API,
+     since the loader now rejects the same input) shows no reason in
+     `compile` output. Low reach.
+  2. *qa-engineer:* `.nan`, `.inf` and very large integers (23 digits) in
+     a value list reach SQL as typed values; the spec's non-goal on
+     "other YAML typing surprises in lists" said a separate item if they
+     mislead. Not seen to mislead yet.
+- **Deferred:** nothing from the spec. Past results keep their false
+  zeros (non-goal); the CHANGELOG explains the jump.
+- **Backlog:** I-34 done. No new items (freeze). I-09 gains the
+  architect's warning-count requirement; I-28 gains the two wording
+  fixes. No score moves.
+- **Learned:**
+  - REFINE's measured "today" table (every option, both backends, real
+    ruamel marks) made VERIFY short: nothing reopened the choice of B or
+    the design, and every diagnostic position in the spec held.
+  - QA's aliases, merges and YAML tags found four real defects in new
+    code. Loader work that walks YAML nodes needs those three shapes in
+    its spec's QA focus by default, as this one had.
+  - The security-reviewer's "allowlist, don't exclude" turned the spec's
+    design note (exclude `None`, lists, mappings) around, and QA's
+    `!!binary` case showed why: an exclusion list misses what YAML can
+    produce. Future option validation should allowlist.
+  - Docs were not the blocking item this time; writing the D-scenarios
+    in BUILD (iteration 7's lesson) worked.
+  - S held: about 225 changed lines of product code.
+- **Next:** I-33, check identity for `failed_rows` and `sql_metric`
+  (2.0, rank 1 now). It is ready to plan (owner chose option 1 on
+  2026-09-27), gated before the first PyPI release, and it is the next
+  correctness fix in the existing backlog; I-06 (4.5) still waits behind
+  the UI chain by the owner's priority.
+
 ## Iteration 7 — Readable values and messages (I-24), 2026-09-28
 
 - **Spec:** [007-readable-values](specs/007-readable-values.md).

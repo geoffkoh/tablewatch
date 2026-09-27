@@ -190,6 +190,10 @@ All notable changes to tablewatch. The format follows
   when the project loads. Before, such a check ran but could not be recorded
   on PostgreSQL. If you have one, shorten it; its history starts again under
   the new id.
+- `tablewatch validate` no longer ends with "no problems found" when it
+  printed warnings. It says, for example, `1 datasets, 1 checks — no
+  errors, 1 warning`, and still exits 0. A script that looks for "no
+  problems found" will not see it on a project with warnings.
 
 ### Fixed
 
@@ -209,6 +213,33 @@ All notable changes to tablewatch. The format follows
   datasource with a `timezone` no longer turns every check on that table,
   `row_count` included, into an error ("date value out of range"). Each
   check now gets its real outcome.
+- **A `null` in `valid_values` no longer makes a check pass whatever the
+  data holds.** Before, `valid_values: [pending, shipped, null]` was
+  compiled to `status NOT IN ('pending', 'shipped', NULL)`, which SQL
+  never counts as true, so `invalid_count` found nothing, even a status
+  of `shiped`. The same happened with a null in `missing_values` on an
+  `invalid_*` check. Now a null item never reaches the SQL: it is
+  ignored, and `validate` and `run` warn at its `file:line:col` and say
+  why (NULL is always counted as missing, never as invalid). **After
+  upgrading, a check that has always passed may start to fail, because
+  it was never checking.** Its id does not change, so its history
+  continues and jumps from the old `0` to the true count at the first
+  run; results already recorded are not rewritten. Run `tablewatch
+  validate` after upgrading: it warns at every null in a value list,
+  so it lists every check that may have been affected.
+- YAML reads an unquoted `null`, `Null`, `NULL` or `~`, and a `-` with
+  nothing after it, as null, not as text. If you listed `NULL` to match
+  the four-letter text your loads write, the warning tells you to quote
+  it: `'NULL'`. An empty `-` left behind in a list is pointed out at its
+  own line, so you can fill it in or delete it.
+- `missing_count` and `missing_percent` keep their numbers exactly: a
+  null in their `missing_values` only adds the warning.
+- A `valid_values` list with nothing but nulls in it, and a list item
+  that is not a single value (for example a list inside the list), are
+  now reported when the project loads, and `validate` exits 3. Before,
+  the first passed every run and the second errored every run with a
+  database message that could quote a row value. Editors that use
+  tablewatch's JSON Schema underline both as you type.
 
 ## 0.1.0 — not yet published
 

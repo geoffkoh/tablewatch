@@ -9,11 +9,14 @@ alerting) and 2b (language depth).
 
 Status: `shipped`, `partly shipped` (the rest is named in BACKLOG.md), `backlog` (in BACKLOG.md), or `catalogue` (not yet planned).
 
+**Backlog freeze (owner, 2026-09-28):** no `catalogue` feature becomes a
+backlog item until the existing backlog is finished; see BACKLOG.md.
+
 ## A. Authoring & the check language
 
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| A0 | YAML check files, folders, `_defaults.yml`, 16 metrics, diagnostics | The core | Dana | 1 | — | shipped |
+| A0 | YAML check files, folders, `_defaults.yml`, 16 metrics, diagnostics | The core | Dana | 1 | — | shipped (a null in a value list is a warning and never reaches SQL, in I-34; language hardening continues in I-28, I-32, I-33 and I-36) |
 | A1 | `for_each` over tables matching a pattern | One file covers a hundred tables | Dana | 2b | M | catalogue |
 | A2 | Variables `${var:name}`, `--var` | Partition dates and environments without copies | Dana | 2b | S | catalogue |
 | A3 | `reference(col)` referential integrity | Orphaned rows are a top real-world defect | Sam | 2b | M | catalogue |
