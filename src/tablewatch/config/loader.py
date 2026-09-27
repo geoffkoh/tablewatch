@@ -288,9 +288,7 @@ class _ChecksLoader:
             path=source.relative,
             location=source.of_key(node, "dataset"),
             filter=self._string(source, node, "filter"),
-            filter_line=source.of_key(node, "filter").line
-            if "filter" in node
-            else None,
+            filter_line=_own_key_line(source, node, "filter"),
             source_lines=split_lines(source.text or ""),
             owner=self._string(source, node, "owner") or defaults.owner,
             tags=_union(defaults.tags, self._tags(source, node)),
@@ -681,4 +679,14 @@ def _span(lines: Sequence[str], root: MappingNode, index: int) -> SourceSpan | N
         return check_span(lines, root, index)
     except Exception:
         log.debug("could not find a check's source span", exc_info=True)
+        return None
+
+
+def _own_key_line(source: YAMLSource, node: CommentedMap, key: str) -> int | None:
+    """The 1-based line of a key written in this mapping; None if absent or merged."""
+    if key not in node:
+        return None
+    try:
+        return source.of_key(node, key).line
+    except KeyError:  # brought in by a `<<:` merge: it has no line here
         return None
