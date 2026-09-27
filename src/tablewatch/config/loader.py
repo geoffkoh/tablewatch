@@ -45,7 +45,7 @@ from tablewatch.dsl import (
     parse_trigger,
 )
 from tablewatch.dsl.ast import values_in
-from tablewatch.metrics.base import Metric, OptionType, Unit
+from tablewatch.metrics.base import SINGLE_VALUES, Metric, OptionType, Unit
 from tablewatch.metrics.registry import get_metric
 from tablewatch.metrics.registry import suggest as suggest_metric
 
@@ -180,6 +180,7 @@ class _ChecksLoader:
         self.diagnostics = project.diagnostics
         self._defaults_cache: dict[Path, _Defaults] = {}
         self._ids: dict[str, SourceLocation] = {}
+        self._warned_lists: set[int] = set()
 
     def load(self) -> None:
         checks_dir = self.project.checks_dir
@@ -667,8 +668,16 @@ class _ChecksLoader:
                         "meant, or delete the line"
                     )
                 warnings.append(warning(text, where))
-            elif isinstance(item, list | dict):
-                kind = "a list" if isinstance(item, list) else "a mapping"
+            elif not isinstance(value := plain(item), SINGLE_VALUES):
+                # The same test as MetricContext.one_of, so what validate
+                # accepts never errors the check at run time.
+                kind = (
+                    "a list"
+                    if isinstance(item, list)
+                    else "a mapping"
+                    if isinstance(item, dict)
+                    else "not a single value"
+                )
                 errors.append(
                     error(
                         f"`{key}:` items must be single values (text, a number, "
@@ -677,7 +686,11 @@ class _ChecksLoader:
                     )
                 )
             else:
-                kept.append(plain(item))
+                kept.append(value)
+        # An anchored list reused with `*alias` is one list: warn about it once.
+        if id(items) in self._warned_lists:
+            warnings = []
+        self._warned_lists.add(id(items))
         if errors:
             self.diagnostics.extend(warnings + errors)
             return None

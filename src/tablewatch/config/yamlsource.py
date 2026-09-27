@@ -63,6 +63,10 @@ class YAMLSource:
         try:
             return self.of_value(node, key)
         except (KeyError, TypeError):
+            # A merged key's position is in the mapping it was merged from.
+            for merged in getattr(node, "merge", []):
+                if isinstance(merged, CommentedMap) and key in merged:
+                    return self.of_value_or_node(merged, key)
             return self.of_node(node[key])
 
     def of_null_item(
@@ -76,8 +80,9 @@ class YAMLSource:
         line, column = node.lc.item(index)
         lines = (self.text or "").split("\n")
         text = lines[line][column:] if line < len(lines) else ""
-        if text.startswith(("null", "Null", "NULL", "~")):
-            return self.at(line, column), True
+        written = text.lstrip(" ")
+        if written.startswith(("null", "Null", "NULL", "~", "!!null")):
+            return self.at(line, column + len(text) - len(written)), True
         return self.at(line, max(column - 1, 0)), False
 
     def of_node(self, node: Any) -> SourceLocation:
