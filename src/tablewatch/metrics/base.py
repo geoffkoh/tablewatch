@@ -12,7 +12,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time
+from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, ClassVar
 from zoneinfo import ZoneInfo
@@ -132,9 +133,9 @@ class MetricContext:
         for value in values:
             if value is None:
                 continue
-            if isinstance(value, list | tuple | set | dict):
-                # A fixed message: an array bind makes the database quote a
-                # row value in its error.
+            if not isinstance(value, SINGLE_VALUES):
+                # A fixed message: an array or object bind makes the database
+                # quote a row value in its error.
                 raise OptionValueError(f"{option}: an item is not a single value")
             kept.append(literal(value))
         return col.in_(kept) if kept else false()
@@ -180,6 +181,10 @@ def sql_condition(text: str) -> ColumnElement[bool]:
 
 
 # --- the metric contract ---------------------------------------------------
+
+
+# What a value list may hold: what YAML gives after `plain()`, and no more.
+SINGLE_VALUES = (str, int, float, Decimal, date, time)
 
 
 class OptionValueError(ValueError):

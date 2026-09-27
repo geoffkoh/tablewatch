@@ -140,7 +140,9 @@ def test_an_empty_list_is_false_never_in_nothing(
     assert sql in ("false", "0")
 
 
-@pytest.mark.parametrize("item", [["shipped"], {"shipped": 1}, ("a",)])
+@pytest.mark.parametrize(
+    "item", [["shipped"], {"shipped": 1}, ("a",), frozenset({"x"}), object()]
+)
 def test_a_nested_item_is_a_fixed_error(item: Any) -> None:  # M5
     with pytest.raises(OptionValueError) as caught:
         _context({}).one_of(column("status"), ["pending", item], "valid_values")
