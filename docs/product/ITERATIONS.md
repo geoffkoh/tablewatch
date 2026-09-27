@@ -6,6 +6,57 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 5 — Check detail 2: compiled SQL (I-26), 2026-09-27 (in progress)
+
+- **Spec:** [005-check-detail-sql-source](specs/005-check-detail-sql-source.md).
+  **Branch:** `iter/005-check-detail-sql-source`. The REVIEW step
+  completes this entry.
+- **REFINE (2026-09-27).** The architect, security-reviewer, ui-engineer
+  and data-steward reported; every finding is settled in the spec's
+  "REFINE decisions" table. Security's three blocking-for-ready items
+  (R1 a malformed datasource URL echoed with its password, R2
+  credential-free compiling and no datasource fields or logging, R3 the
+  `--host` warning's wording) are in as `must` scenarios, R1 with an
+  explicit carve-out from "`compile`'s output does not change". The spec
+  had grown past S, so the pre-planned split was applied: spec 005 ships
+  the compile path, `/sql` and the SQL section; the Source half, with its
+  REFINE decisions (the data-steward's indentation-based comment rule
+  and `filter` field, both accepted), is drafted as
+  [spec 006](specs/006-check-detail-source.md) (I-29) and ships next.
+  New backlog items: I-30 and I-31 (security F1, F2), I-32 (`duplicate_*`
+  and missing values).
+
+### Owner instruction, 2026-09-27
+
+The owner instructed the loop to **continue iterating until all features
+are implemented**, rather than stopping after one iteration. The loop
+still stops for everything else in PROCESS.md's "The loop stops and asks
+the user when": anything outward-facing (a PyPI release, a new external
+service, a licence or trademark question), a PR that cannot meet the
+merge conditions, a change that would break a design rule or the
+exit-code contract, and a PM proposal outside its autonomy. It also
+stops at a phase boundary where the roadmap needs the owner (skipping
+ahead a phase or changing the roadmap).
+
+### Question for the owner (does not stop the loop): symlinked check files
+
+The security-reviewer (iteration 5, F3) found that the loader walks the
+checks directory with `rglob`, which follows file symlinks, so a check
+file that is a symlink to a file outside the project is loaded today.
+From spec 006 its lines are served over HTTP under the link's path. That
+is not a new exploit (whoever can place the link can edit the project),
+but it widens what `serve` exposes beyond the project directory.
+
+**Proposal:** the loader warns about, and skips, any check file whose
+resolved path is outside the project root (a `Diagnostic` warning at the
+link's path). This **changes `run`**: a project that relies on such a
+link today would stop running those checks, with a warning, and exit
+differently if those were its only checks. That is why it needs the
+owner. Until decided, spec 006 (Y16) documents today's behaviour and the
+README says plainly that a symlinked check file's lines are served under
+the link's path. If accepted, it becomes a backlog item with the
+security-reviewer required and a CHANGELOG breaking-change note.
+
 ## Iteration 4 — Check detail page and history chart (I-05), 2026-09-27
 
 - **Spec:** [004-check-detail-history](specs/004-check-detail-history.md).
