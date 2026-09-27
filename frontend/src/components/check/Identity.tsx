@@ -1,8 +1,18 @@
 import type { ReactElement } from "react";
 import type { CheckDetail } from "../../api/types";
+import { Marked } from "../Marked";
 
-/** What the check is: its name, expression, dataset, owner, tags, file and id. */
-export function Identity({ check }: { check: CheckDetail }): ReactElement {
+/**
+ * What the check is: its name, expression, dataset, owner, tags, file and id.
+ * The file's `file:line:col` links to the Source section whenever that section
+ * is on the page (spec 006, P11).
+ */
+export function Identity({ check, sourceLinked }: { check: CheckDetail; sourceLinked: boolean }): ReactElement {
+  const source = (
+    <code>
+      <Marked text={check.source} />
+    </code>
+  );
   return (
     <section className="panel check-identity" aria-labelledby="check-heading">
       <h1 id="check-heading" className="check-title">
@@ -35,9 +45,7 @@ export function Identity({ check }: { check: CheckDetail }): ReactElement {
         </div>
         <div>
           <dt>Source</dt>{" "}
-          <dd>
-            <code>{check.source}</code>
-          </dd>
+          <dd>{sourceLinked ? <a href="#source">{source}</a> : source}</dd>
         </div>
         <div>
           <dt>Id</dt>{" "}

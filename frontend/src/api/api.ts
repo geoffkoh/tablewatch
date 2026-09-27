@@ -5,7 +5,7 @@
  * by `tablewatch serve` next to the API, and the CSP allows `connect-src
  * 'self'` only.
  */
-import type { CheckDetail, CheckList, CheckSql, ErrorBody, ErrorCode, HistoryPage, Project, RunPage } from "./types";
+import type { CheckDetail, CheckList, CheckSource, CheckSql, ErrorBody, ErrorCode, HistoryPage, Project, RunPage } from "./types";
 
 const BASE = "/api/v1";
 
@@ -133,4 +133,12 @@ export function getHistory(id: string, limit: number, cursor: string | null = nu
  */
 export function getCheckSql(id: string): Promise<CheckSql> {
   return get<CheckSql>(`/checks/${encodeURIComponent(id)}/sql`);
+}
+
+/**
+ * `GET /api/v1/checks/{id}/source`: the check's own lines in its file, as
+ * loaded when the server started (spec 006). Never reads a file per request.
+ */
+export function getCheckSource(id: string): Promise<CheckSource> {
+  return get<CheckSource>(`/checks/${encodeURIComponent(id)}/source`);
 }

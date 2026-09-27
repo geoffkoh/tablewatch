@@ -8,13 +8,14 @@
  * copying still yields the exact bytes.
  */
 
-/** True for a code point the page marks: zero-width, bidi controls, soft hyphen, C0/C1 controls but tab and newline. */
+/** True for a code point the page marks: zero-width, line/paragraph separators, bidi controls, soft hyphen, C0/C1 controls but tab and newline. */
 export function isInvisible(cp: number): boolean {
   if (cp === 0x09 || cp === 0x0a) return false;
   if (cp <= 0x1f) return true; // C0 controls
   if (cp >= 0x7f && cp <= 0x9f) return true; // DEL and C1 controls
   if (cp === 0xad) return true; // soft hyphen
   if (cp >= 0x200b && cp <= 0x200f) return true; // zero-width, LRM, RLM
+  if (cp === 0x2028 || cp === 0x2029) return true; // line and paragraph separators: some browsers break a line on them (spec 006, P14)
   if (cp >= 0x202a && cp <= 0x202e) return true; // bidi embeddings and overrides
   if (cp >= 0x2060 && cp <= 0x2069) return true; // word joiner, invisible operators, bidi isolates
   return cp === 0xfeff; // zero-width no-break space (BOM)

@@ -117,7 +117,7 @@ describe("D1: every check has a link, and the link survives a reload", () => {
     expect(screen.getByRole("link", { name: "Back to the overview" }).getAttribute("href")).toBe("/");
   });
 
-  it("requests the five endpoints, with the id encoded", async () => {
+  it("requests the six endpoints, with the id encoded", async () => {
     const id = "orders:volume";
     const detail: CheckDetail = { ...detailOf(interrupted, EMAIL), id };
     const fetchMock = stubCheckServer(id, { check: ok(detail), history: ok(emailHistory) });
@@ -125,9 +125,10 @@ describe("D1: every check has a link, and the link survives a reload", () => {
     await screen.findByRole("table");
     const urls = checkUrls(id);
     expect(fetchMock.mock.calls.map((c) => String(c[0])).sort()).toEqual(
-      [urls.project, urls.check, urls.history, urls.runs, urls.sql].sort(),
+      [urls.project, urls.check, urls.history, urls.runs, urls.sql, urls.source].sort(),
     );
     expect(urls.sql).toBe("/api/v1/checks/orders%3Avolume/sql");
+    expect(urls.source).toBe("/api/v1/checks/orders%3Avolume/source");
     expect(urls.check).toBe("/api/v1/checks/orders%3Avolume");
     expect(urls.history).toBe("/api/v1/checks/orders%3Avolume/history?limit=200");
   });
@@ -587,7 +588,7 @@ describe("D13: long histories", () => {
 });
 
 describe("D14: one load/refresh hook", () => {
-  it("refresh re-fetches /project, /checks/{id}, /history, /runs and /sql, and drops older pages", async () => {
+  it("refresh re-fetches /project, /checks/{id}, /history, /runs, /sql and /source, and drops older pages", async () => {
     const older = entry(emailSummary, "A", { run_id: "older000000000000000000000000000", started_at: "2026-09-25T00:00:00.000000+00:00" });
     await renderCheck(EMAIL, {
       check: ok(detailOf(interrupted, EMAIL)),
@@ -604,7 +605,7 @@ describe("D14: one load/refresh hook", () => {
       expect(screen.getByRole("status").textContent).toBe("Up to date.");
     });
     const urls = checkUrls(EMAIL);
-    expect(second.mock.calls.map((c) => String(c[0])).sort()).toEqual([urls.check, urls.history, urls.project, urls.runs, urls.sql].sort());
+    expect(second.mock.calls.map((c) => String(c[0])).sort()).toEqual([urls.check, urls.history, urls.project, urls.runs, urls.sql, urls.source].sort());
     expect(historyRows()).toHaveLength(4);
   });
 

@@ -1,6 +1,7 @@
 import { render, screen, within, type RenderResult } from "@testing-library/react";
 import { vi } from "vitest";
 import { App } from "../App";
+import { genericSource, SOURCE_BY_ID } from "./fixtures/source";
 import { genericSql, SQL_BY_ID } from "./fixtures/sql";
 import { interrupted, type OverviewResponses } from "./fixtures/states";
 
@@ -109,12 +110,24 @@ export interface CheckServer {
    * one), since `/sql` never reads the store (spec 005, S9).
    */
   sql?: Answer;
+  /**
+   * `/checks/{id}/source`, by the same rule as `sql` (spec 006): 404 when the
+   * check is not loaded, otherwise the captured body for the id or a generic one.
+   */
+  source?: Answer;
   /** Later history pages, by cursor. */
   older?: Record<string, Answer>;
 }
 
 /** The URLs the check page requests for an id. */
-export function checkUrls(id: string): { project: string; check: string; history: string; runs: string; sql: string } {
+export function checkUrls(id: string): {
+  project: string;
+  check: string;
+  history: string;
+  runs: string;
+  sql: string;
+  source: string;
+} {
   const enc = encodeURIComponent(id);
   return {
     project: URLS.project,
@@ -122,6 +135,7 @@ export function checkUrls(id: string): { project: string; check: string; history
     history: `/api/v1/checks/${enc}/history?limit=200`,
     runs: URLS.runs,
     sql: `/api/v1/checks/${enc}/sql`,
+    source: `/api/v1/checks/${enc}/source`,
   };
 }
 
@@ -136,6 +150,13 @@ export function defaultSql(id: string, check: Answer | undefined): Answer {
     if (typeof dataset === "string" && typeof datasource === "string") return ok(genericSql(id, dataset, datasource));
   }
   return ok(genericSql(id));
+}
+
+/** The default `/source` answer for a check answer (see `CheckServer.source`). */
+export function defaultSource(id: string, check: Answer | undefined): Answer {
+  if (check === undefined || (check !== "network-error" && check.status === 404)) return notFound();
+  const captured = SOURCE_BY_ID[id];
+  return ok(captured === undefined ? genericSource(id) : { ...captured, check_id: id });
 }
 
 export function olderUrl(id: string, cursor: string): string {
@@ -160,6 +181,7 @@ export function stubCheckServer(id: string, server: CheckServer, base: OverviewR
     [urls.history]: server.history ?? notFound(),
     [urls.runs]: server.runs ?? ok(base.runs),
     [urls.sql]: server.sql ?? defaultSql(id, server.check),
+    [urls.source]: server.source ?? defaultSource(id, server.check),
   };
   for (const [cursor, answer] of Object.entries(server.older ?? {})) answers[olderUrl(id, cursor)] = answer;
   const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {
