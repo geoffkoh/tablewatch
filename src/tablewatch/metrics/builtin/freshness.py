@@ -96,7 +96,7 @@ def _wall_clock(moment: datetime) -> str:
     # row; formatted by hand because strftime's %Y drops leading zeros on
     # some platforms.
     return (
-        f"{moment.year:04d}-{moment.month:02d}-{moment.day:02d} "
+        f"{_date_text(moment)} "
         f"{moment.hour:02d}:{moment.minute:02d}:{moment.second:02d}"
     )
 
