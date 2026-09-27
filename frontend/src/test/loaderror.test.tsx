@@ -35,7 +35,7 @@ describe("LoadError", () => {
   it("takes a heading level and section-scoped wording", () => {
     render(<LoadError what="the SQL" failure={FAILURE} onRetry={noop} level={3} scope="section" />);
     const alert = screen.getByRole("alert");
-    expect(within(alert).getByRole("heading", { level: 3 }).textContent).toBe("Could not load the SQL");
+    expect(within(alert).getByRole("heading", { level: 3 }).textContent).toBe("The SQL could not be loaded.");
     expect(within(alert).queryByRole("heading", { level: 2 })).toBeNull();
     expect(alert.textContent).not.toContain("Nothing below");
     expect(alert.textContent).toContain("the rest of the page loaded");

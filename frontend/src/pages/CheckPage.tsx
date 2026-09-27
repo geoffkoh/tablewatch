@@ -1,21 +1,23 @@
 /**
  * A check's page, `/checks/<id>` (spec 004): what the check is, its rule,
  * its latest result in the overview's words, and its history as a chart and
- * a table. Loads `/project`, `/checks/{id}`, `/checks/{id}/history?limit=200`
- * and `/runs?limit=1` through the shared hook; Refresh reloads all four and
+ * a table, then the SQL a run of its dataset sends (spec 005). Loads
+ * `/project`, `/checks/{id}`, `/checks/{id}/history?limit=200`, `/runs?limit=1`
+ * and `/checks/{id}/sql` through the shared hook; Refresh reloads all five and
  * drops any older pages.
  *
  * This module decides which sections the page shows from what loaded; each
  * section lives in `components/check/`.
  */
-import { useEffect, useMemo, type ReactElement } from "react";
-import { getCheck, getHistory, getProject, isNotFound, listRuns } from "../api/api";
-import type { CheckDetail, HistoryPage, Project, RunPage } from "../api/types";
+import { useEffect, useMemo, useRef, type ReactElement } from "react";
+import { getCheck, getCheckSql, getHistory, getProject, isNotFound, listRuns } from "../api/api";
+import type { CheckDetail, CheckSql, HistoryPage, Project, RunPage } from "../api/types";
 import { HistorySection } from "../components/check/HistorySection";
 import { Identity } from "../components/check/Identity";
 import { LatestSection } from "../components/check/LatestSection";
 import { NotFoundPanel } from "../components/check/NotFoundPanel";
 import { RuleSection } from "../components/check/RuleSection";
+import { SqlSection } from "../components/check/SqlSection";
 import { HISTORY_LIMIT, useOlderHistory } from "../components/check/useOlderHistory";
 import { Header } from "../components/Header";
 import { LoadError } from "../components/LoadError";
@@ -28,7 +30,11 @@ interface CheckSlots {
   check: CheckDetail;
   history: HistoryPage;
   runs: RunPage;
+  sql: CheckSql;
 }
+
+/** The fragment that links to the SQL section (P11). */
+export const SQL_FRAGMENT = "#sql";
 
 export function CheckPage({ id }: { id: string }): ReactElement {
   const requests = useMemo<Requests<CheckSlots>>(
@@ -37,11 +43,12 @@ export function CheckPage({ id }: { id: string }): ReactElement {
       check: () => getCheck(id),
       history: () => getHistory(id, HISTORY_LIMIT),
       runs: () => listRuns(1),
+      sql: () => getCheckSql(id),
     }),
     [id],
   );
   const { slots, busy, now, generation, reload, capture } = useLoads(requests);
-  const { project, check, history, runs } = slots;
+  const { project, check, history, runs, sql } = slots;
 
   const loadedProject = project.state === "ok" ? project.data : null;
   const loadedCheck = check.state === "ok" ? check.data : null;
@@ -59,15 +66,33 @@ export function CheckPage({ id }: { id: string }): ReactElement {
     document.title = `${name ?? (checkMissing && history.state === "failed" ? "Check not found" : "Check")} · tablewatch`;
   }, [name, checkMissing, history.state]);
 
-  let status: string;
-  if (busy) status = "Loading…";
-  else if (project.state === "failed" || (check.state === "failed" && !checkMissing) || history.state === "failed")
-    status = "Could not load everything.";
-  else status = "Up to date.";
-
   // What the page can say about the check.
   const notLoadedButRecorded = checkMissing && firstPage !== null && entries.length > 0;
   const unknown = checkMissing && history.state === "failed" && isNotFound(history.failure);
+  // A 404 from /sql means "no longer loaded" only when /checks/{id} is 404 too (P6, P7).
+  const sqlFailed = sql.state === "failed" && !(checkMissing && isNotFound(sql.failure));
+  // The SQL section waits for /checks/{id}, and is absent for an id nobody knows (P6).
+  const showSql = check.state !== "loading" && !unknown && !(checkMissing && history.state === "loading");
+
+  let status: string;
+  if (busy) status = "Loading…";
+  else if (
+    project.state === "failed" ||
+    (check.state === "failed" && !checkMissing) ||
+    history.state === "failed" ||
+    sqlFailed
+  )
+    status = "Could not load everything.";
+  else status = "Up to date.";
+
+  // `/checks/<id>#sql`: the section is not on the page when the browser looks
+  // for the fragment, so scroll to it once, after the first round settles (P11).
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (busy || scrolled.current) return;
+    scrolled.current = true;
+    if (window.location.hash === SQL_FRAGMENT) document.getElementById("sql")?.scrollIntoView();
+  }, [busy]);
 
   return (
     <>
@@ -138,6 +163,10 @@ export function CheckPage({ id }: { id: string }): ReactElement {
             now={now}
             onRetry={reload}
           />
+        )}
+
+        {showSql && (
+          <SqlSection sql={sql} unit={loadedCheck?.unit ?? null} checkMissing={checkMissing} onRetry={reload} />
         )}
       </main>
     </>

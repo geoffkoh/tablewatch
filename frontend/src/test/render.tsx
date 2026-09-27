@@ -1,6 +1,7 @@
 import { render, screen, within, type RenderResult } from "@testing-library/react";
 import { vi } from "vitest";
 import { App } from "../App";
+import { genericSql, SQL_BY_ID } from "./fixtures/sql";
 import { interrupted, type OverviewResponses } from "./fixtures/states";
 
 export type Answer = { status: number; body: unknown } | "network-error";
@@ -102,19 +103,39 @@ export interface CheckServer {
   check?: Answer;
   history?: Answer;
   runs?: Answer;
+  /**
+   * `/checks/{id}/sql`. By default it follows `/checks/{id}`: 404 when the
+   * check is not loaded, otherwise the captured body for the id (or a generic
+   * one), since `/sql` never reads the store (spec 005, S9).
+   */
+  sql?: Answer;
   /** Later history pages, by cursor. */
   older?: Record<string, Answer>;
 }
 
 /** The URLs the check page requests for an id. */
-export function checkUrls(id: string): { project: string; check: string; history: string; runs: string } {
+export function checkUrls(id: string): { project: string; check: string; history: string; runs: string; sql: string } {
   const enc = encodeURIComponent(id);
   return {
     project: URLS.project,
     check: `/api/v1/checks/${enc}`,
     history: `/api/v1/checks/${enc}/history?limit=200`,
     runs: URLS.runs,
+    sql: `/api/v1/checks/${enc}/sql`,
   };
+}
+
+/** The default `/sql` answer for a check answer (see `CheckServer.sql`). */
+export function defaultSql(id: string, check: Answer | undefined): Answer {
+  if (check === undefined || (check !== "network-error" && check.status === 404)) return notFound();
+  const captured = SQL_BY_ID[id];
+  if (captured !== undefined) return ok({ ...captured, check_id: id });
+  const body: unknown = check === "network-error" ? null : check.body;
+  if (typeof body === "object" && body !== null && "dataset" in body && "datasource" in body) {
+    const { dataset, datasource } = body;
+    if (typeof dataset === "string" && typeof datasource === "string") return ok(genericSql(id, dataset, datasource));
+  }
+  return ok(genericSql(id));
 }
 
 export function olderUrl(id: string, cursor: string): string {
@@ -138,6 +159,7 @@ export function stubCheckServer(id: string, server: CheckServer, base: OverviewR
     [urls.check]: server.check ?? notFound(),
     [urls.history]: server.history ?? notFound(),
     [urls.runs]: server.runs ?? ok(base.runs),
+    [urls.sql]: server.sql ?? defaultSql(id, server.check),
   };
   for (const [cursor, answer] of Object.entries(server.older ?? {})) answers[olderUrl(id, cursor)] = answer;
   const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {

@@ -9,6 +9,7 @@ import type { ApiFailure } from "../api/api";
  * stands in for everything below it; a `section` failure stays inside one
  * section of a page whose other sections loaded, and says so. `level` is the
  * heading level, so a failure nested in a section's `<h2>` can use `<h3>`.
+ * A section failure is headed "The SQL could not be loaded." (spec 005, P7).
  * The heading id comes from `useId`, so several failures on one page never
  * share an id.
  */
@@ -30,7 +31,7 @@ export function LoadError({
   return (
     <section className="panel load-error" role="alert" aria-labelledby={headingId}>
       <Heading id={headingId} className="panel__title">
-        Could not load {what}
+        {scope === "page" ? `Could not load ${what}` : `${capitalise(what)} could not be loaded.`}
       </Heading>
       <p className="load-error__message">{failure.message}</p>
       {failure.kind === "http" && (
@@ -49,4 +50,8 @@ export function LoadError({
       </button>
     </section>
   );
+}
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
