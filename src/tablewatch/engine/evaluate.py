@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from tablewatch.checks.model import Check, Outcome
 from tablewatch.metrics.base import Measurement, Unit
+from tablewatch.metrics.base import format_duration as format_duration
 
 
 def evaluate(check: Check, measurement: Measurement) -> tuple[Outcome, str | None]:
@@ -28,27 +29,21 @@ def _join(rule: str, detail: str | None) -> str:
     return f"{rule}; {detail}" if detail else rule
 
 
-def format_value(unit: Unit, value: float | None) -> str:
+def format_value(
+    unit: Unit, value: float | None, noun: tuple[str, str] | None = None
+) -> str:
+    """A value for people; `noun` (singular, plural) names what a count counts."""
     if value is None:
         return "—"
     match unit:
         case Unit.COUNT:
-            return f"{round(value):,}"
+            count = round(value)
+            if noun is None:
+                return f"{count:,}"
+            return f"{count:,} {noun[0] if count == 1 else noun[1]}"
         case Unit.PERCENT:
             return f"{value:.2f}%"
         case Unit.DURATION:
             return format_duration(value)
         case Unit.NUMBER:
             return f"{value:.6g}"
-
-
-def format_duration(seconds: float) -> str:
-    if seconds < 0:
-        return f"-{format_duration(-seconds)}"
-    total = round(seconds)
-    days, rest = divmod(total, 86400)
-    hours, rest = divmod(rest, 3600)
-    minutes, secs = divmod(rest, 60)
-    parts = [(days, "d"), (hours, "h"), (minutes, "m"), (secs, "s")]
-    shown = [f"{amount}{unit}" for amount, unit in parts if amount][:2]
-    return " ".join(shown) or "0s"

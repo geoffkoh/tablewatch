@@ -154,6 +154,36 @@ All notable changes to tablewatch. The format follows
   a value can contain a password. It says "the url is not a SQLAlchemy
   URL (expected scheme://...)" instead. Well-formed URLs are reported as
   before.
+- Freshness messages are easier to read, and they no longer look like the
+  check should have failed. Before, a message showed the newest timestamp
+  in UTC ISO form (`newest 2026-09-27T01:47:30.654321+00:00`), which read
+  as a different time to anyone outside UTC. Now it says what the time
+  is and names its zone, to the second: `newest row at 2026-09-27
+  09:47:30 UTC`, or, on a datasource with a `timezone`, `newest row at
+  2026-09-27 09:47:30 Asia/Singapore (UTC+08:00)`. That is the time as
+  your table holds it, so you can match it with a query. A date column
+  says `newest date 2026-09-26`.
+- A freshness check whose newest row is more than a minute in the future
+  now says so, and suggests why: `…, 1h 47m in the future; check the
+  datasource's timezone`, or, more than 26 hours ahead,
+  `…; check for placeholder or future-dated values` (a `9999-12-31` row,
+  for example). Such a check still passes; only the message changes.
+- A `schema` check's value now reads `0 problems`, `1 problem`,
+  `2 problems` instead of a bare number, on the console, in the JSON and
+  JUnit reports, in the results store and on the check page. The docs and
+  editor hovers call them "problems" rather than "violations".
+- The console's DETAIL column shows up to 200 characters before cutting
+  a message short with `…` (it was 70), so a freshness message is shown
+  whole.
+- What does not change: every `value` (a freshness value is still the age
+  in seconds, a schema value still a count), every outcome, exit code and
+  check id, the SQL, and the shape of the JSON report (`schema_version`
+  stays `1`) and the API. Results recorded by earlier versions keep the
+  text they were recorded with, so one history can show both forms. **If
+  a script parses the timestamp out of `message`, it will break: read
+  `value` instead.** The text of `message` and `display_value` is for
+  people and may change between versions; programs should read `value`
+  and `outcome` (the README now says so).
 
 - An explicit check `id:` can be at most 64 characters, the width of the
   results store's column. A longer id is now reported at its `file:line:col`
@@ -174,6 +204,11 @@ All notable changes to tablewatch. The format follows
 - Datasource URLs whose driver name contains `_`
   (`oracle+cx_oracle://…`, `postgresql+psycopg_async://…`) are
   recognised by `compile` and the check page.
+- A freshness check on a column holding a far-future or far-past
+  placeholder (`9999-12-31 23:59:59` or `0001-01-01 00:00:00`) on a
+  datasource with a `timezone` no longer turns every check on that table,
+  `row_count` included, into an error ("date value out of range"). Each
+  check now gets its real outcome.
 
 ## 0.1.0 — not yet published
 

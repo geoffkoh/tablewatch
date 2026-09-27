@@ -112,7 +112,7 @@ Notes:
 | C1 | Read-only REST API (runs, results, checks, history), OpenAPI | Contract for the UI and integrations | all | 2 | M | shipped (I-02) |
 | C2 | `tablewatch serve` (listens on 127.0.0.1 by default; `--host` opts in with a no-authentication warning), UI shell, overview (failing first) | Status at a glance, without a terminal | Sam, Alex | 2 | M | shipped (`serve` in I-02; UI shell and overview in I-03) |
 | C3 | Check explorer: tree mirroring `checks/`, filters, search | Find any check the way it was written | Sam | 2 | M | backlog |
-| C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | shipped (page, rule, history chart and table in I-05; SQL in I-26; source in I-29). Polish continues in I-27, I-35 and I-39 |
+| C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | shipped (page, rule, history chart and table in I-05; SQL in I-26; source in I-29). Polish continues in I-27, I-35 and I-39; the freshness timestamp as a structured field is I-40 |
 | C5 | Run detail and diff against the previous run | "What broke since yesterday" | Sam | 2 | M | backlog |
 | C6 | Health scores and scorecards by domain, owner, tag; runbook links | A trust signal for consumers | Alex | 4 | M | catalogue |
 | C7 | Failed-rows viewer | See the bad rows (needs B6) | Sam | 2b | S | catalogue |
@@ -148,7 +148,7 @@ contain row data. Every notification increment needs security review
 
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| E0 | CLI for servers: exit codes, JSON logs, JUnit | Runs from cron | Priya | 1 | — | shipped |
+| E0 | CLI for servers: exit codes, JSON logs, JUnit | Runs from cron | Priya | 1 | — | shipped (readable freshness messages and schema values on every surface in I-24; hardening continues in I-40, I-42 to I-45) |
 | E1 | `tablewatch agent`: cron in YAML, DB-backed HA lock | Scheduling without an external orchestrator | Priya | 3 | L | catalogue |
 | E2 | Docker image, Helm chart, K8s CronJob | Standard deployment | Priya | 3 | M | catalogue |
 | E3 | Airflow, Dagster, Prefect; GitHub Action; pre-commit | Fits existing pipelines | Dana | 3 | M | catalogue |

@@ -106,7 +106,7 @@ identifiers: `missing_count("Order ID") = 0`.
 | `freshness` | column | duration | Age of the newest timestamp. |
 | `failed_rows` | — | count | Rows matching `condition`. Bare `- failed_rows:` expects 0. |
 | `sql_metric` | optional label | number | The number your `query` returns. |
-| `schema` | — | count | Violations of the options below. Bare `- schema:` expects 0. |
+| `schema` | — | count | Problems with the options below, shown as `N problems`. Bare `- schema:` expects 0. |
 
 ### Metric options
 
@@ -149,6 +149,21 @@ datasources:
 
 Getting this wrong fails silently: a local-time column read as UTC can look
 hours fresher than it really is.
+
+The message names the newest value in the datasource's zone, to the second,
+and the zone with its offset at that time:
+
+```text
+newest row at 2026-09-27 09:47:30 Asia/Singapore (UTC+08:00)
+```
+
+With the default `timezone` it ends in `UTC`. A date column shows a date
+(`newest date 2026-09-26`). When the newest row is more than a minute in the
+future, the message says so and names the likely cause: up to 26 hours ahead
+it is usually a wrong `timezone` (`…, 1h 47m in the future; check the
+datasource's timezone`); further ahead, a placeholder such as `9999-12-31` or a
+forward-dated row. The age itself is the check's value; read that, not the
+timestamp, to judge it.
 
 ## Check identity
 

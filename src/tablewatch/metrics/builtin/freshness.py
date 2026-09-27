@@ -13,8 +13,9 @@ UTC can look hours fresher than it is — so it is configurable per source.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
 
@@ -25,6 +26,7 @@ from tablewatch.metrics.base import (
     Metric,
     MetricContext,
     Unit,
+    format_duration,
 )
 from tablewatch.metrics.registry import register
 
@@ -40,25 +42,90 @@ class Freshness(Metric):
         return {"newest": AggregateMeasure(func.max(value))}
 
     def compute(self, ctx: MetricContext, values: Mapping[str, Any]) -> Measurement:
-        newest = _as_datetime(values["newest"])
-        if newest is None:
+        found = _as_datetime(values["newest"])
+        if found is None:
             return Measurement(None, "no timestamps in scope")
-        if newest.tzinfo is None:
+        newest, is_date = found
+        naive = newest.tzinfo is None
+        if naive:
             newest = newest.replace(tzinfo=ctx.timezone)
         age = (ctx.now - newest).total_seconds()
-        return Measurement(age, f"newest {newest.astimezone(UTC).isoformat()}")
+        shown = (
+            f"newest date {_date_text(newest)}"
+            if is_date
+            else f"newest row at {_timestamp_text(newest, naive, ctx.timezone)}"
+        )
+        return Measurement(age, shown + _future_note(age))
 
 
-def _as_datetime(value: Any) -> datetime | None:
+# A wrong `timezone` shifts a naive value by at most 26 hours (UTC+14 against
+# UTC-12); further ahead than that, the zone cannot be the cause.
+_SKEW_SECONDS = 60
+_ZONE_REACH_SECONDS = 26 * 3600
+
+
+def _future_note(age: float) -> str:
+    if age >= -_SKEW_SECONDS:
+        return ""
+    ahead = format_duration(-age)
+    if -age <= _ZONE_REACH_SECONDS:
+        return f", {ahead} in the future; check the datasource's timezone"
+    return f", {ahead} in the future; check for placeholder or future-dated values"
+
+
+def _timestamp_text(newest: datetime, naive: bool, zone: ZoneInfo) -> str:
+    """The time in the datasource's zone, to the second, with the zone named.
+
+    A naive value is shown as the column holds it, never round-tripped
+    through UTC (a DST gap would show a time that is not in the table). An
+    aware value is converted to the datasource's zone; if that overflows
+    (year 1 or 9999), it keeps its own offset rather than raise.
+    """
+    if not naive:
+        try:
+            newest = newest.astimezone(zone)
+        except OverflowError:
+            return f"{_wall_clock(newest)} {_offset_text(newest)}"
+    if zone.key == "UTC":
+        return f"{_wall_clock(newest)} UTC"
+    return f"{_wall_clock(newest)} {zone.key} ({_offset_text(newest)})"
+
+
+def _wall_clock(moment: datetime) -> str:
+    # Fractions are truncated, so the shown second is never later than the
+    # row; formatted by hand because strftime's %Y drops leading zeros on
+    # some platforms.
+    return (
+        f"{_date_text(moment)} "
+        f"{moment.hour:02d}:{moment.minute:02d}:{moment.second:02d}"
+    )
+
+
+def _date_text(moment: datetime) -> str:
+    return f"{moment.year:04d}-{moment.month:02d}-{moment.day:02d}"
+
+
+def _offset_text(moment: datetime) -> str:
+    offset = moment.utcoffset()
+    # Truncated toward zero: an offset with seconds is shown to the minute.
+    minutes = int(offset.total_seconds() / 60) if offset is not None else 0
+    sign = "-" if minutes < 0 else "+"
+    hours, mins = divmod(abs(minutes), 60)
+    return f"UTC{sign}{hours:02d}:{mins:02d}"
+
+
+def _as_datetime(value: Any) -> tuple[datetime, bool] | None:
+    """The newest value as a datetime, and whether it was a date."""
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value
+        return value, False
     if isinstance(value, date):
-        return datetime(value.year, value.month, value.day)
+        return datetime(value.year, value.month, value.day), True
     if isinstance(value, str):
-        # SQLite has no timestamp type; it hands back ISO-8601 text.
-        return datetime.fromisoformat(value)
+        # SQLite has no timestamp type; it hands back ISO-8601 text. Only
+        # exactly ten characters (YYYY-MM-DD) is a date.
+        return datetime.fromisoformat(value), len(value) == 10
     raise TypeError(
         f"freshness needs a date or timestamp column, got {type(value).__name__}"
     )

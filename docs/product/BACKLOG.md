@@ -8,7 +8,8 @@ Re-scored and re-ranked by the product-manager in iteration 5 REVIEW
 the same day. Iteration 6 PLAN (2026-09-27): I-29 in progress; I-33
 re-ranked to fourth after the owner's decision. Iteration 6 REFINE: I-36 and I-37
 added from the reviews of spec 006. Iteration 6 REVIEW (2026-09-27): I-29
-done (C4 shipped in full); I-36 widened; I-39 added; re-ranked. Score = reach × impact × confidence ÷ effort, × 1.25 if other
+done (C4 shipped in full); I-36 widened; I-39 added; re-ranked. Iteration 7 PLAN (2026-09-27): I-24
+in progress (spec 007); I-40 split from it; I-41 added. Iteration 7 REFINE: I-42 to I-44 added; an I-06 requirement added. Iteration 7 REVIEW (2026-09-28): I-24 done; I-45 added; I-42 widened; ranks renumbered. Score = reach × impact × confidence ÷ effort, × 1.25 if other
 items depend on it (PROCESS.md). The rank follows the score except where
 the owner's priority says otherwise (below); every departure is stated.
 
@@ -20,7 +21,8 @@ every Phase 2 feature now has one. I-16 to I-18 are follow-ups from the
 iteration 1 reviews, I-19 and I-20 from iteration 2, I-21 to I-25 from
 iteration 3, I-27 and I-28 from iteration 4, I-30 to I-32 from
 iteration 5 REFINE, I-33 to I-35 from iteration 5 VERIFY, I-36 and I-37 from iteration 6
-REFINE, and I-39 from iteration 6 VERIFY; they harden
+REFINE, I-39 from iteration 6 VERIFY, I-40 (split from I-24) and I-41 from iteration 7
+PLAN, I-42 to I-44 from iteration 7 REFINE, and I-45 from iteration 7 VERIFY; they harden
 what shipped rather than add features.
 I-26 is the second half of I-05, split off in iteration 4 PLAN; I-29 is
 I-26's Source half, split off in iteration 5 REFINE by the pre-planned
@@ -37,38 +39,44 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | — | I-05 | Check detail 1: identity, rule, latest result, history chart against the threshold and history table — [spec 004](specs/004-check-detail-history.md) | C4 (without SQL and source) | I-03 ✓ | M | 3 | 2 | 0.8 | 3.0 | done (iteration 4) |
 | — | I-26 | Check detail 2: compiled SQL on the detail page, with this check's columns in the shared scan named (split from I-05 in iteration 4 PLAN; Source half split to I-29 in iteration 5 REFINE) — [spec 005](specs/005-check-detail-sql-source.md) | C4 (SQL) | I-05 ✓ | S | 2 | 1 | 0.8 | **2.0** | done (iteration 5) |
 | — | I-29 | Check detail 3: the check's own YAML source on the detail page, with its comments and the file's `filter:` (the Source half of I-26, split in iteration 5 REFINE) — [spec 006](specs/006-check-detail-source.md) | C4 (source) | I-26 ✓ | S | 2 | 1 | 0.8 | 1.6 | done (iteration 6) |
-| 1 | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree | E0, C2, C4 (hardening) | — | S | 3 | 2 | 0.8 | **4.8** | proposed — **next** (iteration 6 REVIEW; trigger met in iteration 4 REFINE) |
-| 2 | I-34 | `valid_values: [null]` is a silent pass: it compiles to `NOT IN (NULL, …)`, which is never true in SQL, so `invalid_*` counts nothing on that column. NULL in `valid_values` (and any list option compared with `IN`) is either a Diagnostic at `file:line:col` or dropped with a warning (NULL is already missing, not invalid); the data-steward decides in the spec (qa-engineer, iteration 5) | A (language hardening) | — | S | 2 | 2 | 1.0 | **4.0** | proposed — follows I-24 |
-| 3 | I-33 | Check identity for `failed_rows` and `sql_metric`: `condition:` and `query:` do not feed the derived id, so two `failed_rows` checks on one table in one file collide, the loader reports a duplicate, and nothing in the project runs until one gets an `id:` (data-steward, iteration 5) | A (language hardening) | owner decision ✓ | S | 2 | 1 | 1.0 | **2.0** | proposed — **ready to plan**: owner chose option 1 on 2026-09-27 (change the id now, no history migration). **Gate: before the first PyPI release.** Breaking for existing history of those checks (CHANGELOG note when it ships) |
-| 4 | I-36 | Check files that crash the loader get a diagnostic, not a traceback (design rule 5 is broken today in two ways). (a) A control character: `YAMLSource.load` catches only `MarkedYAMLError`, so ruamel's `ReaderError` (e.g. `\x0c`, `\x0b`, `\x1c`–`\x1e` in a comment: `unacceptable character #x000c`) escapes `validate` and `run` as a traceback. Catch `YAMLError`; place the diagnostic at `file:line:col` from `ReaderError.position` (architect F3, iteration 6 REFINE; reproduced on `8687ebc`). (b) A YAML merge key inside a check item (`- row_count:` then `<<: &base {warn: when < 5}`) raises `KeyError: 'warn'`; either merged options load as written or the merge key is a Diagnostic at its `file:line:col` (qa-engineer, iteration 6 VERIFY; pre-existing) | A, E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-33 |
-| 5 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — follows I-24 (spec 005 D8: not folded into I-26) |
-| 6 | I-35 | The SQL section in plain words: "cannot compile" says the driver is not installed and which package to add, not `Can't load plugin: sqlalchemy.dialects:snowflake`; the malformed-URL message names the datasource and `tablewatch.yml`; a check whose datasource is not defined shows the name as written, marked "not defined", in the Datasource row and the SQL section; "computes 6 values, used by this check and 6 others" (data-steward, iteration 5) | C4 (hardening) | I-26 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — with or straight after I-27 |
-| 7 | I-39 | Source block polish: line numbers stay in view when the block is scrolled sideways (a sticky number column), so a long line can still be matched to its number (data-steward, iteration 6 VERIFY; spec 006 P16 allowed today's behaviour) | C4 (hardening) | I-29 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — rides with I-27 and I-35 if that PR stays S, else straight after |
-| 8 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 9 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 10 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
-| 11 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — exit code decided 2026-09-27: exit 3 |
-| 12 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
-| 13 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
-| 14 | I-08 | Files as datasets (CSV, Parquet, JSON via DuckDB); establishes the dataset-source and executor seams | A8 | — | S | 1 | 2 | 0.8 | **2.0** | proposed |
-| 15 | I-14 | Postgres results store: the store verified on Postgres in CI (migrations, concurrent writers from two servers, column widths), documented for a shared deployment | E5 | — | S | 1 | 2 | 1.0 | **2.0** | proposed |
-| 16 | I-30 | Metric errors stop quoting row values: `min needs a numeric column; got text` instead of `could not convert string to float: 'N/A'`, and the same for freshness's `Invalid isoformat string: '…'`; existing history is not scrubbed, and the README says so (security F1, iteration 5) | E0, C1 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — gate: before Phase 4, and before any recommendation to serve beyond loopback |
-| 17 | I-19 | CLI `runs` and `history` scoped to the project, as the server is (spec 002 R5): in a shared store they show every project's runs today; one way to open the store | E5, E0 (hardening) | — | S | 2 | 1 | 0.8 | **1.6** | proposed |
-| 18 | I-20 | `serve` polish: a startup URL a client can use when bound to `0.0.0.0` or `::`; every stderr line in JSON under `--log-format json`; no absolute server paths in error messages served over the API; the JSON error envelope and security headers past the connection limit; `immutable` caching for hashed UI assets (`should`) | C1 (hardening) | — | S | 2 | 1 | 0.8 | **1.6** | proposed |
-| 19 | I-07 | Change-over-time checks from the results store | A5 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
-| 20 | I-13 | `validate --connect`: datasets, columns, type suitability and every compiled statement checked against the target database without scanning; Diagnostics at `file:line:col` | H6 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
-| 21 | I-09 | `validate --output sarif` for inline PR annotations | H3 | — | S | 1 | 1 | 1.0 | **1.0** | proposed |
-| 22 | I-22 | CI supply chain: every GitHub Action pinned to a commit SHA (with its version in a comment) before any publishing workflow exists; a check that fails on an unpinned `uses:` | E0 (hardening) | — | S | 1 | 1 | 1.0 | **1.0** | proposed — must precede the first release workflow |
-| 23 | I-28 | A percent threshold written as a fraction: `missing_percent(email) < 0.05` means 0.05%, not 5%; the loader warns at `file:line:col` and suggests `5%` (a warning, not an error; the check still runs) | A (language hardening) | — | S | 2 | 0.5 | 1.0 | **1.0** | proposed |
-| 24 | I-37 | `checks_path` validated: today it is not, so `checks_path: ../shared` loads with `path` values starting `../` (served by `/checks` and `/source`), and an absolute `checks_path` makes `relative_to` raise at load (rule 5). Either a Diagnostic at `tablewatch.yml:line:col` for a path outside the project, or a decision to allow it with paths shown relative to the project; decide with the owner's symlink question (ITERATIONS.md, iteration 5, F3) (security F2, iteration 6 REFINE; both confirmed by the security-reviewer in iteration 6 VERIFY) | E0, C1 (hardening) | — | S | 1 | 1 | 0.8 | **0.8** | proposed — decide with the symlink question |
-| 25 | I-32 | `duplicate_*` and missing values: today `''` and `'N/A'` count as duplicates of one another (only NULL is excluded, and there is no `missing_values` option), so a blank can be counted both missing and duplicate; decide with the data-steward whether duplicates exclude missing values (a change to recorded numbers) or gain the option (data-steward, iteration 5 REFINE) | A (language hardening) | — | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 26 | I-12 | Configurable result recording: `record:` in `tablewatch.yml`, `_defaults.yml` and per check | E7 | I-01 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
-| 27 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 28 | I-15 | Run detail page and diff against the previous run ("what broke since yesterday") | C5 | I-02 ✓, I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
-| 29 | I-25 | JSON report timestamps in the API's form (`date-time`, six fractional digits), with a `schema_version` bump and a note for consumers | E0 (hardening) | — | S | 1 | 0.5 | 1.0 | **0.5** | proposed |
-| 30 | I-31 | `results.error_detail: full \| redacted` in `tablewatch.yml`: redacted replaces driver and metric error text with its error class before it is stored (security F2, iteration 5) | E7, C1 (hardening) | — | S | 1 | 1 | 0.5 | **0.5** | proposed |
-| 31 | I-23 | Save-time check state: a state table updated when a run is recorded, so `/checks` stops reading the project's whole history per request | C1, E5 | I-14 | M | 2 | 1 | 0.5 | **0.5** | proposed — gated: not scheduled until the threshold below is crossed |
-| 32 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
+| — | I-24 | Readable values and messages on every surface: a passing schema check shows no bare "0"; freshness messages show a readable age and a timestamp with its zone instead of a raw UTC ISO string; console, JSON, the store and the UI agree — [spec 007](specs/007-readable-values.md) (the structured field split to I-40) | E0, C2, C4 (hardening) | — | S | 3 | 2 | 0.8 | **4.8** | done (iteration 7) |
+| 1 | I-34 | `valid_values: [null]` is a silent pass: it compiles to `NOT IN (NULL, …)`, which is never true in SQL, so `invalid_*` counts nothing on that column. NULL in `valid_values` (and any list option compared with `IN`) is either a Diagnostic at `file:line:col` or dropped with a warning (NULL is already missing, not invalid); the data-steward decides in the spec (qa-engineer, iteration 5) | A (language hardening) | — | S | 2 | 2 | 1.0 | **4.0** | proposed — **next** (iteration 7 REVIEW) |
+| 2 | I-33 | Check identity for `failed_rows` and `sql_metric`: `condition:` and `query:` do not feed the derived id, so two `failed_rows` checks on one table in one file collide, the loader reports a duplicate, and nothing in the project runs until one gets an `id:` (data-steward, iteration 5) | A (language hardening) | owner decision ✓ | S | 2 | 1 | 1.0 | **2.0** | proposed — **ready to plan**: owner chose option 1 on 2026-09-27 (change the id now, no history migration). **Gate: before the first PyPI release.** Breaking for existing history of those checks (CHANGELOG note when it ships) |
+| 3 | I-36 | Check files that crash the loader get a diagnostic, not a traceback (design rule 5 is broken today in two ways). (a) A control character: `YAMLSource.load` catches only `MarkedYAMLError`, so ruamel's `ReaderError` (e.g. `\x0c`, `\x0b`, `\x1c`–`\x1e` in a comment: `unacceptable character #x000c`) escapes `validate` and `run` as a traceback. Catch `YAMLError`; place the diagnostic at `file:line:col` from `ReaderError.position` (architect F3, iteration 6 REFINE; reproduced on `8687ebc`). (b) A YAML merge key inside a check item (`- row_count:` then `<<: &base {warn: when < 5}`) raises `KeyError: 'warn'`; either merged options load as written or the merge key is a Diagnostic at its `file:line:col` (qa-engineer, iteration 6 VERIFY; pre-existing) | A, E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-33 |
+| 3a | I-41 | Freshness on a DuckDB `TIMESTAMPTZ` column is an `error` on every run: DuckDB needs `pytz` to hand back a zone-aware value and it is not installed (`Invalid Input Error: Required module 'pytz' failed to import`). Either the `duckdb` extra brings what DuckDB needs (a dependency: security review) or the value reaches Python another way that keeps rule 2 (no per-dialect date arithmetic in SQL); a test on a `TIMESTAMPTZ` column (PM, iteration 7 PLAN; reproduced on `940c776`) | A, E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-36 |
+| 3b | I-42 | An exception in one metric's `compute` errors every check on its dataset: it reaches `_run_dataset`'s safety net (`engine/runner.py`), so `row_count > 0` on the same table becomes `internal error: …` too. A `compute` failure errors only its own check, as the executor already does for a failing measure (rule 7: failures become `error` outcomes "on the checks they affect"); a test that plants a raising `compute` beside a passing `row_count` on DuckDB and SQLite (data-steward, iteration 7 REFINE; reproduced on `bce044a` with `valid_to = 9999-12-31 23:59:59` on `timezone: America/New_York`, the trigger spec 007 F8 removes). Two more triggers, pre-existing, from iteration 7 VERIFY (qa-engineer): SQLite text that is not ISO-8601 in a freshness column, and a DuckDB timestamp past year 9999, which DuckDB returns as `str` | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — straight after I-41 |
+| 4 | I-27 | Check detail polish: the table's "Current" rule agrees with where the band is drawn after a metric change; a fail with no value reads "No value measured" under Latest result as in the table and chart; `between` boundary labels that do not repeat the full rule or crowd the latest value's label | C4 (hardening) | I-05 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — first of the UI chain's polish, after the correctness fixes above (spec 005 D8: not folded into I-26) |
+| 5 | I-35 | The SQL section in plain words: "cannot compile" says the driver is not installed and which package to add, not `Can't load plugin: sqlalchemy.dialects:snowflake`; the malformed-URL message names the datasource and `tablewatch.yml`; a check whose datasource is not defined shows the name as written, marked "not defined", in the Datasource row and the SQL section; "computes 6 values, used by this check and 6 others" (data-steward, iteration 5) | C4 (hardening) | I-26 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — with or straight after I-27 |
+| 6 | I-39 | Source block polish: line numbers stay in view when the block is scrolled sideways (a sticky number column), so a long line can still be matched to its number (data-steward, iteration 6 VERIFY; spec 006 P16 allowed today's behaviour) | C4 (hardening) | I-29 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed — rides with I-27 and I-35 if that PR stays S, else straight after |
+| 6a | I-43 | Count values name their unit: `failed_rows` shows `1 row` / `3 rows` and `row_count` `1,204 rows`, through spec 007's `count_noun` hook (two lines of data plus tests on both backends); `missing_count`, `duplicate_count` and `sql_metric` stay bare. Old results keep their text (data-steward, iteration 7 REFINE, spec 007 Q2) | E0, C2, C4 (hardening) | I-24 ✓ | S | 2 | 0.5 | 1.0 | **1.0** | proposed |
+| 7 | I-04 | Check explorer tree with filters and search | C3 | I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 8 | I-21 | Overview wording and counts: the "incomplete" marker on every count (or only the caption); the banner explains why the latest run's counts can exceed the summary's on a broken project; "failing since" wording that reads as a date or a duration, not "since 7 days ago" | C2 (hardening) | I-03 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 9 | I-06 | Notifications 1: notifiers in `tablewatch.yml` (webhook, Slack); per-check `notify:` inherited through `_defaults.yml`; state changes only | D1 (webhook, Slack), D2 | — | M | 3 | 3 | 0.8 | **4.5** | proposed |
+| 10 | I-16 | Selection honesty: a path or tag selector that matches nothing is an error, in the CLI and `tw.run()` (spec 001 R12); the run's `selection` is recorded in one form (project-relative) whether the caller passed absolute or relative paths | B1, E0 (hardening) | — | S | 2 | 2 | 0.8 | **3.2** | proposed — exit code decided 2026-09-27: exit 3 |
+| 11 | I-17 | CLI errors without tracebacks: store and file errors in `runs`, `history` and `--output-file` become a one-line message and exit 2; the CLI finds the project root through the same code as `tw.load()` (architect F6) | E0 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed |
+| 12 | I-10 | `tablewatch report`: static HTML report | C8 | — | S | 3 | 1 | 0.8 | **2.4** | proposed |
+| 13 | I-08 | Files as datasets (CSV, Parquet, JSON via DuckDB); establishes the dataset-source and executor seams | A8 | — | S | 1 | 2 | 0.8 | **2.0** | proposed |
+| 14 | I-14 | Postgres results store: the store verified on Postgres in CI (migrations, concurrent writers from two servers, column widths), documented for a shared deployment | E5 | — | S | 1 | 2 | 1.0 | **2.0** | proposed |
+| 15 | I-30 | Metric errors stop quoting row values: `min needs a numeric column; got text` instead of `could not convert string to float: 'N/A'`, and the same for freshness's `Invalid isoformat string: '…'`; existing history is not scrubbed, and the README says so (security F1, iteration 5) | E0, C1 (hardening) | — | S | 2 | 1 | 1.0 | **2.0** | proposed — gate: before Phase 4, and before any recommendation to serve beyond loopback |
+| 16 | I-19 | CLI `runs` and `history` scoped to the project, as the server is (spec 002 R5): in a shared store they show every project's runs today; one way to open the store | E5, E0 (hardening) | — | S | 2 | 1 | 0.8 | **1.6** | proposed |
+| 17 | I-20 | `serve` polish: a startup URL a client can use when bound to `0.0.0.0` or `::`; every stderr line in JSON under `--log-format json`; no absolute server paths in error messages served over the API; the JSON error envelope and security headers past the connection limit; `immutable` caching for hashed UI assets (`should`) | C1 (hardening) | — | S | 2 | 1 | 0.8 | **1.6** | proposed |
+| 18 | I-07 | Change-over-time checks from the results store | A5 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
+| 19 | I-13 | `validate --connect`: datasets, columns, type suitability and every compiled statement checked against the target database without scanning; Diagnostics at `file:line:col` | H6 | — | M | 2 | 2 | 0.8 | **1.6** | proposed |
+| 20 | I-09 | `validate --output sarif` for inline PR annotations | H3 | — | S | 1 | 1 | 1.0 | **1.0** | proposed |
+| 21 | I-22 | CI supply chain: every GitHub Action pinned to a commit SHA (with its version in a comment) before any publishing workflow exists; a check that fails on an unpinned `uses:` | E0 (hardening) | — | S | 1 | 1 | 1.0 | **1.0** | proposed — must precede the first release workflow |
+| 22 | I-28 | A percent threshold written as a fraction: `missing_percent(email) < 0.05` means 0.05%, not 5%; the loader warns at `file:line:col` and suggests `5%` (a warning, not an error; the check still runs) | A (language hardening) | — | S | 2 | 0.5 | 1.0 | **1.0** | proposed |
+| 22a | I-45 | The console names the datasource: when one project checks the same table on two datasources (a staging and a production copy, or the same file under two `timezone`s), the rows are identical today because the DATASET column shows only the dataset. Show the datasource where it disambiguates (a column, or `datasource:dataset` when a run spans more than one datasource; the spec decides), in the table output only; JSON, JUnit and the API already carry it (data-steward, iteration 7 VERIFY) | E0 (hardening) | — | S | 2 | 0.5 | 1.0 | **1.0** | proposed |
+| 23 | I-37 | `checks_path` validated: today it is not, so `checks_path: ../shared` loads with `path` values starting `../` (served by `/checks` and `/source`), and an absolute `checks_path` makes `relative_to` raise at load (rule 5). Either a Diagnostic at `tablewatch.yml:line:col` for a path outside the project, or a decision to allow it with paths shown relative to the project; decide with the owner's symlink question (ITERATIONS.md, iteration 5, F3) (security F2, iteration 6 REFINE; both confirmed by the security-reviewer in iteration 6 VERIFY) | E0, C1 (hardening) | — | S | 1 | 1 | 0.8 | **0.8** | proposed — decide with the symlink question |
+| 24 | I-32 | `duplicate_*` and missing values: today `''` and `'N/A'` count as duplicates of one another (only NULL is excluded, and there is no `missing_values` option), so a blank can be counted both missing and duplicate; decide with the data-steward whether duplicates exclude missing values (a change to recorded numbers) or gain the option (data-steward, iteration 5 REFINE) | A (language hardening) | — | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 25 | I-12 | Configurable result recording: `record:` in `tablewatch.yml`, `_defaults.yml` and per check | E7 | I-01 ✓ | S | 2 | 0.5 | 0.8 | **0.8** | proposed |
+| 26 | I-11 | Notifications 2: routing to `owner`, by tag and severity; opt-in `on:` events (`every_fail`, `pass`); Teams and email | D1 (Teams, email), D3 | I-06 | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 27 | I-15 | Run detail page and diff against the previous run ("what broke since yesterday") | C5 | I-02 ✓, I-03 ✓ | M | 2 | 1 | 0.8 | **0.8** | proposed |
+| 28 | I-25 | JSON report timestamps in the API's form (`date-time`, six fractional digits), with a `schema_version` bump and a note for consumers | E0 (hardening) | — | S | 1 | 0.5 | 1.0 | **0.5** | proposed |
+| 29 | I-31 | `results.error_detail: full \| redacted` in `tablewatch.yml`: redacted replaces driver and metric error text with its error class before it is stored (security F2, iteration 5) | E7, C1 (hardening) | — | S | 1 | 1 | 0.5 | **0.5** | proposed |
+| 30 | I-23 | Save-time check state: a state table updated when a run is recorded, so `/checks` stops reading the project's whole history per request | C1, E5 | I-14 | M | 2 | 1 | 0.5 | **0.5** | proposed — gated: not scheduled until the threshold below is crossed |
+| 30a | I-40 | The newest timestamp of a freshness result as a structured field (store column with its Alembic revision; additive in the JSON report and the API; `openapi.json`), so the page can show it in the viewer's zone next to its local-time axis instead of the datasource's zone in the message text. Split from I-24 in iteration 7 PLAN (spec 007 N1); old results have none | C4, E0 (hardening) | I-24 ✓ | M | 2 | 0.5 | 0.8 | **0.4** | proposed |
+| 31 | I-18 | Short reprs for `Project`, `Check` and `Dataset`, so a notebook cell ending in a project or a check does not fill the screen | B1 | — | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
+| 31a | I-44 | Console DETAIL wraps to the terminal's width instead of a fixed clip (spec 007 raises the clip from 70 to 200 characters; a long line still wraps where the terminal puts it, not under the DETAIL column) (architect, iteration 7 REFINE) | E0 (hardening) | I-24 ✓ | S | 1 | 0.5 | 0.8 | **0.4** | proposed |
 
 ### Why the rank departs from the score
 
@@ -76,12 +84,46 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
   I-26, I-29, I-04) comes before alerting. So I-27 (1.0), I-35 (1.0),
   I-39 (1.0) and I-04 (0.8) rank above I-06 (4.5), I-16, I-17, I-10 and
   I-08. I-03, I-05, I-26 and I-29 are done: C4 is shipped in full.
-- **Iteration 6 REVIEW: I-24 (4.8) is next.** It is the top score among
+- **Iteration 7 REVIEW (2026-09-28): I-24 done; I-34 (4.0) is next.**
+  Ranks were renumbered, not re-ordered. I-34 is the top score among
+  items whose dependencies are met, except I-06 (4.5), which waits behind
+  the UI chain by the owner's priority; correctness fixes (I-34, I-33,
+  I-36, I-41, I-42) rank above that chain's polish, as before. Nothing
+  the iteration learned moves a score: I-42 gains two more triggers from
+  QA but its reach, impact and effort are the same (2.0); I-43 and I-44
+  lose their dependency, not their score. **I-45 (1.0)** is new, from the
+  data-steward's VERIFY: reach Dana and Priya (who read the console),
+  impact 0.5 (only a project that checks one table on two datasources is
+  confused, and the JSON already says which), confidence 1.0 (seen in
+  spec 007's own fixture), S. It ranks 22a with the other 1.0 CLI polish.
+  Whether a future newest row should `warn` is still the owner's call
+  (ITERATIONS.md, iteration 7), not an item.
+- **Iteration 6 REVIEW (history): I-24 (4.8) was next.** It is the top score among
   items whose dependencies are met, and REFINE of iteration 3 already
   scheduled it after the check page. I-34 (4.0) follows; whether the
   silent pass should jump ahead is put to the owner in ITERATIONS.md
   (it does not stop the loop). Then I-33 (gated before the first
   release) and I-36 (rule 5), then the UI chain's polish.
+- **Iteration 7 PLAN: I-24 in progress (spec 007), split.** The
+  structured timestamp field the item asked for "ideally" needs a store
+  revision, API and JSON fields and frontend work (M), so it is **I-40**
+  (0.4: reach Sam and Alex, impact 0.5 because the message now names its
+  zone, confidence 0.8, M). It ranks with the other low scorers.
+- **I-41 (2.0) ranks 4a, straight after I-36** (iteration 7 PLAN).
+  Found while reproducing spec 007: freshness on a DuckDB `TIMESTAMPTZ`
+  column errors on every run. Loud, not silent, so it sits beside the
+  other loud correctness fixes (I-33, I-36) and above the UI polish.
+  Reach Dana and Sam, impact 1, confidence 1.0 (reproduced), S. A fix
+  that adds `pytz` is a dependency: security review.
+- **Iteration 7 REFINE: I-42 to I-44.** I-42 (2.0) ranks 4b beside the
+  other loud correctness fixes: reach Dana and Sam, impact 1 (loud, not
+  silent, but it takes `row_count` down with it), confidence 1.0
+  (reproduced), S. I-43 (1.0) ranks 7a with the other 1.0 polish: reach
+  Sam and Dana, impact 0.5, confidence 1.0, S, cheap once spec 007's
+  hook exists. I-44 (0.4) ranks with the low scorers: reach 1, impact
+  0.5 now that the clip is 200, confidence 0.8. Whether a newest row in
+  the future should `warn` by default is an owner question
+  (ITERATIONS.md, iteration 7), not an item yet: it changes outcomes.
 - **I-39 (1.0) rides with I-27 and I-35** (iteration 6 REVIEW): all
   three are check page polish from the data-steward's hand runs. Reach
   Sam and Dana, impact 0.5 (the number is one sideways scroll away),
@@ -98,7 +140,7 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
   `main`. I-24 follows as REFINE decided (it costs no rework: the page
   shows `message` and `display_value` verbatim, spec 004 D12). If the
   owner prefers the score's order, swapping I-29 and I-24 loses nothing.
-- **I-34 (4.0) ranks third, above the rest of the UI chain.** It is a
+- **I-34 (4.0) ranks first now (third when written), above the rest of the UI chain.** It is a
   silent pass — the worst kind of bug a data quality tool can have: a
   steward who writes `valid_values: [a, b, null]` to allow blanks gets a
   check that can never fail. The owner's UI-first order ranks features
@@ -422,6 +464,32 @@ these as acceptance scenarios.
   count exceeds the summary's because checks dropped out of the load, the
   banner says why; "failing since" reads either as a date ("since 19 Sep")
   or a duration ("for 7 days"), never "since 7 days ago".
+- **I-43 and I-44 — from iteration 7 VERIFY (data-steward).** A
+  placeholder's age reads `-2912173d 16h` in `display_value` and
+  `2912173d 16h in the future` in F5's note (spec 007 F8): true, but hard
+  to read. I-43 (count nouns) or I-44 (console width), whichever is
+  planned first, decides whether durations past a year get a coarser
+  form (for example `7973y`); `format_duration` is shared by every
+  surface, so any change is a `display_value` change for every duration
+  metric and needs its own CHANGELOG line.
+- **I-45 — from iteration 7 VERIFY (data-steward).** Scenario: spec
+  007's fixture, where `checks/lake.yml` and `checks/lake_sgt.yml` both
+  check `events`; `tablewatch run` today prints two `events` rows that
+  differ only in value. After: each row says which datasource it ran on.
+  Console only; `--output json`, JUnit and the API are unchanged (they
+  already carry `datasource`). No check id changes.
+- **I-42 — from iteration 7 VERIFY (qa-engineer).** Besides spec 007's
+  planted `compute` exception, the test covers the two real triggers QA
+  found: SQLite text in a freshness column that is not ISO-8601 (for
+  example `27/09/2026`), and a DuckDB timestamp past year 9999, which
+  DuckDB hands back as `str`. In each, only the freshness check is
+  `error`; `row_count > 0` on the same table passes. How the error text
+  reads is I-30's (it must not quote the row value).
+- **I-24 — shipped in iteration 7 (spec 007, PR #12).** Kept for the
+  record.
+- **I-24 — carried into spec 007 (iteration 7 PLAN)**: every point
+  below is a scenario there (F1–F7, S1, E1–E4, H1, H2); the structured
+  field is I-40.
 - **I-24 — from iteration 3 (data-steward).** A passing schema check's
   value is not shown as a bare "0". A freshness message shows the age in
   words and the timestamp with its zone. Formatting stays in Python
@@ -467,6 +535,12 @@ these as acceptance scenarios.
   different rule it says why. Otherwise the UI's "failing since" and the
   alert's "failing again" disagree about the same history. (PLAN's text,
   "any different outcome, `error` included, ends the run", is superseded.)
+- **I-06 — from iteration 7 REFINE (data-steward, spec 007 Q4).** Any
+  notification that shows a result's `message` also shows its
+  `display_value` beside it. Spec 007 keeps the age out of the freshness
+  message because every surface today shows `display_value` next to it;
+  a notification that carried `message` alone would give a timestamp and
+  no age. This is an acceptance scenario in I-06's spec.
 - **I-06 — from iteration 1.** Notifiers are result sinks and follow the
   `ResultSink` rule the architect set: a sink raises only when its failure
   means tablewatch could not do its job (the results store). A notifier

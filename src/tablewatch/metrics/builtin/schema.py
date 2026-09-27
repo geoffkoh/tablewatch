@@ -1,6 +1,6 @@
 """schema — the table's columns and their types.
 
-Its value is the number of violations, so a bare `- schema:` expects 0.
+Its value is the number of problems, so a bare `- schema:` expects 0.
 Type matching is by substring, case-insensitive, because type names differ
 between databases: `column_types: {amount: numeric}` accepts NUMERIC(10,2).
 """
@@ -26,7 +26,8 @@ from tablewatch.metrics.registry import register
 class Schema(Metric):
     name = "schema"
     unit = Unit.COUNT
-    summary = "Violations of required/forbidden columns and expected types."
+    summary = "Problems with required/forbidden columns and expected types."
+    count_noun = ("problem", "problems")
     scoped = False
     default_condition = Compare(Op.EQ, Number(0))
     options: ClassVar[Mapping[str, OptionType]] = {

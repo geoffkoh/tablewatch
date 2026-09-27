@@ -21,7 +21,7 @@ _COLOURS = {
 }
 
 _MAX_CHECK = 48
-_MAX_DETAIL = 70
+_MAX_DETAIL = 200
 
 
 def render(run: RunResult, colour: bool = False) -> str:

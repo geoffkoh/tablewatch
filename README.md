@@ -25,7 +25,7 @@ OUTCOME  DATASET       CHECK                                          VALUE  DET
 PASS     sales.orders  row_count > 0                                      7
 FAIL     sales.orders  missing_count(customer_id) = 0                     1  expected = 0
 FAIL     sales.orders  duplicate_count(order_id) = 0                      1  expected = 0
-PASS     sales.orders  freshness(created_at) < 6h                     1h 8m  newest 2026-09-25T08:41:59+00:00
+PASS     sales.orders  freshness(created_at) < 6h                     1h 8m  newest row at 2026-09-25 08:41:59 UTC
 FAIL     sales.orders  invalid_percent(status) < 1%                  14.29%  expected < 1%
 WARN     sales.orders  row_count | warn when < 1000 | fail when = 0       7  warn when < 1000
 
@@ -132,6 +132,10 @@ logs to stderr, as JSON with `--log-format json`, so stdout stays clean for
 Give tablewatch a **read-only** database role. `filter:`, `where:`,
 `condition:` and `query:` are SQL from your checks repository, and they run
 with the datasource's credentials.
+
+In the `--output json` report, the text of each result's `message` and
+`display_value` is for people and not part of the contract: it may change
+between versions, so a program should read `value` and `outcome`.
 
 ## Serve results over HTTP
 
@@ -272,14 +276,21 @@ How to read the chart:
   on the overview. It follows outcomes, not rules, so it can span a rule
   change.
 - **Times on the axis, in the table and in tooltips are in your time zone,
-  and the page names it** ("times in GMT+8"). Messages are stored text and
-  keep UTC: a freshness message such as `newest 2026-09-26T11:33:48…+00:00`
-  is in UTC. Read the age in the value column, not the timestamp in the
-  message.
+  and the page names it** ("times in GMT+8"). Messages are shown as they
+  were recorded, and are not converted to your zone. A freshness message
+  names its own zone, the datasource's `timezone`:
+  `newest row at 2026-09-27 09:47:30 Asia/Singapore (UTC+08:00)`, or
+  `… UTC` for a datasource without one. Results recorded by earlier
+  versions keep the form they were recorded in,
+  `newest 2026-09-26T09:47:30.654321+00:00`, which is always UTC, so one
+  history can show both. Either way, the age is in the value column: read
+  that to judge the check.
 - **A value below 0 is drawn below 0.** A negative freshness means the
   newest row is in the future, which usually means naive timestamps read in
   the wrong time zone. It passes `< 6h` every time, so check the
-  datasource's `timezone`.
+  datasource's `timezone`. The message says so when the row is more than
+  a minute ahead (`…, 1h 47m in the future; check the datasource's
+  timezone`).
 
 Focus the chart and use the arrow keys, or hover, to read each result.
 If you edit the rule of a check with an explicit `id:` and restart `serve`
@@ -445,6 +456,10 @@ How to read the results:
 - **`value` is in the metric's unit, which `unit` names**: `count`, `percent`
   (`20.0` means 20%), `duration` (seconds), or `number`. Show
   `display_value` to people.
+- **The text of `message` and `display_value` is for people, not part of
+  the contract.** It may change between versions, and results already
+  recorded keep the text they were recorded with; a program should read
+  `value` and `outcome`.
 
 ### What `serve` reads, and when
 
@@ -525,7 +540,7 @@ print(result)
 for r in result.results:
     if r.outcome is not tw.Outcome.PASS:
         print(r.outcome, r.check.dataset.name, r.check.name, r.display_value, r.message)
-# warn inventory.products Price feed freshness 3d warn when > 1d; newest 2026-...
+# warn inventory.products Price feed freshness 3d warn when > 1d; newest row at 2026-...
 # fail sales.customers missing_percent(email) < 5% 20.00% expected < 5%
 # ...
 

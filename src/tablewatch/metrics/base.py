@@ -169,6 +169,8 @@ class Metric(ABC):
     options: ClassVar[Mapping[str, OptionType]] = {}
     # Whether the check may restrict its rows with `where:`.
     scoped: ClassVar[bool] = True
+    # (singular, plural) shown after a count value: `0 problems`, `1 problem`.
+    count_noun: ClassVar[tuple[str, str] | None] = None
     # The expectation used when a check gives neither a comparison nor
     # warn/fail triggers. Only metrics with an obvious "good" value have one.
     default_condition: ClassVar[Condition | None] = None
@@ -197,3 +199,16 @@ def percent(part: Any, whole: Any) -> Measurement:
         # No rows in scope: nothing is missing, invalid or duplicated.
         return Measurement(0.0, "no rows in scope")
     return Measurement(100.0 * part_value / whole_value)
+
+
+def format_duration(seconds: float) -> str:
+    """A duration in words for people: at most two units, `2h 12m`, `-7h`."""
+    if seconds < 0:
+        return f"-{format_duration(-seconds)}"
+    total = round(seconds)
+    days, rest = divmod(total, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, secs = divmod(rest, 60)
+    parts = [(days, "d"), (hours, "h"), (minutes, "m"), (secs, "s")]
+    shown = [f"{amount}{unit}" for amount, unit in parts if amount][:2]
+    return " ".join(shown) or "0s"
