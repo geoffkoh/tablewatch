@@ -54,7 +54,7 @@ that the loader cannot turn into a diagnostic.
 
 | Family | Trigger (any YAML file the loader reads) | Exception today |
 | --- | --- | --- |
-| T. Unreadable text | a character YAML forbids: C0 controls other than tab/LF/CR (`\x00`, `\x07`, `\x0b`, `\x0c`, `\x1c`–`\x1e`, …), `\x7f`, U+FFFE/U+FFFF | `ruamel.yaml.reader.ReaderError` (a `YAMLError`, not a `MarkedYAMLError`) |
+| T. Unreadable text | a character YAML forbids: C0 controls other than tab/LF/CR (`\x00`, `\x07`, `\x0b`, `\x0c`, `\x1c`–`\x1e`, …), `\x7f`, C1 controls U+0080–U+009F other than NEL (U+0092 is what a Windows-1252 `’` becomes when converted as Latin-1), U+FFFE/U+FFFF | `ruamel.yaml.reader.ReaderError` (a `YAMLError`, not a `MarkedYAMLError`) |
 | T. | bytes that are not UTF-8 (a Latin-1 `é`, a UTF-16 file) | `UnicodeDecodeError` from `read_text` (only `OSError` is caught) |
 | G. Tagged values | an explicit core tag ruamel cannot construct: `!!int xyz`, `!!float xyz`, `!!bool xyz`, `!!int 0x`, `!!omap x`, `!!set x` | bare `ValueError` / `KeyError` / `IndexError` / `AttributeError` from ruamel's constructor |
 | M. Merge keys | a `<<:` merge that brings in a key the loader locates: in a check's options (`warn`, `fail`, and when invalid `name`, `id`, or any unknown option); the check item itself (`- <<: {row_count > 0: {}}`); a check file's root (`dataset`, `datasource`, `tags`, `checks`); `_defaults.yml` (invalid or unknown keys); `tablewatch.yml` (any setting pydantic rejects) | `TypeError` from `node.lc.value/key` returning `None`, or `KeyError` |
@@ -108,6 +108,30 @@ error").
 
 ### T — unreadable text
 
+**Message format (Q2, data-steward).** A forbidden character is
+reported as
+
+```text
+invalid YAML: hidden control character U+XXXX (<name>) is not allowed; delete it
+```
+
+- `hidden` because the user cannot see it: that is the whole difficulty
+  of this mistake, and it tells Dana to look at the column, not the text.
+- `(<name>)` for the characters people actually paste, and only those:
+  U+0008 `backspace`, U+000B `vertical tab` (Word's Shift+Enter line
+  break), U+000C `form feed` (a PDF or wiki page break), U+001B `escape`
+  (terminal colour codes), U+007F `delete`. Every other C0/C1 control has
+  no parenthesis: `hidden control character U+001C is not allowed; delete it`.
+  A name we would have to look up is noise; the code point is enough to
+  search for.
+- U+0000 is almost always a UTF-16 file without a BOM, not a stray
+  character (every ASCII character decodes as itself plus a NUL), so it
+  says so: `invalid YAML: character U+0000 (null) is not allowed; the file
+  may be UTF-16 — save it as UTF-8`.
+- U+FFFE / U+FFFF are not controls: `invalid YAML: character U+FFFE is
+  not allowed; delete it`.
+- `invalid YAML:` stays as the prefix, like every other YAML diagnostic.
+
 **T1 (must) — the reported case.** Given
 
 ```text
@@ -120,18 +144,31 @@ checks:
 When `tablewatch validate`, then exactly one diagnostic and exit 3:
 
 ```text
-checks/orders.yml:2:13: error: invalid YAML: character U+000C cannot appear in a YAML file; delete it
+checks/orders.yml:2:13: error: invalid YAML: hidden control character U+000C (form feed) is not allowed; delete it
 ```
 
-(today: `ReaderError` traceback, exit 1). The same file with `\x0b`,
-`\x1c`, `\x1d`, `\x1e`, `\x00`, `\x07` or `\x7f` in place of `\x0c`
-gives the same diagnostic at `2:13` naming `U+000B` … `U+007F` — a
-parametrised test.
+(today: `ReaderError` traceback, exit 1). Parametrised over the byte in
+place of `\x0c`, all at `2:13`:
+
+| Byte(s) in the file | Message after `invalid YAML: ` |
+| --- | --- |
+| `\x0b` | `hidden control character U+000B (vertical tab) is not allowed; delete it` |
+| `\x08` | `hidden control character U+0008 (backspace) is not allowed; delete it` |
+| `\x1b` | `hidden control character U+001B (escape) is not allowed; delete it` |
+| `\x7f` | `hidden control character U+007F (delete) is not allowed; delete it` |
+| `\x07`, `\x1c`, `\x1d`, `\x1e` | `hidden control character U+0007 is not allowed; delete it` (and so on, no name) |
+| `\xc2\x92` (UTF-8 for U+0092) | `hidden control character U+0092 is not allowed; delete it` |
+| `\x00` | `character U+0000 (null) is not allowed; the file may be UTF-16 — save it as UTF-8` |
+
+**T1b (must) — Windows line ends.** T1's file with CRLF line ends (as
+Notepad saves it) gives the same diagnostic at `2:13`: the position is
+counted over the text after universal-newline reading, as every other
+position is.
 
 **T2 (must) — the column counts characters, not bytes.** Given
-`dataset: é orders` on line 1 and `# a \x0c` on line 2: `2:5` (ruamel's
-`position` is a character index into the text; a byte offset would be
-off by one per non-ASCII character before it).
+`dataset: é orders` on line 1 and `# é \x0c` on line 2: `2:5` (ruamel's
+`position` is a character index into the text; a byte offset read as a
+character index would say `2:7`).
 
 **T3 (must) — inside a value, on a later line.** Given
 
@@ -142,11 +179,17 @@ checks:
       name: "a\x0bb"
 ```
 
-then `checks/orders.yml:4:15: error: invalid YAML: character U+000B cannot appear in a YAML file; delete it`.
+then `checks/orders.yml:4:15: error: invalid YAML: hidden control character U+000B (vertical tab) is not allowed; delete it`.
 (A *written escape* `"a\fb"` is legal YAML and keeps loading.)
 
 **T4 (must) — U+FFFE.** `# a ￾ b` (UTF-8 bytes `EF BF BE`) on line
-2 gives `checks/orders.yml:2:5: error: invalid YAML: character U+FFFE cannot appear in a YAML file; delete it`.
+2 gives `checks/orders.yml:2:5: error: invalid YAML: character U+FFFE is not allowed; delete it`.
+
+**T4b (should) — a UTF-16 file without a BOM.** `dataset: orders`
+saved as UTF-16LE with no BOM (every ASCII byte followed by `00`) gives
+`checks/orders.yml:1:2: error: invalid YAML: character U+0000 (null) is not allowed; the file may be UTF-16 — save it as UTF-8`,
+exit 3. (Measured: the bytes decode as UTF-8, and ruamel stops at
+position 1.)
 
 **T5 (must) — not UTF-8.** Given line 2 `# caf\xe9` (Latin-1 bytes):
 
@@ -154,15 +197,27 @@ then `checks/orders.yml:4:15: error: invalid YAML: character U+000B cannot appea
 checks/orders.yml:2:6: error: not UTF-8 text: byte 0xE9 cannot be decoded; save the file as UTF-8
 ```
 
-A UTF-16 file (measured with macOS `iconv -t utf-16`, which writes a
-big-endian BOM `FE FF`) gives the same message naming `0xFE` at `1:1`: the
-first undecodable byte is reported. Line and column count the decoded
-characters before the bad byte.
+Line and column count the decoded characters before the bad byte. The
+same file with CRLF line ends (Notepad "ANSI") and `# it\x92s` (a
+Windows-1252 `’` pasted from Word or Outlook) gives
+`checks/orders.yml:2:5: error: not UTF-8 text: byte 0x92 cannot be decoded; save the file as UTF-8` —
+CRLF must not count as two characters.
+
+The message names no editor or product (Q2): Excel does not write YAML
+files, and "Notepad" or "Windows-1252" would be wrong as often as right.
+"save the file as UTF-8" is the one action every editor offers.
+
+**T5b (should) — UTF-16 with a BOM.** A file that starts `FF FE`
+(Windows PowerShell 5.1 `>` and `Out-File`, Notepad "Unicode") or
+`FE FF` (macOS `iconv -t utf-16`) gives
+`checks/orders.yml:1:1: error: not UTF-8 text: the file is UTF-16; save it as UTF-8`.
+Must, as a floor: without the special case it gives the T5 message
+naming `0xFF` or `0xFE` at `1:1`, never a traceback.
 
 **T6 (must) — the other files.** `_defaults.yml` containing
-`owner: a\x0cb` gives `checks/_defaults.yml:1:9: error: invalid YAML: character U+000C …`,
+`owner: a\x0cb` gives `checks/_defaults.yml:1:9: error: invalid YAML: hidden control character U+000C (form feed) …`,
 exit 3. `tablewatch.yml` with `# \x0c` on line 2 gives
-`tablewatch.yml:2:3: error: invalid YAML: character U+000C …`, exit 3;
+`tablewatch.yml:2:3: error: invalid YAML: hidden control character U+000C (form feed) …`, exit 3;
 with `name: caf\xe9` gives `tablewatch.yml:1:10: error: not UTF-8 text: byte 0xE9 …`, exit 3.
 
 **T7 (must) — one pass.** T1's file saved as `checks/zz_broken.yml`
@@ -207,6 +262,34 @@ gives `tablewatch.yml:3:52: error: invalid YAML: 'x' is not a valid !!int`;
 exit 0, "1 datasets, 1 checks — no problems found"; `run` on a one-row
 `orders` gives `WARN orders row_count | warn when < 5  1`, exit 0.
 `<<: {fail: when < 5}` likewise loads.
+
+**M1b (must) — shared triggers, the way teams write them.** Given
+
+```yaml
+dataset: orders
+checks:
+  - missing_percent(email):
+      <<: &nulls {warn: when > 1%, fail: when > 5%}
+  - missing_percent(phone):
+      <<: *nulls
+  - missing_percent(postcode):
+      <<: *nulls
+      fail: when > 20%
+```
+
+`validate` exits 0 with 3 checks (today: `TypeError` traceback, exit 1),
+and `list` shows three checks, `postcode`'s with its own `fail:`. A
+mistake inside the anchor (`warn: when > 1d`) is reported where it is
+written, `checks/orders.yml:4:25: error: '1d' is a duration, but missing_percent is not`,
+once per check that merges it (three identical lines), exit 3 — as an
+aliased options mapping is reported today (measured).
+
+**M7 (must) — a merge does not change a check's id.** The `email` check
+in M1b has the same id in `tablewatch list` as the same check with
+`warn: when > 1%` and `fail: when > 5%` written directly. (The triggers
+feed the id through the canonical expression; a merged `where:` already
+gives the same id today — measured.) Otherwise moving triggers into an
+anchor would silently start a new history.
 
 **M2 (must) — a mistake in merged content is placed where it is
 written.** Each file is the M1 file with line 4 replaced; exit 3; one
@@ -315,10 +398,12 @@ anything but `ProjectError` (for `tablewatch.yml`), and never make
 1. (tech lead / architect) Merge-aware `of_key`/`of_value` everywhere,
    versus a separate lookup at each call site. The PM prefers the former;
    does any caller rely on the `KeyError` (only `_own_key_line` is known)?
-2. (data-steward) Wording of the three new messages. Should T name
-   common characters ("form feed", "vertical tab") as well as the code
-   point? Should T5 mention that Excel and some Windows editors save
-   Latin-1?
+2. (data-steward) Wording of the three new messages. **Answered in
+   REFINE:** T names the characters people paste, and says "hidden"
+   (see "Message format" under T); T5 names no editor or product, and
+   UTF-16 gets its own message (T4b, T5b); G keeps
+   `'xyz' is not a valid !!int` — only Dana writes tags, and it reads
+   plainly.
 3. (tech lead) G: is compose-and-reconstruct worth it for a rare
    mistake, or is `1:1` enough (G1 then drops to should)? The PM's view:
    keep G1 a must, it is cheap and rule 5 names line and column.
@@ -360,3 +445,7 @@ For the owner; none is a traceback.
 5. `where: "((((("` passes `validate` and errors at run time (the SQL is
    not parsed at load; fits the existing "validate does not parse SQL"
    behaviour).
+6. (data-steward, REFINE) One mistake in an anchored mapping that three
+   checks use is three identical diagnostic lines (true today for
+   aliases). Collapsing identical `file:line:col` + message lines would
+   be kinder; not a traceback, so not here.
