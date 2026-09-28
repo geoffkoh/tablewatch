@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -152,18 +153,34 @@ def canonical_text(
     return " | ".join(parts)
 
 
-def derive_check_id(path: Path, dataset: str, canonical: str, where: str | None) -> str:
+def derive_check_id(
+    path: Path,
+    dataset: str,
+    canonical: str,
+    where: str | None,
+    *,
+    identity: Sequence[tuple[str, str]] = (),
+) -> str:
     """A stable identity for a check that has no explicit `id:`.
 
     Derived from where the check lives, what it says, and which rows it
     looks at (`where:`), so history carries across runs. Editing any of
     those starts a new history; pinning an explicit `id:` keeps it. Options
     such as `valid_values` are deliberately left out — refining a rule is
-    the same check, better stated.
+    the same check, better stated — except those a metric names in
+    `identity_options` (`failed_rows`' `condition:`, `sql_metric`'s
+    `query:`), which are what the check is: `identity` holds them as
+    (option, raw text) pairs. Text is compared with whitespace collapsed, so
+    re-indenting or re-wrapping SQL keeps the id; any other edit starts a
+    new history. With no `identity`, the input is what it always was.
     """
-    scope = " ".join(where.split()) if where else ""
-    digest = hashlib.sha1(
-        f"{path.as_posix()}\0{dataset}\0{canonical}\0{scope}".encode(),
-        usedforsecurity=False,
-    )
+    text = f"{path.as_posix()}\0{dataset}\0{canonical}\0{_collapse(where or '')}"
+    for option, value in identity:
+        text += f"\0{option}={_collapse(value)}"
+    digest = hashlib.sha1(text.encode(), usedforsecurity=False)
     return digest.hexdigest()[:16]
+
+
+def _collapse(text: str) -> str:
+    """Whitespace runs as one space: the one rule for text that feeds an id."""
+    return " ".join(text.split())

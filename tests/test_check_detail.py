@@ -24,7 +24,7 @@ from tests.test_server import (
 ORDERS_FRESHNESS = "a81b0374b0b04f06"
 ORDERS_AVG = "366d9254d889c910"
 ORDERS_SCHEMA = "fbc3aa0b93b66eee"
-ORDERS_NEGATIVE = "ed669ca6e5532a59"
+ORDERS_NEGATIVE = "e2948c41d4b15c10"  # its condition feeds the id (spec 009)
 
 
 def compare(op: str, value: float, text: str) -> dict[str, Any]:

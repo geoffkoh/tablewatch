@@ -32,6 +32,7 @@ class FailedRows(Metric):
     summary = "Rows matching a SQL `condition` that marks them as bad."
     default_condition = Compare(Op.EQ, Number(0))
     options: ClassVar[Mapping[str, OptionType]] = {"condition": OptionType.STRING}
+    identity_options = ("condition",)
 
     def validate(self, options: Mapping[str, Any], args: tuple[str, ...]) -> list[str]:
         if "condition" not in options:
@@ -56,6 +57,7 @@ class SqlMetric(Metric):
     max_args = 1
     scoped = False
     options: ClassVar[Mapping[str, OptionType]] = {"query": OptionType.STRING}
+    identity_options = ("query",)
 
     def validate(self, options: Mapping[str, Any], args: tuple[str, ...]) -> list[str]:
         if "query" not in options:

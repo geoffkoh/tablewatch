@@ -501,7 +501,15 @@ class _ChecksLoader:
             return None
         where = self._string(source, options_node, "where")
         check_id = check_id or derive_check_id(
-            dataset.path, dataset.name, canonical, where
+            dataset.path,
+            dataset.name,
+            canonical,
+            where,
+            identity=[
+                (name, str(options[name]))
+                for name in metric.identity_options
+                if name in options
+            ],
         )
         if check_id in self._ids:
             self.diagnostics.append(

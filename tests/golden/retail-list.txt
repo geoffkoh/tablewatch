@@ -15,7 +15,7 @@ fc9cc3088aca  sales.orders        lake        missing_count(customer_id) = 0    
 a30dacf7316e  sales.orders        lake        invalid_percent(status) < 1%      checks/sales/orders.yml:11:5
 366d9254d889  sales.orders        lake        avg(amount) between 10 and 500    checks/sales/orders.yml:13:5
 a81b0374b0b0  sales.orders        lake        freshness(created_at) < 6h        checks/sales/orders.yml:14:5
-ed669ca6e553  sales.orders        lake        No negative amounts               checks/sales/orders.yml:15:5
+e2948c41d4b1  sales.orders        lake        No negative amounts               checks/sales/orders.yml:15:5
 fbc3aa0b93b6  sales.orders        lake        schema                            checks/sales/orders.yml:18:5
 
 18 checks
