@@ -215,6 +215,10 @@ class Metric(ABC):
     # Why a null in each value-list option is ignored, in words for people;
     # the loader words the rest of the warning.
     null_hints: ClassVar[Mapping[str, NullHint]] = {}
+    # STRING options whose text is part of what the check *is*, and so of
+    # its derived id. The names and their order feed the hash: changing
+    # either moves every such check's id (a breaking change for history).
+    identity_options: ClassVar[tuple[str, ...]] = ()
     # The expectation used when a check gives neither a comparison nor
     # warn/fail triggers. Only metrics with an obvious "good" value have one.
     default_condition: ClassVar[Condition | None] = None

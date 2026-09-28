@@ -97,7 +97,8 @@ def test_identity_does_not_move(
     commented: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # I1
     ids = {c.id for c in tw.load(commented).checks}
-    assert {"ed669ca6e5532a59", "32867fbe86f483f3"} <= ids
+    # "No negative amounts" moved with spec 009: its condition feeds the id.
+    assert {"e2948c41d4b15c10", "32867fbe86f483f3"} <= ids
 
 
 # --- source ------------------------------------------------------------------------
@@ -138,7 +139,7 @@ def test_the_last_check_and_a_one_line_check(retail: Path) -> None:  # Y3
 
 def test_comments(commented: Path) -> None:  # Y4
     with served(commented) as client:
-        negative = _source(client, "ed669ca6e5532a59")
+        negative = _source(client, "e2948c41d4b15c10")
         volume = _source(client, "32867fbe86f483f3")
     assert _lines(negative) == (4, 8)
     assert "# refunds are their own rows" in negative["text"]
@@ -308,7 +309,7 @@ def test_the_files_filter(commented: Path, retail: Path) -> None:  # Y12
         "  - schema:\n      required_columns: [id]\n",
     )
     with served(commented) as client:
-        custom = _source(client, "98cd31ce24b6afef")
+        custom = _source(client, "80003731c3749189")
         schema = _source(client, "2f9a43de2ae47ba9")
     assert custom["filter"] == {
         "line": 2,
@@ -334,12 +335,19 @@ checks:
 
 
 @pytest.mark.parametrize(
-    "text", [REFUNDS_YML, REFUNDS_YML.replace("        WHERE", "        # WHERE")]
+    ("text", "ratio_id"),
+    [
+        (REFUNDS_YML, "7140991c318f43fc"),
+        # The query feeds the id (spec 009), so the variant is another check.
+        (REFUNDS_YML.replace("        WHERE", "        # WHERE"), "8662c8e5e8cb7ae3"),
+    ],
 )
-def test_a_block_scalar_with_a_blank_line(retail: Path, text: str) -> None:  # Y13
+def test_a_block_scalar_with_a_blank_line(
+    retail: Path, text: str, ratio_id: str
+) -> None:  # Y13
     _write(retail, "checks/sales/refunds.yml", text)
     with served(retail) as client:
-        ratio = _source(client, "d0ebb1527db76d0e")
+        ratio = _source(client, ratio_id)
         rows = _source(client, "60a5659cd85bdeb3")
     assert _lines(ratio) == (3, 9)
     assert _lines(rows) == (11, 11)

@@ -6,6 +6,103 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 9 — Two `failed_rows` checks on one table are two checks (I-33), 2026-09-28
+
+- **Spec:** [009-check-identity](specs/009-check-identity.md).
+  **Branch:** `iter/009-check-identity`. **PR:** #14. The backlog freeze
+  (iteration 8) holds: no items added.
+- **REFINE (2026-09-28).** The data-steward chose whitespace-only
+  normalisation of `condition:` and `query:`, the same rule `where:`
+  already follows (Q2), and walked the "keep your history" advice
+  through on retail with recorded history (Q3): it works with the full
+  16-character id and silently fails with the 12 that `tablewatch list`
+  shows, so the CHANGELOG had to say so (S3 promoted to must M13). The
+  architect approved the design with seven build constraints (Q1:
+  `identity_options` on the metric, one parameter on `derive_check_id`)
+  and answered Q4.
+- **Shipped:** a `failed_rows` check's `condition:` and a `sql_metric`
+  check's `query:` now feed the derived check id, whitespace-normalised.
+  Dana's two `failed_rows` checks on `orders` load and run; before, the
+  loader called one a duplicate and nothing in the project ran (exit 3).
+  Every other metric keeps its id to the character (M5); explicit `id:`
+  is untouched; the store, exit codes, frontend and bundle do not change.
+  **Breaking for history:** such checks with no `id:` start a new history
+  after upgrading (owner's option 1, 2026-09-27, no migration); the
+  CHANGELOG says how to keep it. Docs: a "Check identity" section in
+  `docs/check-language.md` (what feeds an id, what keeps it, the `--`
+  comment trap, Unicode whitespace). Code: about 39 changed lines in
+  `src/` across four files; the rest is tests and docs.
+- **Acceptance: 16/16.** The data-steward accepted 14/16 in VERIFY with
+  two open: S3 (the loose corners pinned by tests), since pinned by the
+  qa-engineer, and M13 (the CHANGELOG), written in this REVIEW from the
+  steward's draft, with the recovery query from the spec. M13's
+  walk-through passed with history recorded by `main`'s code. Every
+  `must` is an automated test on DuckDB and SQLite. Suite: **995 passed,
+  1 xfailed** (I-20's known uvicorn case); ruff, ruff format, strict
+  mypy clean. Golden `list` moved by one row, as M6 required.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — pass; could not break it.* Added
+    `tests/test_check_identity_qa.py`: M1/M2 on both backends with the
+    store and JSON ids, M3 exactly one diagnostic, M4 over a query
+    table, CRLF line ends, `_defaults.yml`, anchors and `<<:` merges,
+    S3's `--` corner, history and `--check` selection, and `serve`
+    agreeing with the CLI. Noted that normalisation collapses Unicode
+    whitespace (NBSP and others) as `where:` does: now documented. The
+    spec's list of tests to update was incomplete: the Y12/Y13
+    `sql_metric` fixture ids in `tests/test_check_source.py` also moved
+    (`98cd31ce…` → `80003731…`, `d0ebb152…` → `7140991c…`/`8662c8e5…`),
+    as they should; updated. Out of scope, folded into I-28: a check
+    with an invalid `where:` gets an id derived without it, which can
+    add a second, misleading "duplicate check" diagnostic.
+  - *architect — approve.* All seven REFINE build constraints met. A
+    dead conditional in the tests was removed (`35464a9`).
+  - *data-steward — accept with follow-ups.* Wrote the check-language
+    docs (`b149c9a`). M13 is closed by this REVIEW's CHANGELOG entry;
+    S3 by QA's tests. Out of scope, folded: the duplicate-id message
+    says "give one of them an explicit `id:`" when both already have
+    one (into I-28, loader wording); two `failed_rows` checks without
+    `name:` look identical in `run` output (into I-45, console rows
+    that cannot be told apart).
+  - *security-reviewer — not required* (spec: no PROCESS.md trigger; the
+    SQL is only hashed at load).
+- **Not added (backlog freeze).** For the owner, from REFINE (recorded
+  in the spec); none blocks anything:
+  1. `tablewatch history` clips ids to 12 characters in its "ambiguous"
+     message, so two ids sharing 12 characters cannot be told apart
+     (`ed669ca6e553 is ambiguous: ed669ca6e553, ed669ca6e553`). Anyone
+     who pins a 12-character id by mistake meets it.
+  2. `list` shows 12 characters and only `--output json` shows the full
+     id; no CLI command lists ids that exist only in the results store
+     (today the CHANGELOG gives a SQL query instead).
+  3. A SQL `--` comment in `condition:` errors the check (pre-existing;
+     now documented).
+  4. (Architect) When the plugin SDK (ROADMAP H1) opens the metric
+     registry, decide whether third-party metrics may declare
+     `identity_options`.
+- **Deferred:** nothing from the spec. No history migration (owner's
+  choice); `schema` checks still collide, and the hint for that is in
+  I-28.
+- **Backlog:** I-33 done. No new items (freeze). I-28 gains two
+  duplicate-diagnostic fixes; I-45 gains the unnamed `failed_rows`
+  case. No score moves. The gate "before the first PyPI release" is met
+  for I-33.
+- **Learned:**
+  - The spec's "which ids change" table was measured, but its list of
+    tests to update was written by reading, and it missed two fixture
+    ids. Next time, run the suite on the change in REFINE (or grep for
+    every pinned 16-hex id) rather than listing files by hand.
+  - Walking the upgrade advice through on real history (Q3) found the
+    12-versus-16-character trap before any user did; a breaking change's
+    CHANGELOG deserves a REFINE walk-through, not only a VERIFY read.
+  - Tiny code, large spec: 39 lines of `src/` against a 770-line spec.
+    For identity changes that was right (M5 guards every other metric's
+    id), but a smaller item should not need a spec this size.
+- **Next:** I-36, check files that crash the loader (2.0, rank 1). It
+  is the first remaining correctness fix, it breaks design rule 5 (a
+  traceback instead of a `Diagnostic`), both halves are reproduced, and
+  it has no dependencies. I-41 and I-42 (2.0) follow; I-06 (4.5) still
+  waits behind the UI chain by the owner's priority.
+
 ## Iteration 8 — A null in a value list is never a silent pass (I-34), 2026-09-28
 
 ### Owner instruction, 2026-09-28: backlog freeze
