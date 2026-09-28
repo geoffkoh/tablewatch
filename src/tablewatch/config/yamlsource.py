@@ -24,6 +24,9 @@ from tablewatch.diagnostics import Diagnostic, SourceLocation, error
 
 log = logging.getLogger(__name__)
 
+# ruamel's marks skip a leading byte-order mark; the text keeps it.
+BOM = "\ufeff"
+
 
 class YAMLSource:
     def __init__(self, path: Path, relative: Path) -> None:
@@ -76,7 +79,7 @@ class YAMLSource:
             where = self.at(mark.line, mark.column) if mark else self.at(0, 0)
             problem = exc.problem or exc.context or "invalid YAML"
             return None, [error(f"invalid YAML: {problem}", where)]
-        except (Exception, RecursionError) as exc:
+        except Exception as exc:  # RecursionError included
             # ruamel's constructors raise bare ValueError, KeyError, … for a
             # tagged value they cannot build (`!!int xyz`): the file is to
             # blame, so it is a diagnostic, at the tag when it can be found.
@@ -227,7 +230,9 @@ def _owner(node: CommentedMap, key: Any) -> CommentedMap | None:
         return node
     for merged in getattr(node, "merge", None) or ():
         if isinstance(merged, CommentedMap) and key in merged:
-            return _owner(merged, key) or merged
+            found = _owner(merged, key)
+            if found is not None:
+                return found
     return None
 
 
@@ -271,7 +276,7 @@ def _bad_tag(text: str) -> tuple[tuple[int, int], str] | None:
         root = YAML(typ="rt").compose(text)
     except Exception:
         return None
-    for node in _walk(root):
+    for node in walk_nodes(root):
         tag = str(node.tag or "")
         if not tag.startswith("tag:yaml.org,2002:"):
             continue
@@ -290,14 +295,15 @@ def _bad_tag(text: str) -> tuple[tuple[int, int], str] | None:
     return None
 
 
-def _walk(node: Node | None) -> list[Node]:
+def walk_nodes(node: Node | None) -> list[Node]:
+    """Every node under a composed node, keys included, depth first."""
     if node is None:
         return []
     found = [node]
     if isinstance(node, MappingNode):
         for key, value in node.value:
-            found += _walk(key) + _walk(value)
+            found += walk_nodes(key) + walk_nodes(value)
     elif isinstance(node, SequenceNode):
         for child in node.value:
-            found += _walk(child)
+            found += walk_nodes(child)
     return found
