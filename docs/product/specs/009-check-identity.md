@@ -8,7 +8,7 @@
 | Size | S |
 | Depends on | the owner's decision (option 1, 2026-09-27, ITERATIONS.md): change the id now, **no history migration** |
 | Branch | `iter/009-check-identity` |
-| Status | **ready** (iteration 9 PLAN, 2026-09-28, against `main` at `efa1a4e`). Every "today" id below was measured on `main` by loading the exact files with `tablewatch.load()` and the CLI; every "after" id was computed with the derivation in "The derivation", below |
+| Status | **ready** (REFINE settled 2026-09-28: data-steward answered Q2/Q3, architect approved Q1 with build constraints and answered Q4; planned in iteration 9 PLAN against `main` at `efa1a4e`). Every "today" id below was measured on `main` by loading the exact files with `tablewatch.load()` and the CLI; every "after" id was computed with the derivation in "The derivation", below |
 
 ## Problem and persona
 
@@ -119,9 +119,8 @@ failed_rows / sql_metric only:
   **byte-identical** to today's, so its id does not move. This is the
   property the tests guard hardest (M5, M6).
 
-REFINE may change the exact encoding (Q1). If it does, the "after" ids in
-this spec are recomputed with it before BUILD; the properties (M1–M12)
-do not change.
+REFINE kept this encoding (architect, Q1), so the "after" ids in this
+spec stand as computed.
 
 ### What counts as a reformat (keeps the id)
 
@@ -131,6 +130,8 @@ do not change.
 | One line → a YAML block scalar, `|` or `>`, over several lines, with any indentation | kept |
 | Quoting style in YAML: plain, `'…'`, `"…"` | kept (compared after parsing) |
 | Leading or trailing whitespace, a final newline | kept |
+| A YAML comment (`# why`) after the value or on its own line above the check | kept (YAML drops it before tablewatch sees the value) |
+| A line break moved into or out of a `--` comment, nothing else changed | **kept — a known limit**, see below |
 | Whitespace **removed entirely** between two tokens (`total < 0` → `total<0`) | **new id** — tablewatch does not parse the SQL |
 | Letter case (`AND` → `and`, `NULL` → `null`) | **new id** |
 | A SQL comment added or edited (`-- why`) | **new id** |
@@ -148,6 +149,58 @@ REFINE (Q2):
   expression, where `row_count>0` and `row_count > 0` are the same. The
   expression is parsed by tablewatch; the SQL is not, and parsing it per
   dialect is a non-goal. `where:` already behaves exactly this way.
+
+REFINE found a third (data-steward, measured): a line break is
+whitespace, so tablewatch cannot tell code on the line after a `--`
+comment from code inside it. These three `query:` values share one id
+(`628ad6f24bdb05ed` after the change), though the second filters on
+region and the others do not:
+
+```text
+select count(*) from orders\nwhere status = 'paid' -- and region = 'eu'
+select count(*) from orders\nwhere status = 'paid' --\nand region = 'eu'
+select count(*) from orders where status = 'paid' -- and region = 'eu'
+```
+
+### REFINE answer to Q2 (data-steward): whitespace-only is right
+
+Keep whitespace-only, the same rule as `where:`. The deciding question is
+which way a normalisation errs:
+
+- **Too strict** (a harmless edit gets a new id): `total<0` →
+  `total < 0`, `and` → `AND`, a comment edited. The cost is a history
+  restart that the steward can see (the check page shows a check with no
+  results) and can undo (`id:` set to the old id; the old results are
+  still in the store). Loud and recoverable.
+- **Too loose** (a change of meaning keeps the id): the history carries
+  on across the change and the chart shows a step nobody can explain.
+  Silent. This is the error a steward cannot catch.
+
+Whitespace-only errs loose in exactly two corners: whitespace runs
+inside a string literal (`'a  b'` = `'a b'`), and a line break moved
+across a `--` comment (above). Both need an edit that is whitespace and
+nothing else, which a reviewer sees as such in a diff, and in one file
+both are reported as duplicates rather than merged. Lowercasing outside
+quotes or stripping comments would open more loose corners, not fewer:
+it needs to know every dialect's quoting (`"Region"` is case-sensitive on
+Postgres and Snowflake, `'EU'` ≠ `'eu'` everywhere, `$$…$$`, `E'…'`,
+`''` escapes), and a tokenizer that gets one wrong merges two different
+checks silently.
+
+What a real SQL formatter does to a pasted-back condition (measured
+against the ids in M4): re-indenting and re-wrapping keep the id;
+spacing operators (`total<0` → `total < 0`) and changing keyword case
+start a new history. That is the price, and it is stated in the docs
+(M12), with the way to avoid it: explain a check in a YAML `# comment`
+or its `name:`, not in a `--` comment, and pin `id:` on a check whose
+history matters before reformatting its SQL.
+
+A `--` comment has a second reason to stay out of `condition:`: the
+condition is folded into the dataset's scan, so a comment there
+comments out the rest of the statement. Measured on `main`:
+`condition: total < 0 -- negatives` gives `ERROR … Parser Error: syntax
+error at or near "FROM"` (exit 2). `sql_metric` runs its `query:` as
+written, so comments there run fine.
 
 ### Which ids change
 
@@ -204,6 +257,47 @@ nothing is deleted (owner, option 1):
   `id:` to the **old derived id** (the 16 characters shown by
   `tablewatch list --output json` or the check page before upgrading).
   The CHANGELOG says so.
+
+### REFINE answer to Q3 (data-steward): followable, if the CHANGELOG says four things
+
+Walked through on a copy of `examples/retail` with recorded history, on
+`main`:
+
+1. **Before upgrading**, `tablewatch list --output json` prints the full
+   id: `"id": "ed669ca6e5532a59"` for "No negative amounts". Confirmed.
+2. Adding `id: ed669ca6e5532a59` to that check and running again:
+   `tablewatch history ed669ca6e5532a59` shows the new result on top of
+   every earlier one. **The advice works** with the 16 characters.
+3. **The trap:** `tablewatch list` (table) shows `ed669ca6e553`, 12
+   characters. Pinning `id: ed669ca6e553` is valid, loads, and silently
+   starts a **new** history, because `id:` is exact and the store keys on
+   the full string. `list` then looks identical either way (it shows the
+   first 12 of the pinned id too), so the steward cannot see the mistake.
+   Worse, `tablewatch history ed669ca6e553` then prints
+   `tablewatch: ed669ca6e553 is ambiguous: ed669ca6e553, ed669ca6e553`
+   (exit 3): both matches are clipped to the same 12 characters.
+4. **After upgrading without step 1**, `list` shows only new ids and no
+   CLI command lists old ones (`history` needs the id; `runs` shows
+   12-character run ids and `/api/v1/runs/{id}` needs all 32). The old
+   id is in the results store; this query found it (SQLite store,
+   measured; plain SQL, so it works on any store database):
+
+   ```sql
+   SELECT check_id, check_name, source, MAX(r.started_at) AS last_run
+   FROM tablewatch_check_results c
+   JOIN tablewatch_runs r ON r.id = c.run_id
+   WHERE c.metric IN ('failed_rows', 'sql_metric')
+   GROUP BY check_id, check_name, source;
+   ```
+
+   It can return several ids for one check (retail's store also held
+   `8ce8903ab36db2f2`, from before an earlier file move); the old id is
+   the one whose `last_run` is the last run before the upgrade.
+
+So `list` does **not** need to change for this iteration: the CHANGELOG
+(S3, now must M13) names `list --output json`, says "before upgrading",
+says **all 16 characters, not the 12 that `tablewatch list` shows**, and
+gives the query above for anyone who already upgraded.
 
 ## Acceptance scenarios
 
@@ -285,7 +379,8 @@ When `validate`, then exit 3 and exactly one diagnostic:
 `checks/orders.yml:6:5: error: duplicate check (also at
 checks/orders.yml:4:5) — give one of them an explicit \`id:\`` — the
 same text and position rule as today. Likewise two `sql_metric > 0` with
-`query: select 1` and `query: "select   1\n"`.
+`query: select 1` and `query: "select   1\n"` (both `d7f3dc68d33c50ea`
+after the change; today both `b68ef2d84375cb8e`).
 
 ### Must: reformatting keeps the id
 
@@ -316,9 +411,24 @@ M1's first check, and in turn each of these in its place:
       condition: '	total < 0   '   # a leading tab
 ```
 
+```yaml
+  # negatives are refunds booked wrong
+  - failed_rows:
+      condition: total < 0   # a YAML comment, not SQL
+```
+
 When loaded, then the id is `a37eb03d163d2dac` every time. And each of
-`total<0`, `TOTAL < 0`, `total < 0 -- negatives`, `(total < 0)` gives an
-id that is **not** `a37eb03d163d2dac`. The same table of edits applied
+these gives its own id, **not** `a37eb03d163d2dac` (measured with the
+derivation above):
+
+| `condition:` | Id |
+| --- | --- |
+| `total<0` | `30d25ee6881e8d1e` |
+| `TOTAL < 0` | `f2dc97d574a56230` |
+| `total < 0 -- negatives` | `09d14440d6efefd5` |
+| `(total < 0)` | `14379d71ac3ad19f` |
+
+(Ids only: `total < 0 -- negatives` loads but errors when run, see Q2.) The same table of edits applied
 to M2's first `query:` keeps `5319e7f87bb73935` for whitespace and
 changes it for case, comments and `;`.
 
@@ -432,12 +542,14 @@ Given
 ```
 
 then two ids: `a37eb03d163d2dac` and `dfb329f67a687a64`. And a
-`failed_rows` whose `where:` is `A` and `condition:` is `B` has a
-different id from one whose `where:` is `B` and `condition:` is `A`.
+`failed_rows` whose `where:` is `A` and `condition:` is `B`
+(`8d2b6f562501a9b6`) has a different id from one whose `where:` is `B`
+and `condition:` is `A` (`31ab427637456300`); all four in one file load
+with no diagnostic.
 
 **M11 (must) The file path and dataset still count.** M1's first check
-moved to `checks/finance/orders.yml` gets a different id from
-`a37eb03d163d2dac`; so does the same check under `dataset: orders_v2`.
+moved to `checks/finance/orders.yml` gets `e837f5e50ffe3193`; the same
+check under `dataset: orders_v2` gets `0d3aa10538bdfd35`.
 
 **M12 (must) Docs.** `docs/check-language.md`, "Check identity", says
 (wording may be polished by the data-steward, the facts may not):
@@ -450,7 +562,13 @@ moved to `checks/finance/orders.yml` gets a different id from
   the space between two words, starts a new history;
 - other options, such as `valid_values` or `schema`'s column lists, still
   do not count: refining a rule is the same check;
-- two checks that would get the same id are an error; give one an `id:`.
+- two checks that would get the same id are an error; give one an `id:`;
+- to explain a check, use a YAML `# comment` or `name:`, which never
+  touch the id; a `--` comment inside `condition:` breaks the scan, and
+  one inside `query:` is part of the id;
+- before reformatting the SQL of a check whose history matters, pin its
+  current id with `id:` (all 16 characters, from
+  `tablewatch list --output json`).
 
 The `derive_check_id` docstring says the same. `tests/test_docs.py`
 still passes.
@@ -464,13 +582,57 @@ the wording).
 
 **S2 (should) Hostile input.** A `condition:` or `query:` holding a NUL
 (`"total < 0\0x"` in a double-quoted YAML string), a very long query
-(100 KB), or only whitespace: the loader never raises; the
-whitespace-only case is today's "needs a condition" / "must be a
-non-empty string" error at the option's `file:line:col`, not an id.
+(100 KB), or only whitespace: the loader never raises. Measured on
+`main`: `condition: "   \n  "` gives `checks/orders.yml:5:18: error:
+\`condition:\` must be a string` and `query: "  \t "` gives
+`…:7:14: error: \`query:\` must be a string`, at the value, and no id;
+these stay exactly as they are. The NUL condition loads, with id
+`d5df30c18e8ecb1f` after the change.
 
-**S3 (should) The CHANGELOG entry** (written in REVIEW) states the
-breaking change for existing history, who is affected, and the "set
-`id:` to the old derived id" way to keep it.
+**S3 (should) The known loose corners are pinned by tests**, so they
+are decided, not accidental: `status = 'a  b'` and `status = 'a b'` give
+one id (`dfae2ed81ea02750`), and the three `--` queries in "What counts
+as a reformat" give one id (`628ad6f24bdb05ed`).
+
+**M13 (must, was S3) The CHANGELOG lets a steward keep history without
+reading the spec.** The entry (written in REVIEW, checked by the
+data-steward in VERIFY) says:
+
+- who is affected: `failed_rows` and `sql_metric` checks with no `id:`;
+  their history starts again on the first run after upgrading, and the
+  old results stay readable under the old id;
+- **before upgrading**, run `tablewatch list --output json` and note the
+  `id` of each such check; after upgrading, add `id: <that id>` to the
+  check;
+- **all 16 characters**, not the 12 `tablewatch list` shows: a 12-character
+  id is accepted but starts a new history;
+- already upgraded: the query in "REFINE answer to Q3", which lists old
+  ids from the results store.
+
+Acceptance, on a copy of retail with recorded history (measured on
+`main`, the steps are the same after the change): with `id:
+ed669ca6e5532a59` added to "No negative amounts" and one more run,
+`tablewatch history ed669ca6e5532a59` lists that run above every earlier
+result for the check.
+
+### Not added (REFINE, data-steward; backlog frozen by the owner)
+
+Found while answering Q3, outside this item, recorded for the owner and
+not proposed as backlog items:
+
+- `tablewatch history` clips ids to 12 characters in its "ambiguous"
+  message, so two ids that share 12 characters print as
+  `ed669ca6e553 is ambiguous: ed669ca6e553, ed669ca6e553` and the
+  steward cannot pick one. Anyone who pins a 12-character id by mistake
+  meets it (M13 warns against that).
+- `list` shows 12 characters and no way to see the full id except
+  `--output json`; the CLI has no command that lists ids present only in
+  the results store.
+- A `--` comment in `condition:` errors the check (pre-existing; M12
+  only documents it).
+- (Architect) When ROADMAP H1 (plugin SDK) opens the metric registry,
+  decide whether third-party metrics may declare `identity_options` and
+  document it then.
 
 ## Non-goals
 
@@ -507,27 +669,64 @@ breaking change for existing history, who is affected, and the "set
   only, before the first release. Any change that would move another
   metric's id is out of scope and a blocking finding.
 - **The seam.** Which options feed identity is a property of the metric,
-  not of the loader. PLAN's proposal: a `Metric` class attribute, e.g.
-  `identity_options: ClassVar[tuple[str, ...]] = ()`, set to
-  `("condition",)` on `FailedRows` and `("query",)` on `SqlMetric`;
-  the loader passes the normalised values to `derive_check_id`, which
-  appends `\0{name}={value}` per option, in the declared order, only
-  when the tuple is non-empty. This adds to the metric contract
-  (`metrics/base.py`), so the architect reviews it in REFINE.
+  not of the loader. PLAN proposed a `Metric` class attribute; the
+  architect approved it in REFINE, with the build constraints below.
+
+### Build constraints (REFINE, architect: approved with these)
+
+1. **Seam.** `identity_options: ClassVar[tuple[str, ...]] = ()` on
+   `Metric` (`metrics/base.py`); `("condition",)` on `FailedRows`,
+   `("query",)` on `SqlMetric`. A comment on the ClassVar says: the names
+   and their order feed the check id; changing them is a breaking change
+   for every user's history.
+2. **Encoding** exactly as in "The derivation":
+   `{path}\0{dataset}\0{canonical}\0{scope}`, then `\0{name}={normalised}`
+   per identity option, in declared order. The NUL ambiguity (a `where:`
+   or `condition:` holding a NUL) is accepted: at worst it surfaces as a
+   loud duplicate diagnostic, never a silent merge.
+3. **Normalisation lives inside `derive_check_id`**, in one private
+   helper shared with the `where:` scope normalisation
+   (`checks/model.py`, around line 164). The loader passes raw strings;
+   there is exactly one whitespace rule in the codebase.
+4. **Signature.** `derive_check_id` gains a keyword-only
+   `identity: Sequence[tuple[str, str]] = ()`. Existing callers pass
+   nothing and get a byte-identical digest input.
+5. **Loader** builds the pairs from the parsed options dict (after
+   `plain()`, after validation), in `identity_options` order, skipping
+   absent keys. A missing or non-string option has already produced its
+   diagnostic (rule 5); no id is derived for it.
+6. **The four guard tests**, all required:
+   - M5's pinned ids, written and green on `main` first;
+   - a unit test that `derive_check_id(p, d, c, w)` with no identity
+     equals `sha1(f"{p}\0{d}\0{c}\0{scope}")[:16]`;
+   - a test over `all_metrics()` that every registered metric other than
+     `failed_rows` and `sql_metric` has `identity_options == ()`, and that
+     every declared entry is a key of the metric's `options` with kind
+     `OptionType.STRING`;
+   - the one-line golden diff (M6).
+7. **Not a public contract.** The metric registry stays internal until
+   Phase 5. `identity_options` is kept out of user docs
+   (`docs/check-language.md` describes the behaviour, M12, not the
+   attribute). The architect's note for ROADMAP H1 (plugin SDK) — decide
+   there whether third-party metrics may declare identity options — is
+   recorded here, not added to the backlog (frozen).
 
 ### Open questions for REFINE
 
-- **Q1 (architect)** The seam and the encoding: `identity_options` on
+- **Q1 (architect)** *Answered in REFINE: `identity_options` on
+  `Metric`, encoding unchanged, keyword-only parameter keeps existing
+  input byte-identical; not a public contract. See "Build constraints".*
+  The seam and the encoding: `identity_options` on
   `Metric`, or a narrower mechanism? Is `\0{name}={normalised}` the right
   encoding, and does the new parameter to `derive_check_id` keep the
   byte-identical guarantee for every existing caller? Is a third-party
   metric (the registry is open) allowed to declare identity options, and
   should the docs for writing a metric say so?
-- **Q2 (data-steward)** Is whitespace-only the right definition of a
+- **Q2 (data-steward)** *Answered in REFINE: yes, see "REFINE answer to Q2".* Is whitespace-only the right definition of a
   reformat, given `total<0` ≠ `total < 0` and `'a  b'` = `'a b'`? The
   alternative (lowercasing outside quotes, stripping comments) needs a
   SQL tokenizer per dialect, which PLAN rejects as a non-goal.
-- **Q3 (data-steward)** The upgrade advice: is "set `id:` to the old
+- **Q3 (data-steward)** *Answered in REFINE: yes, with M13's CHANGELOG wording; `list` unchanged. See "REFINE answer to Q3".* The upgrade advice: is "set `id:` to the old
   derived id" something a steward can follow from the CHANGELOG alone,
   or does `tablewatch list` need to show the full 16 characters (it
   shows 12)? `list --output json` prints the full id today; confirm, or
@@ -536,6 +735,14 @@ breaking change for existing history, who is affected, and the "set
   could disagree with the loader after the change (the JSON and JUnit
   reporters, `selection.py`'s check-id selector, the API's
   `_is_check_id`)? PLAN found none that recompute it.
+  *Answered in REFINE (architect): none re-derives an id.
+  `selection.py` prefix-matches loaded ids; the store prefix-matches
+  stored ids; the server's `_is_check_id` checks shape, then looks up
+  loaded ids; an old id's history stays readable; compiled wiring uses
+  loaded ids; the JSON and JUnit reporters print `check.id`;
+  `results/state.py` keys on the stored id; the frontend treats ids as
+  opaque; `_defaults.yml` cannot supply `condition:` or `query:`. The
+  qa-engineer still probes these in VERIFY (Reviewers required).*
 
 ## Reviewers required
 
@@ -560,5 +767,6 @@ breaking change for existing history, who is affected, and the "set
 
 **S.** One attribute on two metrics, one parameter on
 `derive_check_id`, the loader passing the values, a docs section, the
-golden row and three pinned test ids, and tests (M5 first). Score 2.0
+golden row and three pinned test ids, and tests (M5 first, then the
+other guard tests in "Build constraints"). Still S after REFINE. Score 2.0
 (reach 2, impact 1, confidence 1.0, effort 1).
