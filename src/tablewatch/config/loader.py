@@ -706,7 +706,7 @@ class _ChecksLoader:
             self.diagnostics.append(
                 error(
                     f"`{key}:` has no values: {hint.all_null}",
-                    source.of_value_or_node(node, key),
+                    source.of_value(node, key),
                 )
             )
             return None
@@ -720,7 +720,7 @@ class _ChecksLoader:
         ok = _matches(value, kind)
         if not ok:
             self.diagnostics.append(
-                error(f"`{key}:` must be a {kind}", source.of_value_or_node(node, key))
+                error(f"`{key}:` must be a {kind}", source.of_value(node, key))
             )
         return ok
 
@@ -768,9 +768,5 @@ def _span(lines: Sequence[str], root: MappingNode, index: int) -> SourceSpan | N
 
 def _own_key_line(source: YAMLSource, node: CommentedMap, key: str) -> int | None:
     """The 1-based line of a key written in this mapping; None if absent or merged."""
-    if key not in node:
-        return None
-    try:
-        return source.of_key(node, key).line
-    except KeyError:  # brought in by a `<<:` merge: it has no line here
-        return None
+    own = source.of_own_key(node, key)
+    return own.line if own is not None else None
