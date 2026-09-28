@@ -193,7 +193,7 @@ def test_the_same_sql_twice_is_a_duplicate(
     code, _, err = invoke(lake, "validate")
     assert code == 3
     assert err.splitlines()[0] == (
-        f"checks/orders.yml:{6 if 'failed' in first else 6}:5: error: duplicate "
+        f"checks/orders.yml:6:5: error: duplicate "
         "check (also at checks/orders.yml:4:5) — give one of them an explicit `id:`"
     )
 
