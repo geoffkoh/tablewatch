@@ -105,7 +105,7 @@ identifiers: `missing_count("Order ID") = 0`.
 | `min` `max` `avg` `sum` | column | number | In the column's own units. |
 | `freshness` | column | duration | Age of the newest timestamp. |
 | `failed_rows` | — | count | Rows matching `condition`. Bare `- failed_rows:` expects 0. |
-| `sql_metric` | optional label | number | The number your `query` returns. |
+| `sql_metric` | optional label | number | The number your `query` returns. The label is for display; the `query` already tells two checks apart. |
 | `schema` | — | count | Problems with the options below, shown as `N problems`. Bare `- schema:` expects 0. |
 
 ### Metric options
@@ -175,16 +175,42 @@ timestamp, to judge it.
 
 History, and in later phases alert state, follows a check by its **id**.
 Without an explicit `id:`, the id is derived from the file path, the dataset,
-the normalised expression and triggers, and the `where:` scope.
+the normalised expression and triggers, the `where:` scope and, for
+`failed_rows` and `sql_metric`, the `condition:` or `query:`. For those two
+metrics the SQL *is* the check, so two `failed_rows` checks with different
+conditions on one dataset are two checks, each with its own history.
 
-- Reformatting (`row_count>0` → `row_count > 0`) keeps the id.
-- Changing the expression, triggers, `where:`, or moving the file starts a
-  new history. Set `id:` to keep history across such edits.
-- Refining options such as `valid_values` keeps the id: it's the same check,
-  stated better.
+- Reformatting the expression (`row_count>0` → `row_count > 0`) keeps the id.
+- Reflowing `where:`, `condition:` or `query:` keeps the id: adding or
+  removing spaces, tabs and line breaks between words, or switching to a YAML
+  block (`|`, `>`) or to quotes. Any run of whitespace, including
+  non-breaking spaces, counts as one space, even inside a quoted string, so
+  `status = 'a  b'` and `status = 'a b'` share an id. A line break counts as
+  a space too, so moving one into or out of a `--` comment keeps the id even
+  though it changes what the SQL does. Any other edit to that SQL starts a new
+  history, including a change of letter case (`AND` → `and`), a `--`
+  comment added or edited, a `;`, parentheses, and removing the space
+  between two words (`total < 0` → `total<0`). tablewatch does not parse
+  your SQL, so it cannot tell that these mean the same.
+- Changing the expression, triggers, `where:`, `condition:` or `query:`, the
+  dataset, or moving the file starts a new history. The old results stay
+  readable under the old id (`tablewatch history <old id>`).
+- Other options still do not count: refining `valid_values`,
+  `missing_values` or `schema`'s column lists keeps the id. It's the same
+  check, stated better. `name:` does not count either.
 - Two checks that would get the same id are an error. Give one an `id:`.
-- An explicit `id:` uses letters, digits, `.`, `_`, `:` and `-`, starts with a
-  letter or digit, and is at most 64 characters.
+- To explain a check, use a YAML `# comment` or `name:`; neither touches the
+  id. Don't use a SQL `--` comment: in `condition:` it comments out the rest
+  of the dataset's scan and the check errors, and in `query:` it is part of
+  the id.
+- Before reformatting the SQL of a check whose history matters, pin its
+  current id: copy all 16 characters of its `id` from
+  `tablewatch list --output json` into `id:`. Not the 12 that
+  `tablewatch list` shows: a 12-character `id:` is accepted but starts a new
+  history.
+- An explicit `id:` is never derived, so edits to the check don't change it.
+  It uses letters, digits, `.`, `_`, `:` and `-`, starts with a letter or
+  digit, and is at most 64 characters.
 
 ## Security note
 
