@@ -8,7 +8,7 @@
 | Size | S |
 | Depends on | the owner's decision (option 1, 2026-09-27, ITERATIONS.md): change the id now, **no history migration** |
 | Branch | `iter/009-check-identity` |
-| Status | **ready** (REFINE settled 2026-09-28: data-steward answered Q2/Q3, architect approved Q1 with build constraints and answered Q4; planned in iteration 9 PLAN against `main` at `efa1a4e`). Every "today" id below was measured on `main` by loading the exact files with `tablewatch.load()` and the CLI; every "after" id was computed with the derivation in "The derivation", below |
+| Status | **shipped** (iteration 9, PR #14, reviewed 2026-09-28: 16/16 scenarios, M13 closed by the CHANGELOG entry in REVIEW; see ITERATIONS.md). Was **ready** (REFINE settled 2026-09-28: data-steward answered Q2/Q3, architect approved Q1 with build constraints and answered Q4; planned in iteration 9 PLAN against `main` at `efa1a4e`). Every "today" id below was measured on `main` by loading the exact files with `tablewatch.load()` and the CLI; every "after" id was computed with the derivation in "The derivation", below |
 
 ## Problem and persona
 

@@ -194,6 +194,35 @@ All notable changes to tablewatch. The format follows
   printed warnings. It says, for example, `1 datasets, 1 checks — no
   errors, 1 warning`, and still exits 0. A script that looks for "no
   problems found" will not see it on a project with warnings.
+- **Check ids: `failed_rows` and `sql_metric`.** `failed_rows` and
+  `sql_metric` checks with no `id:` get a new id, so two such checks with
+  different SQL on one dataset no longer collide. Before, two
+  `failed_rows` checks on one table (say `total < 0` and
+  `customer_id is null`) were reported as duplicates and nothing in the
+  project ran until one was given an `id:`. The id now includes the
+  check's `condition:` or `query:`; reformatting the SQL (spacing, line
+  breaks, a block scalar) keeps the id, and changing what it says starts
+  a new one. Every other check keeps its id.
+
+  Their history starts again on the first run after upgrading; old
+  results stay readable with `tablewatch history <old id>`. To keep one
+  history: **before upgrading**, run `tablewatch list --output json` and
+  note each such check's `id`; after upgrading, add `id: <that id>` to
+  the check. Use all 16 characters, not the 12 `tablewatch list` shows:
+  a 12-character id is accepted but starts a new history. Already
+  upgraded? This lists old ids from the results store:
+
+  ```sql
+  SELECT check_id, check_name, source, MAX(r.started_at) AS last_run
+  FROM tablewatch_check_results c
+  JOIN tablewatch_runs r ON r.id = c.run_id
+  WHERE c.metric IN ('failed_rows', 'sql_metric')
+  GROUP BY check_id, check_name, source;
+  ```
+
+  A check can show more than one id (for example if its file was moved);
+  the old id is the one whose `last_run` is the last run before you
+  upgraded. See "Check identity" in `docs/check-language.md`.
 
 ### Fixed
 
