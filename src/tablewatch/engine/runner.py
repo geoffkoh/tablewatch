@@ -317,5 +317,8 @@ def _internal_error(
 
 def _short_error(exc: BaseException) -> str:
     """An exception's first line, capped: it is stored and served over the API."""
-    text = error_message(exc)
+    try:
+        text = error_message(exc)
+    except Exception:  # an exception whose str() itself raises
+        text = type(exc).__name__
     return text if len(text) <= 500 else f"{text[:497]}..."

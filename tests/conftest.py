@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import shutil
 import sqlite3
 import textwrap
@@ -128,7 +129,14 @@ def retail(tmp_path: Path) -> Path:
 
 
 def invoke(project: Path, *args: str) -> tuple[int, str, str]:
-    outcome = CliRunner().invoke(cli, ["--project-dir", str(project), *args])
+    # The CLI configures the `tablewatch` logger; put it back, so a later
+    # test of the library's own logging does not depend on test order.
+    logger = logging.getLogger("tablewatch")
+    saved = (logger.handlers[:], logger.level, logger.propagate)
+    try:
+        outcome = CliRunner().invoke(cli, ["--project-dir", str(project), *args])
+    finally:
+        logger.handlers[:], logger.level, logger.propagate = saved
     return outcome.exit_code, outcome.stdout, outcome.stderr
 
 

@@ -59,7 +59,10 @@ def _run_scan(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
     measured.queries += 1
     try:
         row = conn.execute(scan).one()
-    except SQLAlchemyError as exc:
+    except Exception as exc:
+        # SQL errors, and a driver that cannot convert a fetched value (a
+        # year-1 TIMESTAMPTZ west of UTC raises OverflowError): each measure
+        # alone, so only the one that fails errors (rule 7).
         conn.rollback()
         log.info(
             "batched scan of %s failed (%s); retrying each measure alone",
@@ -77,7 +80,7 @@ def _scalar(conn: Connection, key: str, statement: Any, measured: Measured) -> N
     measured.queries += 1
     try:
         measured.values[key] = conn.execute(statement).scalar()
-    except SQLAlchemyError as exc:
+    except Exception as exc:  # SQL errors, and values the driver cannot fetch
         # Postgres refuses further statements in a failed transaction.
         conn.rollback()
         measured.errors[key] = error_message(exc)
