@@ -8,7 +8,7 @@
 | Size | S |
 | Depends on | nothing |
 | Branch | `iter/010-loader-tracebacks` |
-| Status | **ready** (iteration 10 PLAN, 2026-09-28, against `main` at `37a2004`). Every "today" output below was measured on `main` with `tablewatch validate`; every "after" output was measured with a throwaway prototype of the design notes (scratchpad only, not product code), so positions and messages are real, and wording is open to REFINE |
+| Status | **shipped** (iteration 10, PR #15, 2026-09-29). REFINE settled 2026-09-28 (data-steward on Q2; architect on Q1 and Q4; the PM settled Q3 — see "Open questions", now settled). Planned in iteration 10 PLAN, 2026-09-28, against `main` at `37a2004`. Every "today" output below was measured on `main` with `tablewatch validate`; every "after" output was measured with a throwaway prototype, then confirmed on the build by the data-steward through the real CLI (23/23) |
 
 ## Problem and persona
 
@@ -371,33 +371,44 @@ anything but `ProjectError` (for `tablewatch.yml`), and never make
 
 - **Rule 5** is the whole point; **rule 7's exit codes** are the harm
   today (a traceback exits 1, "fail"). No rule is bent.
-- One place catches everything: `YAMLSource.load`. Catch `ReaderError`
-  (character index → line/col over the text as read), decode bytes
-  ourselves to catch `UnicodeDecodeError` (byte offset → line/col over the
-  decoded prefix), keep `MarkedYAMLError`, and treat any other exception
-  from `yaml.load` as the file's fault (a third-party parser over user
-  text). Keep universal-newline behaviour identical to `read_text`, so
-  every existing position holds (T8).
-- Merges: make `of_key` / `of_value` merge-aware (fall back to the
-  merged mapping that supplies the key, recursively, as
-  `of_value_or_node` already does) so every call site is safe, rather
-  than patching call sites one by one. `_own_key_line` must still return
-  `None` for a merged `filter:` (spec 006: a merged key has no line of
-  its own in *this* file's block). `locate()` in `tablewatch.yml` uses
-  the same lookup.
-- G's position: compose the text (composing does not construct), walk
-  the nodes, construct each explicitly tagged scalar, and report the first
-  that fails at its `start_mark` (the tag). The prototype did this in
-  about 20 lines.
+- **One layered catch in `YAMLSource.load` (settled in REFINE, Q4).**
+  In order: `read_bytes`; a UTF-16/UTF-32 byte-order-mark check (T5b,
+  the encoding named); decode the whole file as UTF-8 and, on
+  `UnicodeDecodeError`, place the diagnostic from `exc.start` over the
+  decoded prefix (T5); universal newlines applied by hand, identical to
+  `read_text`, so every existing position holds (T8, T1b); then
+  `ReaderError` (character index → line/col) → `MarkedYAMLError` (as
+  today) → any other `Exception` from `yaml.load`, treated as the file's
+  fault (a third-party parser over user text). Only the catch-all runs
+  the tag locator (G), and it logs the original exception at debug
+  level so a genuine ruamel bug stays findable.
+- **One merge-aware resolver, `_owner` (settled in REFINE, Q1).** It
+  looks in the mapping's own `lc.data`, then in `node.merge`,
+  recursively, and never returns a mapping that does not hold the key.
+  `of_key` / `of_value` go through it, so every call site is safe;
+  `of_value_or_node` is deleted. `of_own_key` (own keys only) serves
+  `_own_key_line`, so a merged `filter:` keeps `filter_line` `None`
+  (spec 006). `locate()` in `tablewatch.yml` uses the same lookup. No
+  caller relied on the `KeyError`.
+- **G's position (settled, Q3: G1 stays a must, exact positions).**
+  Compose the text (composing does not construct), walk the nodes, and
+  report the first explicitly tagged node that fails to construct, at
+  its tag. Built as: one iterative node walker (`walk_nodes`, shared
+  with `spans.py`, with a visited set so an alias cycle cannot recurse);
+  innermost node first; the value shown is built from the composed tree
+  and shortened when long. Verbatim `!<tag:…>` and `%TAG` shorthand tags,
+  and nesting deeper than about 250 levels, fall back to `1:1` (allowed
+  by G2).
 - Tests: most scenarios are loader tests with no database; M1, M3 and
   X1's `run` on DuckDB and SQLite (a `run` touches a backend).
 - Check identity is untouched: nothing here feeds `derive_check_id`.
 
-**Open questions for REFINE**
+**Open questions for REFINE — all settled**
 
 1. (tech lead / architect) Merge-aware `of_key`/`of_value` everywhere,
-   versus a separate lookup at each call site. The PM prefers the former;
-   does any caller rely on the `KeyError` (only `_own_key_line` is known)?
+   versus a separate lookup at each call site. **Settled:** one
+   merge-aware resolver (`_owner`), above; only `_own_key_line` needed
+   own keys, and it has `of_own_key`.
 2. (data-steward) Wording of the three new messages. **Answered in
    REFINE:** T names the characters people paste, and says "hidden"
    (see "Message format" under T); T5 names no editor or product, and
@@ -407,8 +418,10 @@ anything but `ProjectError` (for `tablewatch.yml`), and never make
 3. (tech lead) G: is compose-and-reconstruct worth it for a rare
    mistake, or is `1:1` enough (G1 then drops to should)? The PM's view:
    keep G1 a must, it is cheap and rule 5 names line and column.
+   **Settled:** G1 stays a must, at exact positions.
 4. (architect) Should `YAMLSource.load`'s catch-all log the original
    exception at debug level, so a genuine ruamel bug is still findable?
+   **Settled:** yes, inside the layered catch above.
 
 ## Reviewers required
 

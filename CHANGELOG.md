@@ -269,6 +269,43 @@ All notable changes to tablewatch. The format follows
   the first passed every run and the second errored every run with a
   database message that could quote a row value. Editors that use
   tablewatch's JSON Schema underline both as you type.
+- **A broken check file, `_defaults.yml` or `tablewatch.yml` is reported
+  at its `file:line:col`, and `validate`, `list`, `compile` and `run`
+  exit 3.** Before, some mistakes stopped tablewatch with a Python
+  traceback and **exit 1**, which a scheduler reads as "a check failed"
+  rather than "the project is broken". Every other check file is still
+  read and reported in the same pass; `tablewatch.load()` returns the
+  diagnostics instead of raising (a broken `tablewatch.yml` raises
+  `ProjectError`, as before). The cases:
+  - An invisible control character, for example a form feed pasted from
+    a PDF or wiki page, or Word's vertical tab:
+    `checks/orders.yml:2:13: error: invalid YAML: hidden control character U+000C (form feed) is not allowed; delete it`.
+  - A file that is not UTF-8, such as a Notepad "ANSI" file holding a
+    curly apostrophe from Word:
+    `not UTF-8 text: byte 0x92 cannot be decoded; save the file as UTF-8`.
+    A UTF-16 or UTF-32 file (Windows PowerShell's `>` writes UTF-16) says
+    `not UTF-8 text: the file is UTF-16; save it as UTF-8`.
+  - An explicit YAML tag on a value that does not fit it, such as
+    `!!int xyz`: `invalid YAML: 'xyz' is not a valid !!int`, at the tag.
+- **YAML merge keys (`<<:`) work everywhere a check file,
+  `_defaults.yml` or `tablewatch.yml` accepts a key.** Before, a merge
+  inside a check's options, in a check item, at a file's root or in
+  `tablewatch.yml` could crash the loader. So you can now share
+  triggers through an anchor:
+
+  ```yaml
+  checks:
+    - missing_percent(email):
+        <<: &nulls {warn: when > 1%, fail: when > 5%}
+    - missing_percent(phone):
+        <<: *nulls
+  ```
+
+  A key written beside the merge wins over the merged one, as YAML
+  says. A mistake inside merged content is reported where it is
+  written, inside the anchor (once for each check that uses it).
+  Moving `warn:` and `fail:` into an anchor keeps the check's id, so
+  its history continues.
 
 ## 0.1.0 — not yet published
 

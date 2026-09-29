@@ -6,6 +6,113 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 10 — A broken check file is a diagnostic, never a traceback (I-36), 2026-09-29
+
+- **Spec:** [010-loader-tracebacks](specs/010-loader-tracebacks.md).
+  **Branch:** `iter/010-loader-tracebacks`. **PR:** #15. The backlog
+  freeze holds: no items added.
+- **PLAN (2026-09-28)** widened I-36 by a sweep on `37a2004`: besides the
+  two reported crashes, non-UTF-8 files (UTF-16 included), explicit tags
+  ruamel cannot construct, and `<<:` merges at every located key, in
+  check files, `_defaults.yml` and `tablewatch.yml`. Still S.
+- **REFINE (2026-09-28).** The data-steward settled the wording (Q2:
+  "hidden control character", names only for the characters people
+  paste, no editor names, a UTF-16 message of its own) and added the
+  real-world cases (Notepad CRLF, Word's `’` in an ANSI file,
+  PowerShell UTF-16, shared triggers in an anchor, M7 on ids). The
+  architect settled Q1 (one merge-aware resolver) and Q4 (a layered
+  catch with a debug log); the PM kept G1 a must (Q3). **Process note:**
+  the auto-mode permission classifier was unavailable for several
+  turns, so the PM's REFINE-settle edits to the spec could not be
+  written then; they are applied in this REVIEW (status, design notes,
+  questions marked settled). The loop paused until tools recovered; no
+  work was lost. The PM's PLAN run and the architect's VERIFY run each
+  stalled once on the watchdog and were resumed.
+- **Shipped:** any file the loader reads that it cannot parse is now a
+  `Diagnostic` at `file:line:col`, exit 3, from `validate`, `list`,
+  `compile` and `run`; `tablewatch.load()` returns it (a broken
+  `tablewatch.yml` raises `ProjectError`). Control characters, non-UTF-8
+  bytes, UTF-16/UTF-32 files, bad explicit tags and `<<:` merges no
+  longer produce a traceback and exit 1. Merged keys load as written
+  everywhere, own keys win, and a mistake in merged content is placed
+  inside the anchor. Code: `config/yamlsource.py` (+225 lines: the
+  layered catch, `_owner`, the tag locator, `walk_nodes`),
+  `config/spans.py` and `config/loader.py` (small); no store, exit
+  code, id, frontend or bundle change. Commits `ff13742` (build),
+  `c28d6b6` (architect follow-ups), `06b47b9` (QA fixes and tests).
+- **Acceptance.** Every `must` (T1–T8, G1, G3, M1–M7, X1) and the
+  `should`s (T4b, T5b, G2, X2) pass as automated tests; M1 and M3 run on
+  DuckDB and SQLite. The data-steward walked 23/23 through the real CLI.
+  Suite: **1158 passed, 1 xfailed** (I-20's known uvicorn case); ruff,
+  ruff format and strict mypy clean.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — fail, then fixed (`06b47b9`).* **Blocking:** a YAML
+    file with an alias cycle (`x: &a [*a]`, `x: &a {<<: *a}`) plus any
+    construct failure made the error locator's recursive walk raise
+    `RecursionError`: a traceback and exit 1 in all three file kinds, the
+    very bug this iteration removes. Fixed: `walk_nodes` is iterative
+    with a visited set. Non-blocking, all fixed: a bad tag inside a
+    tagged collection was blamed on the collection (now innermost
+    first); a valid tagged value holding an alias was blamed (now built
+    from the composed tree, not a slice of text); UTF-32 files were
+    called UTF-16 (now named); long values are shortened in the message;
+    `&x !!int xyz` is placed at its tag. Remaining `1:1` fallbacks, which
+    G2 allows: verbatim `!<tag:…>` and `%TAG` shorthand tags, and nesting
+    deeper than about 250 levels. Added `tests/test_loader_tracebacks_qa.py`:
+    random-byte property tests (400 + 40 in the suite, 3,000 more by
+    hand, no traceback), every forbidden code point, a BOM on line 1 with
+    LF/CRLF/CR, nested merges everywhere, and a merged `filter:` (and a
+    merge of a merge) keeping `filter_line` `None`. Confirmed that
+    `ReaderError.position` counts a leading BOM.
+  - *architect — approve with follow-ups, all adopted (`c28d6b6`).* The
+    build matches the REFINE design. `_owner` never returns a mapping
+    that does not hold the key (the last raise path); one node walker
+    (`walk_nodes` in `yamlsource.py`, used by `spans.py`); one BOM
+    constant; a redundant exception tuple dropped. Nothing in
+    `loader.py` uses a ruamel exception as a signal any more.
+  - *data-steward — accept.* 23/23 through the CLI, every message,
+    position and exit code as specified; no doc changes needed.
+  - *security-reviewer — not required* (spec: no PROCESS.md trigger).
+- **Not added (backlog freeze).** For the owner; none is a traceback,
+  none fits an existing item:
+  1. One mistake in an anchor that three checks merge gives three
+     identical diagnostic lines (spec sweep item 6; true of aliases
+     before this iteration too). Collapsing identical `file:line:col` +
+     message lines would be kinder.
+  2. A check file's root key that holds only an anchor (`base: &b
+     {…}`) is "unknown key": the check-file form of sweep item 4
+     (`x-` anchor holders in `tablewatch.yml`).
+  3. `docs/check-language.md` could say that moving triggers into an
+     anchor keeps the check's id (M7 proves it; the CHANGELOG says so).
+     A user-doc line owned by the data-steward, who judged it optional.
+  4. The rest of the spec's sweep list (items 1–5: a self-containing
+     `valid_values`, `!!omap` options ignored, a huge duration's display,
+     `x-` anchor holders in `tablewatch.yml`, `where:` SQL not parsed at
+     load) stays as listed there.
+- **Deferred:** nothing a `must` or `should` asked for.
+- **Backlog:** I-36 done. No new items, no score moves.
+- **Learned:**
+  - The fix for "never a traceback" had a traceback of its own: the
+    error locator walked the node graph recursively, and YAML graphs can
+    be cyclic. Code that runs only on the error path needs the same
+    adversarial input as the happy path; QA's property tests found what
+    the scenarios did not. For any future parser-facing work, a
+    random-input property test belongs in the spec, not only in VERIFY.
+  - Measuring every "after" output with a throwaway prototype in PLAN
+    paid off again: the data-steward's 23/23 matched the spec to the
+    column with no wording churn in VERIFY.
+  - A tooling outage cost a REFINE write, not a decision: the decisions
+    were in the reviewers' reports, and REVIEW could fold them in. Next
+    time the tech lead should confirm a spec edit landed before BUILD
+    starts, so the spec on the branch matches what was built throughout.
+- **Next:** I-41, freshness on a DuckDB `TIMESTAMPTZ` column errors on
+  every run (2.0, rank 1a). It is the next of the remaining loud
+  correctness fixes that rank above the UI chain's polish, it is
+  reproduced, and it has no dependencies. If the fix adds `pytz`, it is
+  a dependency and the security-reviewer is required. I-42 (2.0)
+  follows; I-06 (4.5) still waits behind the UI chain by the owner's
+  priority.
+
 ## Iteration 9 — Two `failed_rows` checks on one table are two checks (I-33), 2026-09-28
 
 - **Spec:** [009-check-identity](specs/009-check-identity.md).
