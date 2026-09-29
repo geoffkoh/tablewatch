@@ -133,6 +133,26 @@ All notable changes to tablewatch. The format follows
 
 ### Changed
 
+- On a check's page, the history table's Rule column now says
+  "Current" only for the results the chart shades under today's rule.
+  An older result judged by the same rule, before a different rule ran,
+  reads "Same as current, before a rule change", so the table and the
+  chart no longer disagree after a rule is changed and changed back.
+- A result with no value (an empty table, or a `where:` that matches no
+  rows) now reads "No value measured" under Latest result and on the
+  overview, as it already did in the history table, instead of a bare
+  "—" that looked like nothing to report.
+- A `between` rule's two lines on the history chart are labelled with
+  the end each one marks (`>= 50` and `<= 60`; `< 50` and `> 60` for
+  `not between`) instead of both repeating the whole rule, which is
+  still shown above the chart. Thresholds on the chart are shown exactly,
+  never rounded. A label for a threshold off the chart ("10,000 above")
+  sits on the side it names and clear of the latest value.
+- In a check's **Source** section, line numbers stay at the left edge
+  when a long line is scrolled sideways, so you can always tell which
+  line you are reading. Copying the lines is unchanged: no line numbers,
+  no extra blank line.
+
 - API timestamps always carry six fractional digits
   (`2026-09-26T06:56:12.000000+00:00`); before, the fraction was left out
   when it was zero. Standard date-time parsers read both.

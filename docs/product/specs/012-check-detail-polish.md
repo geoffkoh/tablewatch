@@ -9,7 +9,7 @@
 | Depends on | I-05 ✓, I-29 ✓ |
 | Branch | `iter/012-check-detail-polish` |
 | Touches | `frontend/**`, `docs/UI_SPECIFICATION.md` and the committed bundle only. **No change to `src/`, the API, `openapi.json`, the store or the CLI** |
-| Status | **ready** (iteration 12 PLAN, 2026-09-29, against `main` at `d39305f`). Every "today" below was measured on `d39305f`: API output from `tablewatch serve` on a scratch copy of `examples/retail`; chart geometry from `layoutChart` run in vitest on the spec 004 fixtures (`frontend/src/test/fixtures/detail.ts`) |
+| Status | **shipped** (iteration 12, PR #17; branch at `bb3247a`). Was **ready** (iteration 12 PLAN, 2026-09-29, against `main` at `d39305f`). Every "today" below was measured on `d39305f`: API output from `tablewatch serve` on a scratch copy of `examples/retail`; chart geometry from `layoutChart` run in vitest on the spec 004 fixtures (`frontend/src/test/fixtures/detail.ts`) |
 
 ## Problem and persona
 
@@ -294,6 +294,8 @@ New fixture: `recorded`'s `366d9254d889c910` history (two passes at
 - Then all three line numbers stay visible at the block's left edge,
   each level with its line, and the text passes under the number column,
   not over it
+- And there is no blank line between lines; the block is exactly three
+  lines tall
 - And the page itself never scrolls sideways (P16, unchanged)
 - And a hand selection of the three lines, pasted into a text editor,
   holds no line numbers; **Copy the source** copies `text` exactly
@@ -387,6 +389,35 @@ with `rule.expect` `{kind: "between", low: 50.0, high: 60.0, negated:
 false, text: "between 50 and 60"}`; N2's check serves its source as four
 lines once an `id:` is added (the spec's three-line YAML has no `id:`;
 either shape is fine for N2).*
+
+*Settled in REFINE and BUILD (recorded by the PM in iteration 12
+REVIEW): Q1 and Q4 by the ui-engineer; L3's non-finite case by the tech
+lead; below.*
+
+- **Q1 answer (ui-engineer):** the gap is a function of the pair: 20
+  units next to the latest label, 14 between any other two right labels.
+  B7 and B8 hold together on the four B7 fixtures; B8 is asserted on
+  those four only. Where a general case would need the two to conflict,
+  B7 wins (QA's general-B8 test asserts that decision). Two off-range
+  labels on one side are ordered by value.
+- **Q4 answer (ui-engineer):** no objection; the overview row's
+  no-value result changes with L2.
+- **L3, a non-finite value (tech lead, option (b)):** "No value
+  measured" is shown only when `value` is null **and** `display_value`
+  is `"—"`. A non-finite value (for example `inf`) shows its
+  `display_value`, closing a gap the history table already had. The
+  chart's mark for such a value still reads "no value measured" (not in
+  this slice).
+- **Thresholds are never rounded:** the boundary and off-range labels
+  show the number exactly (`1e-25` is not `0`, `1.23e21` is not
+  `1.235E21`), falling back to the number as written when the compact
+  formatter would change it.
+- **N1's element:** the number stays `.line::before`, now
+  `position: sticky; left: 0` on an opaque surface; each `.line` is a
+  block inside a `<code>` that is `width: max-content; min-width: 100%`,
+  and each line keeps its `\n` inside its span. Select all in
+  the SQL and Source blocks ends inside the last text node, so WebKit
+  does not add a trailing newline.
 
 1. **ui-engineer:** the crowding rule in B7 (20 units from the latest
    label; edge labels ordered by their side). Is 20 right at the chart's
