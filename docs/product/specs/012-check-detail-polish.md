@@ -130,8 +130,10 @@ K1, L1, B1, B4 and N2 by hand against a real `serve` in VERIFY.
   `missing_percent(email) < 15%`)
 - When the check page renders
 - Then N's Rule cell reads "Current"
-- And C's Rule cell reads "Same as current, before a rule change", with
-  no "Current" and no "Different rule" flag
+- And C's Rule cell reads exactly "Same as current, before a rule change",
+  with no "Current", no "Different rule" flag and no expression (the
+  text is today's, already shown above the chart), styled `quiet` like
+  "Current" and "Same as the newest": it is a note, not a warning
 - And M's reads "Different rule" `missing_count(email) = 0` and A's
   "Different rule" `missing_percent(email) < 5%` (unchanged)
 - And the chart is unchanged: the fail band starts at rule change 3 (the
@@ -147,6 +149,12 @@ K1, L1, B1, B4 and N2 by hand against a real `serve` in VERIFY.
 - And every row in the current run whose recorded `dataset` equals the
   check's reads "Current"; a row in the current run with another dataset
   keeps its "Other dataset" flag (spec 004 D20, unchanged).
+- *(`should`)* "Current" follows the run, not whether a band is drawn:
+  on a check whose current-run values are all NULL (no band area to
+  shade, only the No value lane), those rows still read "Current". An
+  entry `buildSeries` drops for an unreadable `started_at` is never
+  "Current" (the API always sends ISO times, so this is a guard, not a
+  case).
 
 **K3: a pending edit** `must`
 - Given `edited-pending` (history C `< 15%`, A `< 5%`; the check now
@@ -366,6 +374,20 @@ dependencies; `package.json` `dependencies` still exactly `react` and
 
 ### Open questions for REFINE
 
+*Answered by the data-steward in REFINE (2026-09-29): Q2 and Q3, below
+the list. The K, L and B "today" measurements were repeated on a scratch
+retail copy served from this branch (still `d39305f` in `src/` and the
+bundle) and hold: `email-completeness` run as A `< 5%`, C `< 15%`, M
+`missing_count(email) = 0`, N `< 15%` gives history N 20.00% fail, M 1
+fail, C 20.00% fail, A 20.00% fail, all `sales.customers`; `GET
+/checks/avg-on-nothing` and its `GET /checks` row both carry `latest:
+{outcome: "fail", value: null, display_value: "—", message: "no non-NULL
+values in scope"}`; `avg(amount) between 50 and 60` passes at `54.3571`
+with `rule.expect` `{kind: "between", low: 50.0, high: 60.0, negated:
+false, text: "between 50 and 60"}`; N2's check serves its source as four
+lines once an `id:` is added (the spec's three-line YAML has no `id:`;
+either shape is fine for N2).*
+
 1. **ui-engineer:** the crowding rule in B7 (20 units from the latest
    label; edge labels ordered by their side). Is 20 right at the chart's
    12-unit font, and does forcing `above` to the top ever push the latest
@@ -375,9 +397,34 @@ dependencies; `package.json` `dependencies` still exactly `react` and
    `≥ 50` / `≤ 60`. The PM chose ASCII to match the DSL and every other
    rule text on the page; the steward may prefer the symbols for Sam.
    Either is fine if it is the same on all four operators.
+   **Answer (data-steward): ASCII, `>=` `<=` `<` `>`.** Sam never sees a
+   `between` label alone. It sits under "Current rule: Expected between
+   50 and 60", beside the Rule column, and near the Source block, all in
+   DSL text, and on sibling checks next to compare lines labelled from
+   `text` (`>= 100`, `< 5%`), which are ASCII and stay ASCII (B5).
+   Symbols would put `≥ 50` on one chart and `>= 100` on the next for the
+   same idea. Sam would then ask whether they mean different things, and
+   he would be right to. The file he reviews with Dana says `>=`, so
+   that is the form he has to learn anyway. `≥` reads a little better
+   alone, but that is not how Sam reads the page. So B1–B6 stand as
+   written, and no label uses `≥`/`≤`.
 3. **data-steward:** K1's "Same as current, before a rule change". It
    must say that the text is the same *and* that it is outside the
    shaded span; shorter words are welcome.
+   **Answer (data-steward): keep it, exactly "Same as current, before a
+   rule change".** "Same as current" answers "was this judged by today's
+   words?" (yes). "before a rule change" answers "then why isn't it
+   shaded?" (a different rule ran after it, and the shading starts where
+   the chart's "Rule change *n*" marker says). Rejected alternatives:
+   "Same rule, earlier" (same as what? and it hides the reason);
+   anything with "Current" in it (K1 forbids it, and it is the drift
+   this spec removes); "Same as current, before rule change 3" (ties to
+   the caption's number, but the chart numbers changes only when there
+   are two or more and says "Rule changed" for one, so the words would
+   have to vary; not worth it at S). In the K3 `should` case (check
+   changed back, not yet run) the words are still true: a rule change
+   followed that row. Show it `quiet`, with no expression (K1), because
+   it is information, not a defect.
 4. **ui-engineer:** L2 changes the overview's row for a no-value result.
    Spec 003 has no O-scenario that pins `—` (checked: only
    `overview.test.tsx:102`, which asserts its absence on an error). Any
