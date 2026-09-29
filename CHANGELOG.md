@@ -224,6 +224,16 @@ All notable changes to tablewatch. The format follows
   the old id is the one whose `last_run` is the last run before you
   upgraded. See "Check identity" in `docs/check-language.md`.
 
+- The `duckdb` extra now also installs `pytz`. DuckDB needs it to read
+  `TIMESTAMPTZ` values but does not install it itself. If you install
+  `duckdb` on its own rather than through `tablewatch[duckdb]`, add
+  `pytz` too.
+- When tablewatch cannot compute or evaluate a check's value, the
+  `error` message it stores and shows is now the error's first line, at
+  most 500 characters, as database errors already were one line. Before,
+  such a message was kept in full. Results recorded before the upgrade
+  keep their text.
+
 ### Fixed
 
 - A number in a check too large to represent (for example a threshold
@@ -306,6 +316,18 @@ All notable changes to tablewatch. The format follows
   written, inside the anchor (once for each check that uses it).
   Moving `warn:` and `fail:` into an anchor keeps the check's id, so
   its history continues.
+- A freshness check on a DuckDB `TIMESTAMPTZ` column works. Before, it
+  was an `error` on every run ("Required module 'pytz' failed to
+  import") and `tablewatch run` exited 2. A zoned column holds instants,
+  so its age does not depend on the datasource's `timezone`, which only
+  changes how the newest row is displayed. See `docs/check-language.md`.
+- An unexpected error in one check no longer turns every other check on
+  the same table into an `error`. Only the check that hit it reports
+  `error`, with the message `internal error in <metric>: …`; the others
+  report as usual. The same holds when the database driver cannot read
+  back one measured value (for example a year-1 `TIMESTAMPTZ` on DuckDB
+  in a time zone west of UTC): only the checks that need that value
+  error. Exit codes are unchanged.
 
 ## 0.1.0 — not yet published
 

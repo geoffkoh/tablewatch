@@ -6,6 +6,131 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 11 — Freshness on DuckDB `TIMESTAMPTZ`; one check's crash stays on that check (I-41, I-42), 2026-09-29
+
+- **Spec:** [011-freshness-timestamptz](specs/011-freshness-timestamptz.md).
+  **Branch:** `iter/011-freshness-timestamptz`. **PR:** #16. The backlog
+  freeze holds: no items added.
+- **PLAN (2026-09-29)** reproduced I-41 on `af0bd3c` and re-measured
+  I-42: its three recorded triggers already errored only their own check,
+  so what was left (exceptions other than `TypeError`/`ValueError`, and
+  `evaluate()`) rode in the same S slice. Fix chosen: declare `pytz` in
+  the `duckdb` extra (DuckDB imports it for `TIMESTAMPTZ` without
+  declaring it). A SQL cast was rejected (the session zone would change
+  the meaning); text parsing in `MetricContext` was the fallback.
+- **REFINE.** The security-reviewer approved `pytz` (MIT, no
+  dependencies, no native code, no advisories; one maintainer, recorded;
+  `pytz>=2024.1` in the `duckdb` extra and the dev group only, `uv.lock`
+  pins 2026.4 with hashes). Q1 settled with the architect: `except
+  Exception` per check, but only `compute`'s `TypeError`/`ValueError`
+  count as the data's fault; anything from `evaluate()` is internal and
+  logged with a traceback. Q2 (pin DuckDB's session `TimeZone`?) is
+  answered below.
+- **Shipped:** freshness on a DuckDB `TIMESTAMPTZ` column evaluates in
+  every session zone, DST folds and LMT-era values included; the age is
+  the same instant whatever the datasource's `timezone`, which only
+  changes the display. Any exception from a metric's `compute` or from
+  `evaluate()` errors only its own check (`internal error in <metric>:
+  …`); a value the driver cannot fetch (not a `SQLAlchemyError`, e.g.
+  `OverflowError`) now takes the executor's per-measure retry, so only
+  the checks needing it error. Every message from these paths and the
+  dataset-wide net is the exception's first line, capped at 500
+  characters; an exception whose `str()` raises is reported by its type
+  name; `KeyboardInterrupt`/`SystemExit` still stop the run. Code:
+  `engine/runner.py` (+51), `engine/executor.py` (+7), `pyproject.toml`
+  and `uv.lock`; no store, exit code, id, API, frontend or bundle change.
+  The retail example gains `stock_synced_at TIMESTAMPTZ` and
+  `freshness(stock_synced_at) < 1h` (19 checks: 11 pass, 2 warn, 6 fail,
+  exit 1; no existing id moved). Commits `b66e4c8` (build), `e788014`
+  (architect and security follow-ups), `fcc5b99` (QA fixes and tests),
+  `511b642` (retail example and docs).
+- **Acceptance.** Every `must` and `should` in F1 to F9 and I1 to I5
+  passes as an automated test (I1 to I4 on DuckDB and SQLite; F7 across
+  UTC, New York and Kolkata session zones). The data-steward walked 14/14.
+  Suite: **1237 passed, 1 xfailed** (I-20's known uvicorn case); ruff,
+  ruff format and strict mypy clean. The PM re-ran the retail example
+  (19 checks, as above).
+- **Spec correction (F8).** The spec said `-infinity` comes back as
+  `0001-01-01` on both types. That is true only for the bare `duckdb`
+  client; through `duckdb-engine` it arrives as text and is an `error`
+  on both types (`Invalid isoformat string: '290309-12-22 (BC) 00:00:00'`,
+  `+00` on `TIMESTAMPTZ`). The outcomes still agree, which is what F8
+  asks; re-measured by the PM, spec text corrected in this REVIEW.
+- **Reviewer findings and resolution:**
+  - *security-reviewer — approve (REFINE), approve with follow-ups
+    (VERIFY).* Adopted: every stored error message is the first line,
+    capped at 500 characters (per check and in the outer net); the
+    per-check log line names dataset, check id and metric, never values;
+    `KeyboardInterrupt`/`SystemExit` propagate (tested). Follow-up folded
+    into **I-30**: the metric contract must say exception messages carry
+    no row values, and I-30's scope now covers every metric-exception
+    message, including the new `internal error in <metric>:` path and
+    the outer net.
+  - *architect — approve (REFINE and VERIFY).* Adopted: the data-fault
+    / internal split above; data-fault messages also first-line and
+    capped; the `_short_error` name; a guard test that the `duckdb`
+    extra is a subset of the dev group. Recorded: a plugin metric's
+    `TypeError`/`ValueError` gets no traceback (revisit with H1, Phase
+    5); one test reaches into `registry._METRICS` (acceptable for one
+    test). **Q2 answer:** do not pin DuckDB's session `TimeZone`; if it
+    is ever pinned, set it from the datasource's `timezone` at connect
+    time in `datasources/`, a user-visible change that needs its own
+    spec.
+  - *qa-engineer — pass with follow-ups, all fixed (`fcc5b99`).* A
+    value the driver cannot fetch (a year-1 `TIMESTAMPTZ` west of UTC
+    raises `OverflowError`; `TZ=""` raises pytz's
+    `UnknownTimeZoneError`) is not a `SQLAlchemyError`, so it skipped the
+    per-measure retry and errored the whole dataset (rule 7): fixed, the
+    executor retries each measure alone after any fetch error. An
+    exception whose `str()` raises escaped the handler: fixed. Test
+    hygiene: `invoke()` restores the tablewatch logger. Coverage added:
+    every session zone, DST folds, LMT, infinities, year 10000, NULLs and
+    `where:` scopes, SQLite untouched, I2 on SQLite, I5 JSON against
+    history, first-line and cap, `BaseException`s. **Recorded
+    limitation:** west of UTC a year-1 `TIMESTAMPTZ` is `error` (DuckDB
+    cannot fetch it), where `TIMESTAMP` gives `fail`; matching needs the
+    rejected text-cast path. Pinned in
+    `tests/test_freshness_timestamptz_qa.py`.
+  - *data-steward — accept, 14/14.* F9 built (above).
+    `docs/check-language.md`: a zoned column holds instants, `timezone`
+    only changes the display, DuckDB needs the `duckdb` extra (which
+    brings `pytz`). Found the `-infinity` spec error (above).
+- **Not added (backlog freeze).** For the owner; neither fits an
+  existing item:
+  1. The per-check log line names the dataset but not the datasource
+     (data-steward). With two datasources holding a dataset of the same
+     name, the log cannot say which one. Close to I-45 (console names the
+     datasource) but that item is the console table only.
+  2. The 500-character cap covers errors from computing and evaluating
+     a check and the dataset-wide net, not a database error's first line
+     (the executor's `error_message`), which is one line but uncapped
+     (PM, reading the diff). Close to I-31 (redacted error detail), not
+     the same.
+- **Deferred:** nothing a `must` or `should` asked for. Pinning DuckDB's
+  session `TimeZone` stays out (non-goal; Q2 above).
+- **Backlog:** I-41 and I-42 done. I-30 gains a requirement. No new
+  items, no score moves.
+- **Learned:**
+  - The fix for "one check's error stays on its check" had the same gap
+    one layer down: the executor caught only `SQLAlchemyError`, and a
+    driver that cannot convert a value raises plain Python exceptions.
+    Rule 7 needs isolation at every stage that touches data (fetch,
+    compute, evaluate), and the spec named only two of the three. For
+    the next rule-7 item, list the stages in PLAN.
+  - Measuring through the bare `duckdb` client in PLAN gave one wrong
+    "today" (`-infinity`), because tablewatch fetches through
+    `duckdb-engine`, which converts differently. Measure "today" and
+    "after" outputs through `tablewatch run`, as iteration 10 did; use
+    the client only to explain why.
+  - Combining two S items that touch the same path worked: one set of
+    reviewers, one PR, and the combined test files found the fetch gap
+    that neither item alone would have.
+- **Next:** I-27, check detail polish (1.0, rank 2). The loud
+  correctness fixes above the UI chain are done, and the owner's "UI
+  first" priority puts the UI chain's polish ahead of I-06 (4.5), I-16
+  (3.2) and I-10 (2.4). I-35 and I-39 ride with it if the PR stays S.
+  It touches the frontend, so the ui-engineer builds it.
+
 ## Iteration 10 — A broken check file is a diagnostic, never a traceback (I-36), 2026-09-29
 
 - **Spec:** [010-loader-tracebacks](specs/010-loader-tracebacks.md).

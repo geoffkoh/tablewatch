@@ -8,7 +8,7 @@
 | Size | S |
 | Depends on | nothing |
 | Branch | `iter/011-freshness-timestamptz` |
-| Status | **ready** (iteration 11 PLAN, 2026-09-29, against `main` at `af0bd3c`). Every "today" output below was measured on `af0bd3c` with `tablewatch run` or directly against `duckdb` 1.5.5, `duckdb-engine` 0.17.0, SQLAlchemy 2.1.0 |
+| Status | **shipped** (iteration 11, PR #16, 2026-09-29). Was **ready** (iteration 11 PLAN, 2026-09-29, against `main` at `af0bd3c`). Every "today" output below was measured on `af0bd3c` with `tablewatch run` or directly against `duckdb` 1.5.5, `duckdb-engine` 0.17.0, SQLAlchemy 2.1.0 |
 
 ## Problem and persona
 
@@ -98,7 +98,7 @@ Each option was measured against DuckDB 1.5.5 with the session
 
 | Option | Result | Rule check | Verdict |
 | --- | --- | --- | --- |
-| **A. Declare `pytz`** in the `duckdb` extra (and the dev group) | Fetch returns an aware `datetime`. The instant is exact in every session zone tried, including the ambiguous DST hour (`2026-11-01 05:30Z` and `06:30Z` in New York) and an LMT-era value (`1890-01-01`, Kolkata `+05:21:10`). `infinity` / `-infinity` come back as the same naive `9999-12-31 23:59:59.999999` / `0001-01-01` that a `TIMESTAMP` column gives today. Year > 9999 comes back as `str`, as it does for `TIMESTAMP`. No SQL changes. It also fixes every future `TIMESTAMPTZ` fetch on DuckDB, e.g. B6 failed-row samples (Phase 2b) | No rule touched. Adds a **dependency**: pure Python, MIT, no dependencies of its own, no native code, no network; `pytz` 2026.4 is current | **Chosen** |
+| **A. Declare `pytz`** in the `duckdb` extra (and the dev group) | Fetch returns an aware `datetime`. The instant is exact in every session zone tried, including the ambiguous DST hour (`2026-11-01 05:30Z` and `06:30Z` in New York) and an LMT-era value (`1890-01-01`, Kolkata `+05:21:10`). `infinity` comes back as the same naive `9999-12-31 23:59:59.999999` that a `TIMESTAMP` column gives today. *Corrected in REVIEW:* `-infinity` does not come back as `0001-01-01` through tablewatch (only the bare `duckdb` client returns that); through `duckdb-engine` it arrives as text and is an `error` on both types alike (`Invalid isoformat string: '290309-12-22 (BC) 00:00:00'`, with `+00` on `TIMESTAMPTZ`), as it was on `TIMESTAMP` before this iteration. Year > 9999 comes back as `str`, as it does for `TIMESTAMP`. No SQL changes. It also fixes every future `TIMESTAMPTZ` fetch on DuckDB, e.g. B6 failed-row samples (Phase 2b) | No rule touched. Adds a **dependency**: pure Python, MIT, no dependencies of its own, no native code, no network; `pytz` 2026.4 is current | **Chosen** |
 | B. `CAST(col AS TIMESTAMP)` in SQL | Converts to the **session** zone's wall clock (machine-local by default: `16:00` in Singapore, `04:00` in New York for the same row). That value is then read as naive in the datasource's `timezone`, so it is wrong by the machine's offset, silently. It also turns a `DATE` into midnight, so "newest date" is lost | Not arithmetic, so rule 2 is not pressed. But it breaks **rule 3**: the meaning would depend on the DuckDB session setting. Columns are untyped (rule 4), so the cast cannot be limited to `TIMESTAMPTZ` columns | Rejected |
 | C. `epoch(col)` | An aware column comes out right. A naive `TIMESTAMP` is read as UTC, which ignores the datasource `timezone`, and a `DATE` becomes a number. It cannot be limited to aware columns (untyped) | Presses rule 2 (the conversion moves into SQL, per dialect) and breaks the naive-timestamp contract | Rejected |
 | D. `CAST(MAX(col) AS VARCHAR)` on DuckDB only, parsed in Python (a `MetricContext` normalisation like `regex_search`) | Works for the common case, with no dependency. Costs: it parses DuckDB's text format forever; an LMT-era value loses seconds (`1890-01-01 05:21:10+05:21`, 10 s off); `infinity` becomes an `error` on `TIMESTAMPTZ` but stays a pass on `TIMESTAMP`, so the two types disagree; and freshness on an `INTEGER` or `TIME` column changes from "freshness needs a date or timestamp column, got int" to "Invalid isoformat string: '5'". It fixes freshness only | This is rule 3 normalisation, not rule 2: no date arithmetic, and the age is still computed in Python. But it is a DuckDB-only code path the other options don't need | Fallback, only if security review rejects A |
@@ -208,7 +208,10 @@ the instant across zones is acceptable.
 **F8 (should): the edges match `TIMESTAMP`.** On a `TIMESTAMPTZ` column,
 `'infinity'` gives the same outcome and message as a `TIMESTAMP`
 `'infinity'` gives today (`pass` with the placeholder note, `9999-12-31
-23:59:59`). `'10000-01-01 00:00:00+00'` gives `error` with `Invalid
+23:59:59`). *(REVIEW: `'-infinity'` gives the same outcome as on
+`TIMESTAMP`, `error` with `Invalid isoformat string: '290309-12-22 (BC)
+…'`; the messages differ only by the zone suffix. Pinned in
+`tests/test_freshness_timestamptz_qa.py`.)* `'10000-01-01 00:00:00+00'` gives `error` with `Invalid
 isoformat string: …` on that check alone, with `row_count > 0` passing.
 
 **F9 (should): the retail example covers it.** The data-steward adds
