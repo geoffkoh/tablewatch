@@ -8,6 +8,7 @@ mapping and sequence; these helpers turn them into 1-based
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -40,10 +41,11 @@ class YAMLSource:
             raw = self.path.read_bytes()
         except OSError as exc:
             return None, [error(f"cannot read file: {exc.strerror}", self.at(0, 0))]
-        if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        wide = _wide_encoding(raw)
+        if wide is not None:
             return None, [
                 error(
-                    "not UTF-8 text: the file is UTF-16; save it as UTF-8",
+                    f"not UTF-8 text: the file is {wide}; save it as UTF-8",
                     self.at(0, 0),
                 )
             ]
@@ -267,43 +269,81 @@ def _forbidden(character: int | str) -> str:
 
 
 def _bad_tag(text: str) -> tuple[tuple[int, int], str] | None:
-    """The first explicitly tagged value ruamel cannot build, and why.
+    """The innermost explicitly tagged value ruamel cannot build, and why.
 
-    Only on the error path: the file is composed (which never constructs)
-    and each explicitly tagged node is rebuilt on its own.
+    Only on the error path, and it never raises: the file is composed
+    (which never constructs), and each value written with a `!!` tag is
+    built on its own from the composed tree, innermost first, so a bad
+    item inside a tagged list is blamed, not the list, and an alias inside
+    a tagged value resolves as it does in the file.
     """
     try:
         root = YAML(typ="rt").compose(text)
-    except Exception:
-        return None
-    for node in walk_nodes(root):
-        tag = str(node.tag or "")
-        if not tag.startswith("tag:yaml.org,2002:"):
-            continue
-        start, end = node.start_mark, node.end_mark
-        if text[start.index : start.index + 2] != "!!":
-            continue
-        try:
-            YAML(typ="rt").load(text[start.index : end.index])
-        except Exception:
-            short = tag.rsplit(":", 1)[-1]
-            if isinstance(node, ScalarNode):
+        for node in walk_nodes(root, children_first=True):
+            tag = str(node.tag or "")
+            if not tag.startswith("tag:yaml.org,2002:"):
+                continue
+            start = node.start_mark
+            written = text[start.index : node.end_mark.index]
+            # `&anchor !!int x`: the tag follows the anchor.
+            if not re.match(r"(&\S+\s+)?!!", written):
+                continue
+            try:
+                YAML(typ="rt").constructor.construct_object(node, deep=True)
+            except Exception:  # RecursionError included
+                short = tag.rsplit(":", 1)[-1]
+                if isinstance(node, ScalarNode):
+                    value = str(node.value)
+                    shown = value if len(value) <= 40 else f"{value[:37]}..."
+                    return (start.line, start.column), (
+                        f"'{shown}' is not a valid !!{short}"
+                    )
                 return (start.line, start.column), (
-                    f"'{node.value}' is not a valid !!{short}"
+                    f"this value is not a valid !!{short}"
                 )
-            return (start.line, start.column), f"this value is not a valid !!{short}"
+    except Exception:  # never a traceback from the locator
+        return None
     return None
 
 
-def walk_nodes(node: Node | None) -> list[Node]:
-    """Every node under a composed node, keys included, depth first."""
+def walk_nodes(node: Node | None, *, children_first: bool = False) -> list[Node]:
+    """Every node under a composed node, keys included, each once.
+
+    Iterative, with a visited set: an alias back into its own anchor makes
+    the tree a cycle, and deep nesting must not exhaust the stack. Parents
+    come before their children unless `children_first`.
+    """
     if node is None:
         return []
-    found = [node]
-    if isinstance(node, MappingNode):
-        for key, value in node.value:
-            found += walk_nodes(key) + walk_nodes(value)
-    elif isinstance(node, SequenceNode):
-        for child in node.value:
-            found += walk_nodes(child)
+    found: list[Node] = []
+    seen: set[int] = set()
+    stack: list[tuple[Node, bool]] = [(node, False)]
+    while stack:
+        current, expanded = stack.pop()
+        if expanded:
+            found.append(current)
+            continue
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        children: list[Node] = []
+        if isinstance(current, MappingNode):
+            for key, value in current.value:
+                children += [key, value]
+        elif isinstance(current, SequenceNode):
+            children = list(current.value)
+        if children_first:
+            stack.append((current, True))
+        else:
+            found.append(current)
+        stack.extend((child, False) for child in reversed(children))
     return found
+
+
+def _wide_encoding(raw: bytes) -> str | None:
+    """UTF-16 or UTF-32, told by the byte-order mark the file starts with."""
+    if raw.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
+        return "UTF-32"
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return "UTF-16"
+    return None
