@@ -961,6 +961,9 @@ a {
 .code-block--lines {
   white-space: pre;
   overflow-wrap: normal;
+  /* The number column starts at the block's edge: its own padding takes the
+     block's left padding, so no text shows in a strip left of the numbers. */
+  padding-inline-start: 0;
 }
 
 /* Digit counts from SourceBlock's data-digits (no inline style under the CSP). */
@@ -971,19 +974,39 @@ a {
 .code-block--lines[data-digits="5"] { --line-digits: 5; }
 .code-block--lines[data-digits="6"] { --line-digits: 6; }
 
+/* Sticky numbers (spec 012 N1, spec 006 P16 option (b)). A sticky box sticks
+   only within its containing block, so every line box must be as wide as the
+   widest line: the <code> is max-content wide (at least the block's width)
+   and each line is a block that fills it. Each line's "\n" stays inside its
+   span, so textContent is the source exactly; a preserved newline at the end
+   of a block leaves only an empty, zero-height line box, not a blank line. */
 .code-block--lines > code {
   font: inherit;
+  display: block;
+  width: max-content;
+  min-width: 100%;
 }
 
-/* Numbers are generated content, so selection and copy never include them. */
+.code-block--lines .line {
+  display: block;
+}
+
+/* Numbers are generated content, so selection and copy never include them.
+   Opaque, on the block's own surface, so the text passes under them. */
 .code-block--lines .line::before {
   content: attr(data-line);
+  position: sticky;
+  left: 0;
+  z-index: 1;
   display: inline-block;
+  vertical-align: top;
   box-sizing: content-box;
   width: calc(var(--line-digits, 2) * 1ch);
   margin-right: 1rem;
+  padding-left: 1rem;
   padding-right: 0.75rem;
   border-right: 1px solid var(--tw-border);
+  background: var(--tw-surface);
   text-align: right;
   color: var(--tw-text-muted);
   user-select: none;

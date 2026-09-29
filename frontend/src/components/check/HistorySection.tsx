@@ -8,6 +8,8 @@ import { HistoryTable } from "../HistoryTable";
 import { LoadError } from "../LoadError";
 import type { OlderHistory } from "./useOlderHistory";
 
+const EMPTY_RUN: ReadonlySet<number> = new Set();
+
 /**
  * The check's history: the chart (when every result measured one metric), the
  * table, and "Load older results". `check` is null when the check is no longer
@@ -82,6 +84,7 @@ export function HistorySection({
         <HistoryTable
           entries={entries}
           current={check === null ? null : { expression: check.expression, dataset: check.dataset, metric: check.metric }}
+          currentRun={model?.series.currentRun ?? EMPTY_RUN}
           now={now}
         />
         {older.failure !== null && <LoadError what="older results" failure={older.failure} onRetry={older.loadOlder} />}

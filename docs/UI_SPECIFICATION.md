@@ -275,7 +275,11 @@ so within a status the API's order (project file order) is kept.
   the dataset and `source` (`file:line:col`). The row's text and layout are
   otherwise unchanged (D18).
 - **Latest result:**
-  - pass, warn, fail: `display_value`, then `message` when present.
+  - pass, warn, fail: `display_value`, then `message` when present. A
+    result with nothing measured (`value` null and `display_value` `—`)
+    reads "No value measured" instead of the dash (spec 012 L2). A `value`
+    that is null only because it was not finite (JSON has no NaN or
+    infinity) keeps its `display_value` (L3).
   - error: "Could not evaluate", then `message` as text (monospace), or
     "No message was recorded." `display_value` (`—`) is **not** shown,
     because it is not a measured value. When `last_evaluated` is present:
@@ -380,7 +384,12 @@ Heading "Latest result": the status badge, then `Result` and `When`, the
 same components as the overview's row. So an error reads "Could not
 evaluate", the message, and "Last evaluated: Fail, *3 hours ago*; failing
 since *3 hours ago*", and never shows `display_value` (`—`). A failure reads
-`20.00%`, `expected < 5%`, "Failing since *3 hours ago*". "Not in the latest
+`20.00%`, `expected < 5%`, "Failing since *3 hours ago*". A pass, warn or
+fail with nothing measured reads "No value measured" and its message ("no
+non-NULL values in scope"), never a bare `—` (spec 012 L1, L3). The words
+are `NO_VALUE_MEASURED` in `LatestResult.tsx`, and `ResultValue` there
+renders them for Latest result, the overview row and the history table
+alike (L4); no other module writes them. "Not in the latest
 run" appears when `latest.run_id` is not the newest run's id. With no result:
 "No result recorded / Its state is unknown."
 
@@ -480,7 +489,18 @@ domain:
 
 Each boundary in the domain is a 1.5px solid line in the fail or warn mark
 colour (the expectation's lines are fail lines), labelled at the right with
-the condition's `text`. Tested with the D6 table.
+the condition's `text`, with one exception (spec 012, extending decision
+12): a `between` with two lines labels each end with the side where the
+condition holds, an operator and that end's number: `>= 50` and `<= 60` for
+`between 50 and 60` (inclusive, as `Between.holds`), `< 50` and `> 60` for
+`not between`. Operators are ASCII, as the DSL writes them and as every
+other rule text on the page reads. The number comes from `low`/`high`,
+formatted by `formatThreshold` (§4A.6.3); `text` is never parsed. The label
+names where the condition holds whatever its role, as a compare line's
+`text` does, and the line keeps its role's colour. A `between` whose ends
+are equal draws one line labelled with its `text`. The full rule stays
+above the chart. `boundaryLabels` in `lib/rule.ts` decides the labels; the
+D6 table and spec 012's B1–B6 test them.
 
 #### 4A.6.3 The y-domain and ticks (D10)
 
@@ -495,7 +515,7 @@ the condition's `text`. Tested with the D6 table.
 3. **A boundary joins the domain only if the domain with it is at most twice
    the base's height**, so the values keep at least half the plot. A
    boundary left out is an edge label at the top or bottom of the right-hand
-   column, formatted by the tick formatter: "10,000 above", "5 below"
+   column, formatted by `formatThreshold`: "10,000 above", "0.125 below"
    (decision 12).
 4. With no plotted values (every result an error), the domain is the
    boundaries and 0.
@@ -514,17 +534,35 @@ Ticks are formatted by unit (`formatTick`): percent `20%`, `2.5%`; count
 one, if not zero); number `54.36`, `-1.5`; unknown unit as a plain number.
 Decimals follow the tick step (up to 20, so ticks 2 × 10⁻⁸ apart still read
 differently). From 10²¹ up a tick is written in scientific notation,
-`1.7E308`. This formats **axis labels only**: every
-value shown for a result (tooltip, table, the latest-value label) is
-`display_value` from Python.
+`1.7E308`.
+
+**Decision 12, as extended by spec 012.** The browser formats a number in
+three places only: axis ticks (`formatTick`), off-range edge labels, and
+the two boundary lines of a `between` (both `formatThreshold`). Every value
+shown for a result (tooltip, table, the latest-value label) is
+`display_value` from Python, and a condition shown whole is `rule.*.text`.
+`formatThreshold` never rounds: it writes the shortest decimal that reads
+back as the same number (`0.125`, not the tick formatter's `0.13`), with
+grouping (`10,000`, so `<= 10,000` while the rule's text says `10000`), `%`
+for percent, and a duration's largest two units (`1h`, `1d`, `1d 1h`).
 
 #### 4A.6.4 Labels (selective, horizontal)
 
-- Right of the plot: each boundary line's `text`, the newest plotted value's
-  `display_value`, and off-range edge labels. They are stacked so no two
-  overlap (14 units apart, `stackLabels`), as close to their line as
-  possible. Longer than about 22 characters, a label is cut with "…" (the
-  rule is in full above the chart).
+- Right of the plot: each boundary line's label (§4A.6.2), the newest
+  plotted value's `display_value`, and off-range edge labels. They are
+  stacked (`stackLabels`) as close to their line as possible, with a gap
+  per neighbouring pair (spec 012 B7): **20 units** centre to centre
+  between the latest value's label and any other, 14 between any other two.
+  At the 12-unit font, 14 leaves about 2 units of leading and reads as one
+  stack; 20 leaves about 8 and reads as a separate label. An off-range
+  label sits at its end of the column, whatever its wanted position: an
+  "above" label first (top), a "below" label last (bottom), so it is never
+  on the wrong side of the latest value. The latest label may move from its
+  mark to keep these gaps; on the spec 012 fixtures it stays within 20
+  units (B8), but a latest value at the top with an "above" label and a
+  boundary line both near it can push it about 30 units off. Longer than
+  about 22 characters, a label is cut with "…" (the rule is in full above
+  the chart).
 - **Rule-change markers** (D7, decision 11): a solid 1px vertical hairline
   midway between the two runs, labelled "Rule changed" (or "Rule change
   1", "2", … when more than one) in a row above the plot. Labels that would
@@ -590,16 +628,22 @@ Times in GMT+8.", and the columns **When**, **Outcome**, **Value**,
   as a focusable `<time datetime>` holding the API's UTC string.
 - **Outcome:** the status badge.
 - **Value:** `display_value`; "Could not evaluate" for an error; "No value
-  measured" when the value is null. A value measured by another metric adds
+  measured" when nothing was measured (`value` null and `display_value`
+  `—`; the same `ResultValue` as Latest result). A value measured by another metric adds
   "Not on the chart: measured by *metric*". The value comes before the
   message, so a freshness row reads as an age before the timestamp inside
   its message.
 - **Message:** verbatim. The page does not reformat timestamps inside
   messages or the bare `0` of a passing schema check (I-24's work).
-- **Rule:** "Current" when the recorded expression is the check's; otherwise
-  "Different rule" and the recorded expression. A different recorded dataset
-  adds "Other dataset" and its name. For a check no longer loaded, rows are
-  compared with the newest entry ("Same as the newest").
+- **Rule:** "Current" exactly for the rows the chart's band covers: the
+  newest run of entries whose recorded expression is the check's
+  (`Series.currentRun` from `buildSeries`, the same function that places
+  the band; spec 012 K1, K2). A row judged by the same text outside that
+  run, before a later rule change or under an edit not yet run, reads
+  "Same as current, before a rule change". Otherwise "Different rule" and
+  the recorded expression. A different recorded dataset adds "Other
+  dataset" and its name, and replaces "Current". For a check no longer
+  loaded, rows are compared with the newest entry ("Same as the newest").
 - **Trigger:** as recorded (`cli`).
 
 ### 4A.8 Failures and unknown checks (D15)
@@ -745,8 +789,18 @@ sentences, button) on every fixture; the file's own lines are exempt.
   indentation is its meaning, and a wrapped line would sit under the wrong
   number. A long line scrolls sideways inside the block (`overflow-x:
   auto`), and `.source`, `.code-block` and the panel keep `min-width: 0`,
-  so the page itself never scrolls sideways. The number column scrolls with
-  the text (it is not sticky: option (a) of spec 006 P16).
+  so the page itself never scrolls sideways.
+- **The number column is sticky** (option (b) of spec 006 P16, spec 012
+  N1): `.line::before` is `position: sticky; left: 0` with an opaque
+  background, the block's own `--tw-surface`, so the text scrolls under the
+  numbers and they stay at the block's left edge. A sticky box sticks only
+  inside its containing block, so every line box is as wide as the widest
+  line: the `<code>` is `display: block; width: max-content; min-width:
+  100%`, and each `.line` is a block that fills it. The block's left
+  padding moves into the number's own padding, so no text shows in a strip
+  left of the numbers. Each line's `\n` stays inside its span, so
+  `textContent` is still `text`; a preserved newline at the end of a block
+  leaves only an empty, zero-height line box, not a blank line.
 - Invisible characters are marked with `Marked` in place (§4A.9),
   including U+2028 and U+2029, now in `lib/invisible.ts`. U+2028, U+2029
   and U+0085 are mandatory line breaks to some browsers even inside
@@ -959,7 +1013,7 @@ tooltip draws `attr(data-full)` on `:focus-visible`.
   word (D4).
 - A value nobody measured is never a number: "Could not evaluate" (error)
   and "Fail: no value measured" (no value) in the chart; "Could not evaluate"
-  and "No value measured" in the table. The lane holding the latter is "No
+  and "No value measured" in Latest result, the overview row and the table. The lane holding the latter is "No
   value", never "could not evaluate".
 - A rule change says "between runs", not "at" a time: the history knows the
   two runs on either side, not when the file was edited.
@@ -1044,6 +1098,7 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | `test/loaderror.test.tsx` | `LoadError`: unique `useId` ids, heading level, section wording |
 | `test/check.test.tsx` | spec 004 D1–D20 at component level, including the rendered chart (lanes, bands, markers, streak, tooltip by keyboard and pointer, label collisions) |
 | `test/chart.test.ts` | the chart's pure functions: the D6 bands table, the D10 tick table and domain cases, series and lanes (D5, D9), rule changes and the band's span (D7), recorded outcomes (D8), other metrics (D20), label stacking and rows, hover columns, tooltip placement, the key, x ticks, the summary (D11) |
+| `test/polish.test.tsx` | spec 012: "Current" from the band's run (K1–K4), "No value measured" everywhere and its one source (L1–L4, including a non-finite value), `between` boundary labels and `formatThreshold` (B1–B6), right-label sides and gaps (B7), the latest label near its mark on the four B7 fixtures (B8), the stack function's ranks and per-pair gaps, sticky numbers in CSS and generated content (N1) |
 | `test/route.test.ts` | the route table and `checkHref` (decision 7) |
 | `test/security.test.tsx` | X4 rendering, source rules (§9), the chart's source rules (decision 14) |
 | `test/contrast.test.ts` | the palette and the chart tokens, both schemes (§5) |
@@ -1062,7 +1117,10 @@ page's responses: `rule` for each retail check used (as `tablewatch serve`
 answered on a scratch copy of `examples/retail`), the `interrupted`
 histories of `b1ceb8262d8b5441` and `32c8f939b90f6367`, and spec 004's
 `edited`, `edited-pending` and `metric-changed` (then back to `< 15%`)
-states, with runs C, M and N at 07:30, 08:00 and 08:30 UTC. Every fixture is typed with the generated
+states, with runs C, M and N at 07:30, 08:00 and 08:30 UTC. Spec 012 adds
+`avg-on-nothing`, a failure with no value whose `latest` is what `serve`
+answered for `avg(amount) between 10 and 500` with a `where:` no row
+matches. Every fixture is typed with the generated
 types. The clock is fixed with fake `Date` only, at B + 3h 43s, so every
 age in the fixtures reads "3 hours ago" and rounding down is exercised.
 `test/fixtures/sql.ts` holds `/sql` bodies captured from the in-process app
@@ -1095,7 +1153,12 @@ answers `/source` by the same rule as `/sql`.
 - **The Source block by hand (spec 006 P16).** At a 360 px viewport with a
   200-character line the page must not scroll sideways and each number
   must stay level with its line; real text selection must not pick up the
-  numbers; U+2028 inside `<pre>` must not start a new visual line. jsdom
+  numbers; scrolled fully right (trackpad, and the arrow keys with the block
+  focused), in Chrome, Firefox and Safari, light and dark, the numbers stay
+  at the left edge with the text passing under them, there is no blank line
+  between lines, and the block is exactly as many lines tall as it has
+  lines (spec 012 N2: "no blank line between lines; the block is exactly
+  three lines tall"); U+2028 inside `<pre>` must not start a new visual line. jsdom
   cannot lay out, so these are the data-steward's VERIFY run. A file of a
   million lines or more has 7-digit numbers, which overflow the 6-digit
   column by one character.

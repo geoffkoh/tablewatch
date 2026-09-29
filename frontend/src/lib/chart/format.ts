@@ -1,8 +1,10 @@
 /**
- * Axis labels, by unit (spec 004 D10). This is the only place the browser
- * formats a number, and it formats only axis ticks and off-range edge labels
- * (decision 12). A result's value is always `display_value` from Python, and
- * a rule's condition is always `rule.*.text`.
+ * Axis labels and threshold labels, by unit (spec 004 D10). This is the only
+ * place the browser formats a number, and it formats only axis ticks, off-range
+ * edge labels, and the value on each of a `between`'s two boundary lines
+ * (decision 12, extended by spec 012). A result's value is always
+ * `display_value` from Python, and a condition shown whole is always
+ * `rule.*.text`.
  */
 import type { Unit } from "../../api/types";
 
@@ -83,6 +85,25 @@ export function formatTick(value: number, unit: Unit | null, step?: number): str
     case "number":
     case null:
       return plain(value, decimals);
+  }
+}
+
+/**
+ * A threshold's value, never rounded (spec 012 B6): the shortest decimal that
+ * reads back as the same number, so 0.125 stays "0.125" where a tick would
+ * show "0.13". Used for off-range edge labels and `between` boundary lines.
+ * A duration still shows its largest two units (the axis's formatter).
+ */
+export function formatThreshold(value: number, unit: Unit | null): string {
+  switch (unit) {
+    case "percent":
+      return `${plain(value, MAX_DECIMALS)}%`;
+    case "duration":
+      return formatDuration(value, MAX_DECIMALS);
+    case "count":
+    case "number":
+    case null:
+      return plain(value, MAX_DECIMALS);
   }
 }
 

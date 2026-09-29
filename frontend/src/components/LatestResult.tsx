@@ -23,6 +23,24 @@ export function LastEvaluatedNote({ last, now }: { last: LastEvaluated; now: num
   );
 }
 
+/** What a result with no value reads, everywhere a result is shown (spec 012 L4). */
+export const NO_VALUE_MEASURED = "No value measured";
+
+/**
+ * Nothing was measured: no value, and Python's display for that ("—"). A
+ * value that is null only because it was not finite (JSON has no NaN or
+ * infinity) keeps its `display_value`, since something was measured (L3).
+ */
+export function measuredNothing(result: { value: number | null; display_value: string }): boolean {
+  return result.value === null && result.display_value === "—";
+}
+
+/** A result's value, or the words for none; never a bare "—". */
+export function ResultValue({ result }: { result: { value: number | null; display_value: string } }): ReactElement {
+  if (measuredNothing(result)) return <span className="result__headline">{NO_VALUE_MEASURED}</span>;
+  return <span className="result__value">{result.display_value}</span>;
+}
+
 /** The value and message; for an error, "Could not evaluate" and never the "—". */
 export function Result({ latest, now }: { latest: LatestResult | null; now: number }): ReactElement {
   if (latest === null) {
@@ -54,7 +72,7 @@ export function Result({ latest, now }: { latest: LatestResult | null; now: numb
   }
   return (
     <span className="result">
-      <span className="result__value">{latest.display_value}</span>
+      <ResultValue result={latest} />
       {latest.message !== null && latest.message !== "" && <span className="result__message">{latest.message}</span>}
     </span>
   );

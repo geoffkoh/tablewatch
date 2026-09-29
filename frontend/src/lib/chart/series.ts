@@ -16,7 +16,9 @@
  *   recorded `expression` (or `dataset`) differs (D7, D20).
  * - The current rule's band covers only the newest run of entries whose
  *   recorded `expression` equals the check's; if the newest entry was judged
- *   by another rule (an edit not yet run), no band is drawn (D7).
+ *   by another rule (an edit not yet run), no band is drawn (D7). That run is
+ *   `currentRun`, and the history table calls exactly those rows "Current"
+ *   (spec 012 K2): one rule for both, so they cannot drift.
  * - Marks keep the recorded outcome (D8). Nothing here evaluates a rule.
  */
 import type { HistoryEntry, Outcome, Unit } from "../../api/types";
@@ -71,6 +73,11 @@ export interface Series {
    * the chart; `{ from: t }` from the rule change at t.
    */
   band: { from: number | null } | null;
+  /**
+   * The entries under the band: the newest run judged by the check's current
+   * expression, as indexes in the API's order. Empty when no band is drawn.
+   */
+  currentRun: ReadonlySet<number>;
 }
 
 function axisOf(entries: readonly HistoryEntry[], check: CurrentCheck | null): { metric: string | null; unit: Unit | null } {
@@ -145,10 +152,12 @@ export function buildSeries(entries: readonly HistoryEntry[], check: CurrentChec
   }
 
   let band: Series["band"] = null;
+  const currentRun = new Set<number>();
   const newest = points[points.length - 1];
   if (check !== null && newest !== undefined && newest.entry.expression === check.expression) {
     let first = points.length - 1;
     while (first > 0 && points[first - 1]?.entry.expression === check.expression) first -= 1;
+    for (const p of points.slice(first)) currentRun.add(p.index);
     const before = points[first - 1];
     const start = points[first];
     band = before === undefined || start === undefined ? { from: null } : { from: (before.t + start.t) / 2 };
@@ -173,5 +182,6 @@ export function buildSeries(entries: readonly HistoryEntry[], check: CurrentChec
     axisMetric: axis.metric,
     axisUnit: axis.unit,
     band,
+    currentRun,
   };
 }

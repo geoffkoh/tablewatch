@@ -13,7 +13,8 @@
  * `fail` first; the fail colour is drawn over the warn colour anyway.
  */
 import type { Condition, Rule } from "../../api/types";
-import { boundaryValues, ruleParts } from "../rule";
+import { boundaryLabels, ruleParts } from "../rule";
+import { formatThreshold } from "./format";
 
 export interface Interval {
   lo: number;
@@ -27,7 +28,10 @@ export type Severity = "warn" | "fail";
 export interface BoundaryLine {
   value: number;
   severity: Severity;
-  /** The condition's `text`, from the API. */
+  /**
+   * The line's label: the condition's `text` from the API, or, for one end of
+   * a two-line `between`, its operator and number (`>= 50`; spec 012).
+   */
   text: string;
 }
 
@@ -121,8 +125,15 @@ function withHeight(set: IntervalSet): IntervalSet {
   return set.filter((i) => i.hi > i.lo);
 }
 
-/** The regions and lines for a rule over a y-domain [lo, hi]. */
-export function bands(rule: Rule, domain: readonly [number, number]): Bands {
+/**
+ * The regions and lines for a rule over a y-domain [lo, hi]. `format` writes a
+ * `between` end's number in its label: the axis unit's `formatThreshold`.
+ */
+export function bands(
+  rule: Rule,
+  domain: readonly [number, number],
+  format: (value: number) => string = (v) => formatThreshold(v, null),
+): Bands {
   const within: IntervalSet = [interval(domain[0], domain[1], true, true)];
   let failing: IntervalSet = [];
   let warning: IntervalSet = [];
@@ -134,8 +145,8 @@ export function bands(rule: Rule, domain: readonly [number, number]): Bands {
     if (part.role === "warn") warning = [...warning, ...shaded];
     else failing = [...failing, ...shaded];
     const severity: Severity = part.role === "warn" ? "warn" : "fail";
-    for (const value of boundaryValues(part.condition)) {
-      if (value >= domain[0] && value <= domain[1]) lines.push({ value, severity, text: part.condition.text });
+    for (const { value, label } of boundaryLabels(part.condition, format)) {
+      if (value >= domain[0] && value <= domain[1]) lines.push({ value, severity, text: label });
     }
   }
   const warnOnly = failing.length === 0 ? warning : withHeight(intersect(warning, complement(failing)));

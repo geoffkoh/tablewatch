@@ -10,8 +10,8 @@ import { SINCE_PREFIX, STATUS_META } from "../status";
 import { absolute, calendarDay, parseTimestamp, sameLocalDay, timeTick, zoneName } from "../time";
 import { bands as bandsFor, type Severity } from "./bands";
 import { yAxis, type YAxis } from "./domain";
-import { formatTick } from "./format";
-import { assignRows, CHAR_WIDTH, LINE_HEIGHT, stackLabels, textWidth, truncate } from "./labels";
+import { formatThreshold, formatTick } from "./format";
+import { assignRows, CHAR_WIDTH, LATEST_GAP, LINE_HEIGHT, stackLabels, textWidth, truncate, type Wanted } from "./labels";
 import { linear } from "./scale";
 import { buildSeries, type CurrentCheck, type Lane, type Point, type Series } from "./series";
 import { timeTicks } from "./ticks";
@@ -169,7 +169,8 @@ export function layoutChart({ entries, check, rule, streak }: ChartInput): Chart
 
   // ---- right labels (text only; positions after the plot is known) ----
   const newestValue = series.plotted[series.plotted.length - 1];
-  const bandsResult = drawRule ? bandsFor(rule, [axis.lo, axis.hi]) : { fail: [], warn: [], lines: [] };
+  const threshold = (v: number): string => formatThreshold(v, unit);
+  const bandsResult = drawRule ? bandsFor(rule, [axis.lo, axis.hi], threshold) : { fail: [], warn: [], lines: [] };
   const offRange = drawRule ? axis.offRange : [];
   const rightBudget = Math.floor((MAX_RIGHT - 10) / CHAR_WIDTH);
   const rightTexts: Omit<RightLabel, "y">[] = [
@@ -180,7 +181,7 @@ export function layoutChart({ entries, check, rule, streak }: ChartInput): Chart
     ...offRange.map((o, i) => ({
       id: `off-${String(i)}`,
       kind: "off-range" as const,
-      text: truncate(`${formatTick(o.value, unit)} ${o.side}`, rightBudget),
+      text: truncate(`${threshold(o.value)} ${o.side}`, rightBudget),
     })),
   ];
   const right = Math.min(MAX_RIGHT, Math.max(MIN_RIGHT, ...rightTexts.map((t) => textWidth(t.text) + 14)));
@@ -275,14 +276,18 @@ export function layoutChart({ entries, check, rule, streak }: ChartInput): Chart
   }));
 
   // ---- right labels, stacked so none overlaps another ----
-  const wanted = rightTexts.map((t) => {
-    let y: number;
-    if (t.kind === "boundary") y = lines[Number(t.id.slice(5))]?.y ?? plotY0;
-    else if (t.kind === "latest") y = yOf(newestValue?.value ?? axis.lo);
-    else y = offRange[Number(t.id.slice(4))]?.side === "above" ? plotY0 : plotY1;
-    return { id: t.id, y };
+  // An off-range label sits at its end of the column, on the side it names,
+  // and the latest value's label keeps a wider gap from every other (B7).
+  const top = plotY0 - 4;
+  const bottom = plotY1 + 4;
+  const wanted: Wanted[] = rightTexts.map((t) => {
+    if (t.kind === "boundary") return { id: t.id, y: lines[Number(t.id.slice(5))]?.y ?? plotY0 };
+    if (t.kind === "latest") return { id: t.id, y: yOf(newestValue?.value ?? axis.lo) };
+    const above = offRange[Number(t.id.slice(4))]?.side === "above";
+    return { id: t.id, y: above ? top : bottom, rank: above ? -1 : 1 };
   });
-  const placed = stackLabels(wanted, LINE_HEIGHT, plotY0 - 4, plotY1 + 4);
+  const gap = (a: Wanted, b: Wanted): number => (a.id === "latest" || b.id === "latest" ? LATEST_GAP : LINE_HEIGHT);
+  const placed = stackLabels(wanted, gap, top, bottom);
   const rightLabels: RightLabel[] = rightTexts.map((t) => ({ ...t, y: round(placed.get(t.id) ?? plotY0) }));
 
   // ---- marks and line ----
