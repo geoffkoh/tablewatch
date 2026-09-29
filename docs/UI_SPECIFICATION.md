@@ -545,6 +545,9 @@ shown for a result (tooltip, table, the latest-value label) is
 back as the same number (`0.125`, not the tick formatter's `0.13`), with
 grouping (`10,000`, so `<= 10,000` while the rule's text says `10000`), `%`
 for percent, and a duration's largest two units (`1h`, `1d`, `1d 1h`).
+Where grouped decimals would lose digits (below about 10⁻²⁰, or from 10²¹
+up) it falls back to JavaScript's shortest round-trip form, which is exact:
+`1e-25`, `1.23456789e+21`.
 
 #### 4A.6.4 Labels (selective, horizontal)
 
@@ -557,7 +560,9 @@ for percent, and a duration's largest two units (`1h`, `1d`, `1d 1h`).
   stack; 20 leaves about 8 and reads as a separate label. An off-range
   label sits at its end of the column, whatever its wanted position: an
   "above" label first (top), a "below" label last (bottom), so it is never
-  on the wrong side of the latest value. The latest label may move from its
+  on the wrong side of the latest value. Two edge labels on one side keep
+  the axis's order: the larger value higher ("1,000 above" over "500
+  above", "0.5 below" over "0.125 below"). The latest label may move from its
   mark to keep these gaps; on the spec 012 fixtures it stays within 20
   units (B8), but a latest value at the top with an "above" label and a
   boundary line both near it can push it about 30 units off. Longer than

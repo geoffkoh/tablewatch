@@ -89,21 +89,38 @@ export function formatTick(value: number, unit: Unit | null, step?: number): str
 }
 
 /**
- * A threshold's value, never rounded (spec 012 B6): the shortest decimal that
- * reads back as the same number, so 0.125 stays "0.125" where a tick would
- * show "0.13". Used for off-range edge labels and `between` boundary lines.
- * A duration still shows its largest two units (the axis's formatter).
+ * The shortest text that reads back as exactly `value`: grouped decimals
+ * ("10,000", "0.125") where they are exact, otherwise JavaScript's own
+ * shortest round-trip form ("1e-25", "1.23456789e+21"), which is exact for
+ * every finite number.
+ */
+function exact(value: number): string {
+  // -0 would print as "-0".
+  const v = Object.is(value, -0) ? 0 : value;
+  if (Math.abs(v) < SCIENTIFIC_FROM) {
+    const grouped = numberFormat(MAX_DECIMALS).format(v);
+    if (Number(grouped.replace(/,/g, "")) === v) return grouped;
+  }
+  return String(v);
+}
+
+/**
+ * A threshold's value, never rounded (spec 012 B6): 0.125 stays "0.125" where
+ * a tick would show "0.13", 1e-25 is not "0", and 1.23456789e21 keeps every
+ * digit. Used for off-range edge labels and `between` boundary lines. A
+ * duration still shows its largest two units (the axis's formatter; the
+ * spec's non-goal).
  */
 export function formatThreshold(value: number, unit: Unit | null): string {
   switch (unit) {
     case "percent":
-      return `${plain(value, MAX_DECIMALS)}%`;
+      return `${exact(value)}%`;
     case "duration":
       return formatDuration(value, MAX_DECIMALS);
     case "count":
     case "number":
     case null:
-      return plain(value, MAX_DECIMALS);
+      return exact(value);
   }
 }
 

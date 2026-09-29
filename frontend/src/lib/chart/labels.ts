@@ -26,6 +26,8 @@ export interface Wanted {
    * An off-range edge label names a side, so it stays on that side (B7).
    */
   rank?: -1 | 0 | 1;
+  /** Breaks a tie in `y` before the id does: smaller first (higher up). */
+  order?: number;
 }
 
 /** The distance two neighbouring labels keep, centre to centre. */
@@ -35,12 +37,12 @@ export type Gap = number | ((upper: Wanted, lower: Wanted) => number);
  * Vertical positions for a column of labels, each as close to its wanted
  * centre as possible, none overlapping (`gap` apart, centre to centre, or as
  * `gap` says for each neighbouring pair), all inside [top, bottom] when they
- * fit. Order is by `rank`, then wanted centre, then id. Pure; returns centres
+ * fit. Order is by `rank`, then wanted centre, then `order`, then id. Pure; returns centres
  * by id.
  */
 export function stackLabels(items: readonly Wanted[], gap: Gap, top: number, bottom: number): Map<string, number> {
   const gapOf = typeof gap === "number" ? (): number => gap : gap;
-  const sorted = [...items].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || a.y - b.y || a.id.localeCompare(b.id));
+  const sorted = [...items].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || a.y - b.y || (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
   const ys = sorted.map((i) => Math.min(Math.max(i.y, top), bottom));
   const between = (i: number): number => {
     const upper = sorted[i - 1];

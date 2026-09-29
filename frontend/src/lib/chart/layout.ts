@@ -283,8 +283,10 @@ export function layoutChart({ entries, check, rule, streak }: ChartInput): Chart
   const wanted: Wanted[] = rightTexts.map((t) => {
     if (t.kind === "boundary") return { id: t.id, y: lines[Number(t.id.slice(5))]?.y ?? plotY0 };
     if (t.kind === "latest") return { id: t.id, y: yOf(newestValue?.value ?? axis.lo) };
-    const above = offRange[Number(t.id.slice(4))]?.side === "above";
-    return { id: t.id, y: above ? top : bottom, rank: above ? -1 : 1 };
+    const edge = offRange[Number(t.id.slice(4))];
+    const above = edge?.side === "above";
+    // Edge labels on one side keep the axis's order: the larger value higher.
+    return { id: t.id, y: above ? top : bottom, rank: above ? -1 : 1, order: -(edge?.value ?? 0) };
   });
   const gap = (a: Wanted, b: Wanted): number => (a.id === "latest" || b.id === "latest" ? LATEST_GAP : LINE_HEIGHT);
   const placed = stackLabels(wanted, gap, top, bottom);
