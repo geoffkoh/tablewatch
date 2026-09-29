@@ -222,7 +222,7 @@ def _run_datasource(
                         check,
                         Outcome.ERROR,
                         None,
-                        f"internal error: {_first_line(exc)}",
+                        f"internal error: {_short_error(exc)}",
                     )
                     for check in checks
                 )
@@ -272,32 +272,24 @@ def _run_dataset(
         values = {role: measured.values[key] for role, key in wiring.items()}
         # One check's failure is that check's `error`, never the dataset's
         # (rule 7). A TypeError/ValueError from compute is the data's fault
-        # and its text is the message; anything else is a bug in the metric,
-        # so it is logged with its traceback and named as internal.
+        # and its text is the message; anything else, from compute or from
+        # evaluation, is a bug: logged with its traceback, named as internal.
         try:
             measurement = check.metric.compute(plan.contexts[check.id], values)
-            outcome, message = evaluate(check, measurement)
         except (TypeError, ValueError) as exc:
             results.append(
-                CheckResult(check, Outcome.ERROR, None, str(exc), measured.duration_ms)
+                CheckResult(
+                    check, Outcome.ERROR, None, _short_error(exc), measured.duration_ms
+                )
             )
             continue
         except Exception as exc:
-            log.exception(
-                "%s: internal error in check %s (%s)",
-                dataset.name,
-                check.id,
-                check.metric.name,
-            )
-            results.append(
-                CheckResult(
-                    check,
-                    Outcome.ERROR,
-                    None,
-                    f"internal error in {check.metric.name}: {_first_line(exc)}",
-                    measured.duration_ms,
-                )
-            )
+            results.append(_internal_error(dataset, check, exc, measured.duration_ms))
+            continue
+        try:
+            outcome, message = evaluate(check, measurement)
+        except Exception as exc:
+            results.append(_internal_error(dataset, check, exc, measured.duration_ms))
             continue
         results.append(
             CheckResult(
@@ -307,7 +299,23 @@ def _run_dataset(
     return results
 
 
-def _first_line(exc: BaseException) -> str:
+def _internal_error(
+    dataset: Dataset, check: Check, exc: Exception, duration_ms: float
+) -> CheckResult:
+    """A bug in a metric or in evaluation: that check's error, with a traceback."""
+    log.exception(
+        "%s: internal error in check %s (%s)", dataset.name, check.id, check.metric.name
+    )
+    return CheckResult(
+        check,
+        Outcome.ERROR,
+        None,
+        f"internal error in {check.metric.name}: {_short_error(exc)}",
+        duration_ms,
+    )
+
+
+def _short_error(exc: BaseException) -> str:
     """An exception's first line, capped: it is stored and served over the API."""
     text = error_message(exc)
     return text if len(text) <= 500 else f"{text[:497]}..."

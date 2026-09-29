@@ -183,3 +183,25 @@ def test_the_dataset_safety_net_still_catches_planning(
     assert results[("duck", "missing_count(id) = 0")][0] == "error"
     assert "planning broke" in (results[("duck", "row_count > 0")][1] or "")
     assert results[("lite", "row_count > 0")] == ("pass", None)
+
+
+def test_a_long_message_is_first_line_and_capped(
+    project: Path, explodes: type[Explodes], monkeypatch: pytest.MonkeyPatch
+) -> None:  # security R5
+    monkeypatch.setattr(Explodes, "raises", RuntimeError("x" * 2000 + "\nsecond line"))
+    _checks(project, "duck", "  - explodes(id) > 0\n")
+    [(_, outcome, _, message)] = _results(project)
+    assert outcome == "error"
+    assert message is not None
+    assert len(message) == len("internal error in explodes: ") + 500
+    assert message.endswith("...")
+    assert "second line" not in message
+
+
+def test_keyboard_interrupt_still_ends_the_run(
+    project: Path, explodes: type[Explodes], monkeypatch: pytest.MonkeyPatch
+) -> None:  # security R8
+    monkeypatch.setattr(Explodes, "raises", KeyboardInterrupt())
+    _checks(project, "duck", "  - explodes(id) > 0\n")
+    with pytest.raises(KeyboardInterrupt):
+        tw.run(project, record=False)
