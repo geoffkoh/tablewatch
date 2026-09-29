@@ -523,3 +523,25 @@ describe("N1: the numbers stay generated content", () => {
     expect(code?.textContent).not.toMatch(/\b1[0-3]\b/);
   });
 });
+
+describe("Select all ends inside the last line's text (spec 012 VERIFY, WebKit)", () => {
+  it("the range starts at the <code> and ends at the end of the last .line's last text node", async () => {
+    const { render } = await import("@testing-library/react");
+    const { SourceBlock } = await import("../components/SourceBlock");
+    const { selectContents } = await import("../lib/clipboard");
+    const source = "  - invalid_count(email) = 0:\n      valid_regex: 'x'\n      missing_values: ['', 'N/A']";
+    const { container } = render(<SourceBlock text={source} start={10} label="The check's lines" />);
+    const code = container.querySelector("code");
+    if (code === null) throw new Error("no code");
+    selectContents(code);
+    const selection = window.getSelection();
+    const range = selection?.getRangeAt(0);
+    const lastLine = code.querySelectorAll(".line")[2];
+    expect(range?.startContainer).toBe(code);
+    expect(range?.startOffset).toBe(0);
+    expect(range?.endContainer.nodeType).toBe(Node.TEXT_NODE);
+    expect(lastLine?.contains(range?.endContainer ?? null)).toBe(true);
+    expect(range?.endOffset).toBe((range?.endContainer as Text).length);
+    expect(selection?.toString()).toBe(source);
+  });
+});

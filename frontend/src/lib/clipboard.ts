@@ -26,9 +26,28 @@ export function copyText(text: string): Promise<void> {
   return navigator.clipboard.writeText(text);
 }
 
-/** Select every character inside an element, for the user to copy by hand. */
+/**
+ * Select every character inside an element, for the user to copy by hand.
+ *
+ * The range runs from the element's start to the end of its last text node,
+ * not over all its children: when the last child is a block (the Source
+ * block's `.line`, spec 012), WebKit adds a "\n" for the trailing block
+ * boundary that `selectAllChildren` includes, and the copied text would no
+ * longer be the source exactly.
+ */
 export function selectContents(element: Element): void {
   const selection = window.getSelection();
   if (selection === null) return;
-  selection.selectAllChildren(element);
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let last: Text | null = null;
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) last = node as Text;
+  if (last === null) {
+    selection.selectAllChildren(element);
+    return;
+  }
+  const range = document.createRange();
+  range.setStart(element, 0);
+  range.setEnd(last, last.length);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
