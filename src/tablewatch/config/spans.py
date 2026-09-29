@@ -17,12 +17,12 @@ from ruamel.yaml import YAML
 from ruamel.yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from tablewatch.checks.model import SourceSpan
+from tablewatch.config.yamlsource import BOM, walk_nodes
 
 # The line breaks ruamel's marks count. `str.splitlines` also breaks on
 # \x0b, \x0c, \x1c-\x1e, U+0085, U+2028 and U+2029, which would number lines
 # differently from the parser and shift a span onto a neighbouring line.
 LINE_BREAK = re.compile(r"\r\n|\r|\n")
-BOM = "﻿"
 
 
 def split_lines(text: str) -> tuple[str, ...]:
@@ -120,7 +120,7 @@ def _facts(root: MappingNode, lines: tuple[str, ...]) -> _Facts | None:
     seen: set[int] = set()
     aliased = []
     for item in checks.value:
-        nodes = {id(node) for node in _walk(item)}
+        nodes = {id(node) for node in walk_nodes(item)}
         aliased.append(bool(nodes & seen))
         seen |= nodes
     return _Facts(
@@ -134,17 +134,6 @@ def _facts(root: MappingNode, lines: tuple[str, ...]) -> _Facts | None:
         item_last=item_last,
         aliased=tuple(aliased),
     )
-
-
-def _walk(node: Node) -> list[Node]:
-    found = [node]
-    if isinstance(node, MappingNode):
-        for key, value in node.value:
-            found += _walk(key) + _walk(value)
-    elif isinstance(node, SequenceNode):
-        for child in node.value:
-            found += _walk(child)
-    return found
 
 
 def _last_line(lines: Sequence[str], node: Node) -> int:

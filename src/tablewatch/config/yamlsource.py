@@ -7,6 +7,8 @@ mapping and sequence; these helpers turn them into 1-based
 
 from __future__ import annotations
 
+import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -14,10 +16,17 @@ from typing import Any
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import MarkedYAMLError
+from ruamel.yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
+from ruamel.yaml.reader import ReaderError
 from ruamel.yaml.scalarbool import ScalarBoolean
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString, SingleQuotedScalarString
 
 from tablewatch.diagnostics import Diagnostic, SourceLocation, error
+
+log = logging.getLogger(__name__)
+
+# ruamel's marks skip a leading byte-order mark; the text keeps it.
+BOM = "\ufeff"
 
 
 class YAMLSource:
@@ -27,47 +36,102 @@ class YAMLSource:
         self.text: str | None = None
 
     def load(self) -> tuple[Any, list[Diagnostic]]:
+        """The file's YAML, or a diagnostic: never an exception (rule 5)."""
+        try:
+            raw = self.path.read_bytes()
+        except OSError as exc:
+            return None, [error(f"cannot read file: {exc.strerror}", self.at(0, 0))]
+        wide = _wide_encoding(raw)
+        if wide is not None:
+            return None, [
+                error(
+                    f"not UTF-8 text: the file is {wide}; save it as UTF-8",
+                    self.at(0, 0),
+                )
+            ]
+        try:
+            decoded = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            # Decoded here, over the whole file: read_text's incremental
+            # decoder reports offsets within a chunk.
+            before = _universal_newlines(raw[: exc.start].decode("utf-8"))
+            return None, [
+                error(
+                    f"not UTF-8 text: byte 0x{raw[exc.start]:02X} cannot be decoded; "
+                    "save the file as UTF-8",
+                    self._at_offset(before, len(before)),
+                )
+            ]
+        # What read_text did; every position is counted over this text.
+        text = _universal_newlines(decoded)
+        self.text = text
         yaml = YAML(typ="rt")
         yaml.preserve_quotes = True
         try:
-            text = self.path.read_text(encoding="utf-8")
-        except OSError as exc:
-            return None, [error(f"cannot read file: {exc.strerror}", self.at(0, 0))]
-        self.text = text
-        try:
             return yaml.load(text), []
+        except ReaderError as exc:
+            return None, [
+                error(
+                    f"invalid YAML: {_forbidden(exc.character)}",
+                    self._at_offset(text, exc.position),
+                )
+            ]
         except MarkedYAMLError as exc:
             mark = exc.problem_mark or exc.context_mark
             where = self.at(mark.line, mark.column) if mark else self.at(0, 0)
             problem = exc.problem or exc.context or "invalid YAML"
             return None, [error(f"invalid YAML: {problem}", where)]
+        except Exception as exc:  # RecursionError included
+            # ruamel's constructors raise bare ValueError, KeyError, … for a
+            # tagged value they cannot build (`!!int xyz`): the file is to
+            # blame, so it is a diagnostic, at the tag when it can be found.
+            log.debug("could not construct %s", self.relative, exc_info=True)
+            found = _bad_tag(text)
+            if found is not None:
+                (line, column), problem = found
+                return None, [error(f"invalid YAML: {problem}", self.at(line, column))]
+            return None, [error(f"invalid YAML: {exc}", self.at(0, 0))]
+
+    def _at_offset(self, text: str, offset: int) -> SourceLocation:
+        """A location from a character offset into `text`."""
+        before = text[:offset]
+        line = before.count("\n")
+        column = offset - (before.rfind("\n") + 1)
+        # ruamel's marks skip a leading byte-order mark; so do these.
+        if line == 0 and text.startswith("﻿"):
+            column -= 1
+        return self.at(line, max(column, 0))
 
     def at(self, line: int, column: int) -> SourceLocation:
         """A location from ruamel's 0-based marks."""
         return SourceLocation(self.relative, line + 1, column + 1)
 
     def of_key(self, node: CommentedMap, key: Any) -> SourceLocation:
-        line, column = node.lc.key(key)
+        owner = _owner(node, key)
+        if owner is None:
+            return self.of_node(node)
+        line, column = owner.lc.key(key)
         return self.at(line, column)
 
     def of_value(self, node: CommentedMap, key: Any) -> SourceLocation:
-        line, column = node.lc.value(key)
+        """Where a key's value is written: in this mapping, or where it was merged from."""
+        owner = _owner(node, key)
+        if owner is None:
+            return self.of_node(node)
+        line, column = owner.lc.value(key)
+        return self.at(line, column)
+
+    def of_own_key(self, node: CommentedMap, key: Any) -> SourceLocation | None:
+        """Where a key is written in this mapping itself; None if absent or merged."""
+        data = node.lc.data
+        if not data or key not in data:
+            return None
+        line, column = node.lc.key(key)
         return self.at(line, column)
 
     def of_item(self, node: CommentedSeq, index: int) -> SourceLocation:
         line, column = node.lc.item(index)
         return self.at(line, column)
-
-    def of_value_or_node(self, node: CommentedMap, key: Any) -> SourceLocation:
-        """Where a key's value is; a key from a `<<:` merge has no mark of its own."""
-        try:
-            return self.of_value(node, key)
-        except (KeyError, TypeError):
-            # A merged key's position is in the mapping it was merged from.
-            for merged in getattr(node, "merge", []):
-                if isinstance(merged, CommentedMap) and key in merged:
-                    return self.of_value_or_node(merged, key)
-            return self.of_node(node[key])
 
     def of_null_item(
         self, node: CommentedSeq, index: int
@@ -154,3 +218,132 @@ def plain(value: Any) -> Any:
     if isinstance(value, float):
         return float(value)
     return value
+
+
+def _owner(node: CommentedMap, key: Any) -> CommentedMap | None:
+    """The mapping a key is written in: this one, or one merged in with `<<:`.
+
+    ruamel keeps a merged key's marks only on the mapping it came from, and a
+    mapping holding nothing but `<<:` has no marks at all (`lc.data` None).
+    Own keys win, then merged mappings in ruamel's order.
+    """
+    data = node.lc.data
+    if data and key in data:
+        return node
+    for merged in getattr(node, "merge", None) or ():
+        if isinstance(merged, CommentedMap) and key in merged:
+            found = _owner(merged, key)
+            if found is not None:
+                return found
+    return None
+
+
+def _universal_newlines(text: str) -> str:
+    """CRLF and bare CR as LF, as read_text does."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+# Characters people actually paste; any other control is shown by code point.
+_NAMED = {
+    0x08: "backspace",
+    0x0B: "vertical tab",
+    0x0C: "form feed",
+    0x1B: "escape",
+    0x7F: "delete",
+}
+
+
+def _forbidden(character: int | str) -> str:
+    """Why a character YAML does not allow stops the file, and what to do."""
+    code = character if isinstance(character, int) else ord(character)
+    if code == 0:
+        # Almost always a UTF-16 file without a BOM: ASCII plus NULs.
+        return (
+            "character U+0000 (null) is not allowed; the file may be UTF-16 — "
+            "save it as UTF-8"
+        )
+    if code < 0x20 or 0x7F <= code <= 0x9F:
+        name = f" ({_NAMED[code]})" if code in _NAMED else ""
+        return f"hidden control character U+{code:04X}{name} is not allowed; delete it"
+    return f"character U+{code:04X} is not allowed; delete it"
+
+
+def _bad_tag(text: str) -> tuple[tuple[int, int], str] | None:
+    """The innermost explicitly tagged value ruamel cannot build, and why.
+
+    Only on the error path, and it never raises: the file is composed
+    (which never constructs), and each value written with a `!!` tag is
+    built on its own from the composed tree, innermost first, so a bad
+    item inside a tagged list is blamed, not the list, and an alias inside
+    a tagged value resolves as it does in the file.
+    """
+    try:
+        root = YAML(typ="rt").compose(text)
+        for node in walk_nodes(root, children_first=True):
+            tag = str(node.tag or "")
+            if not tag.startswith("tag:yaml.org,2002:"):
+                continue
+            start = node.start_mark
+            written = text[start.index : node.end_mark.index]
+            # `&anchor !!int x`: the tag follows the anchor.
+            if not re.match(r"(&\S+\s+)?!!", written):
+                continue
+            try:
+                YAML(typ="rt").constructor.construct_object(node, deep=True)
+            except Exception:  # RecursionError included
+                short = tag.rsplit(":", 1)[-1]
+                if isinstance(node, ScalarNode):
+                    value = str(node.value)
+                    shown = value if len(value) <= 40 else f"{value[:37]}..."
+                    return (start.line, start.column), (
+                        f"'{shown}' is not a valid !!{short}"
+                    )
+                return (start.line, start.column), (
+                    f"this value is not a valid !!{short}"
+                )
+    except Exception:  # never a traceback from the locator
+        return None
+    return None
+
+
+def walk_nodes(node: Node | None, *, children_first: bool = False) -> list[Node]:
+    """Every node under a composed node, keys included, each once.
+
+    Iterative, with a visited set: an alias back into its own anchor makes
+    the tree a cycle, and deep nesting must not exhaust the stack. Parents
+    come before their children unless `children_first`.
+    """
+    if node is None:
+        return []
+    found: list[Node] = []
+    seen: set[int] = set()
+    stack: list[tuple[Node, bool]] = [(node, False)]
+    while stack:
+        current, expanded = stack.pop()
+        if expanded:
+            found.append(current)
+            continue
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        children: list[Node] = []
+        if isinstance(current, MappingNode):
+            for key, value in current.value:
+                children += [key, value]
+        elif isinstance(current, SequenceNode):
+            children = list(current.value)
+        if children_first:
+            stack.append((current, True))
+        else:
+            found.append(current)
+        stack.extend((child, False) for child in reversed(children))
+    return found
+
+
+def _wide_encoding(raw: bytes) -> str | None:
+    """UTF-16 or UTF-32, told by the byte-order mark the file starts with."""
+    if raw.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
+        return "UTF-32"
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return "UTF-16"
+    return None
