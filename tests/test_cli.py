@@ -33,7 +33,7 @@ def test_version_matches_the_package() -> None:
 def test_validate_example(retail: Path) -> None:
     code, output = invoke(retail, "validate")
     assert code == 0
-    assert "3 datasets, 18 checks — no problems found" in output
+    assert "3 datasets, 19 checks — no problems found" in output
 
 
 def test_run_example_reports_every_planted_defect(retail: Path) -> None:
@@ -51,7 +51,7 @@ def test_run_example_reports_every_planted_defect(retail: Path) -> None:
     }
     warned = {r["name"] for r in report["results"] if r["outcome"] == "warn"}
     assert warned == {"Order volume", "Price feed freshness"}
-    assert report["run"]["counts"] == {"fail": 6, "pass": 10, "warn": 2}
+    assert report["run"]["counts"] == {"fail": 6, "pass": 11, "warn": 2}
 
 
 def test_warnings_pass_unless_fail_on_warn(retail: Path) -> None:
@@ -145,7 +145,7 @@ def test_quiet_run_prints_only_the_summary(retail: Path) -> None:
     result = CliRunner().invoke(
         cli, ["-q", "--project-dir", str(retail), "run", "checks/inventory"]
     )
-    assert result.output.strip().startswith("4 checks · 3 pass · 1 warn")
+    assert result.output.strip().startswith("5 checks · 4 pass · 1 warn")
 
 
 def test_init_creates_a_valid_project(tmp_path: Path) -> None:

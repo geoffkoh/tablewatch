@@ -474,7 +474,7 @@ def test_a_read_only_store_can_be_served(
 
         def probe(client: TestClient) -> None:
             assert len(get(client, "/api/v1/runs")["items"]) == 2
-            assert get(client, "/api/v1/checks")["total"] == 18
+            assert get(client, "/api/v1/checks")["total"] == 19
 
         started = start(recorded.root, monkeypatch, probe=probe)
     finally:

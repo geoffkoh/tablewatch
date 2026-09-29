@@ -3,6 +3,7 @@ cd3e8103b431  inventory.products  lake        row_count between 1 and 10000     
 8b9c5af854ba  inventory.products  lake        duplicate_count(sku) = 0          checks/inventory/products.yml:6:5
 ace45b91cd32  inventory.products  lake        min(price) > 0                    checks/inventory/products.yml:7:5
 41e58afff9c4  inventory.products  lake        Price feed freshness              checks/inventory/products.yml:8:5
+4532ee2fca0a  inventory.products  lake        freshness(stock_synced_at) < 1h   checks/inventory/products.yml:14:5
 32c8f939b90f  sales.customers     lake        row_count > 0                     checks/sales/customers.yml:4:5
 af0289a72fed  sales.customers     lake        duplicate_count(customer_id) = 0  checks/sales/customers.yml:5:5
 b1ceb8262d8b  sales.customers     lake        missing_percent(email) < 5%       checks/sales/customers.yml:6:5
@@ -18,4 +19,4 @@ a81b0374b0b0  sales.orders        lake        freshness(created_at) < 6h        
 e2948c41d4b1  sales.orders        lake        No negative amounts               checks/sales/orders.yml:15:5
 fbc3aa0b93b6  sales.orders        lake        schema                            checks/sales/orders.yml:18:5
 
-18 checks
+19 checks

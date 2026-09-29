@@ -107,7 +107,7 @@ def test_load_runs_nothing(retail: Path) -> None:  # L1
     project = tw.load(retail)
     assert project.ok is True
     assert len(project.datasets) == 3
-    assert len(project.checks) == 18
+    assert len(project.checks) == 19
     assert project.diagnostics == []
     assert not (retail / "retail.duckdb").exists()
     assert not (retail / ".tablewatch").exists()
@@ -140,7 +140,7 @@ def test_load_defaults_to_the_enclosing_project(
     retail: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # L5
     monkeypatch.chdir(retail / "checks" / "sales")
-    assert len(tw.load().checks) == 18
+    assert len(tw.load().checks) == 19
 
 
 def test_no_project_above_the_cwd_raises(
@@ -157,7 +157,7 @@ def test_no_project_above_the_cwd_raises(
 
 
 def test_load_accepts_the_project_file(retail: Path) -> None:  # L7
-    assert len(tw.load(retail / "tablewatch.yml").checks) == 18
+    assert len(tw.load(retail / "tablewatch.yml").checks) == 19
 
 
 # --- running -----------------------------------------------------------------
@@ -166,9 +166,9 @@ def test_load_accepts_the_project_file(retail: Path) -> None:  # L7
 def test_run_returns_typed_outcomes(retail: Path) -> None:  # R1
     result = tw.run(retail, record=False)
     assert isinstance(result, tw.RunResult)
-    assert len(result.results) == 18
+    assert len(result.results) == 19
     assert result.count(tw.Outcome.FAIL) == 6
-    assert result.count(tw.Outcome.PASS) == 10
+    assert result.count(tw.Outcome.PASS) == 11
     assert result.count(tw.Outcome.WARN) == 2
     assert result.outcome is tw.Outcome.FAIL
     as_text: str = result.outcome  # an Outcome is a str
@@ -206,15 +206,15 @@ def test_paths_are_relative_to_the_project(
 def test_every_cli_selector_is_available(retail: Path) -> None:  # R3
     catalogue = tw.run(retail, tags=["catalogue"], record=False)
     assert {r.check.dataset.name for r in catalogue.results} == {"inventory.products"}
-    assert len(catalogue.results) == 4
-    assert catalogue.count(tw.Outcome.PASS) == 3
+    assert len(catalogue.results) == 5
+    assert catalogue.count(tw.Outcome.PASS) == 4
     assert catalogue.count(tw.Outcome.WARN) == 1
     assert catalogue.exit_code() == 0
     assert catalogue.exit_code("warn") == 1
 
     excluded = tw.run(retail, excludes=["checks/sales"], record=False)
-    assert len(excluded.results) == 4
-    assert len(tw.run(retail, datasources=["lake"], record=False).results) == 18
+    assert len(excluded.results) == 5
+    assert len(tw.run(retail, datasources=["lake"], record=False).results) == 19
 
     one = tw.load(retail).checks[0]
     by_id = tw.run(retail, check_ids=[one.id], record=False)
@@ -278,8 +278,8 @@ def test_load_once_run_many(retail: Path) -> None:  # R7
     b = tw.run(project, record=False)
     assert a.id != b.id
     assert [r.outcome for r in a.results] == [r.outcome for r in b.results]
-    assert len(a.results) == len(b.results) == 18
-    assert len(project.checks) == 18
+    assert len(a.results) == len(b.results) == 19
+    assert len(project.checks) == 19
 
 
 def test_the_library_is_quiet(retail: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -356,12 +356,12 @@ def test_a_recorded_run_is_marked_as_from_python(retail: Path) -> None:  # S2
     assert (run_id, trigger, total, failed, exit_code) == (
         result.id,
         "python",
-        18,
+        19,
         6,
         1,
     )
     assert selection == "{}"
-    assert stored_result_count(retail) == 18
+    assert stored_result_count(retail) == 19
 
     CliRunner().invoke(cli, ["--project-dir", str(retail), "run"])
     assert sorted(row[1] for row in stored_runs(retail)) == ["cli", "python"]
@@ -379,7 +379,7 @@ def test_a_recording_failure_is_exit_2_not_a_crash(
     break_store(retail)
     with caplog.at_level(logging.WARNING, logger="tablewatch"):
         result = tw.run(retail, tags=["catalogue"])
-    assert result.count(tw.Outcome.PASS) == 3
+    assert result.count(tw.Outcome.PASS) == 4
     assert result.count(tw.Outcome.WARN) == 1
     assert result.outcome is tw.Outcome.WARN
     assert result.exit_code() == 2
@@ -436,7 +436,7 @@ def test_where_results_go_is_replaceable(retail: Path) -> None:  # S5
         cwd=project.root,
     )
     assert received == [result]
-    assert len(received[0].results) == 18
+    assert len(received[0].results) == 19
     assert not (retail / ".tablewatch").exists()
 
 
@@ -472,7 +472,7 @@ def test_one_failing_sink_does_not_stop_the_others(retail: Path) -> None:  # S6
         cwd=project.root,
     )
     assert received == [result]
-    assert result.count(tw.Outcome.PASS) == 3
+    assert result.count(tw.Outcome.PASS) == 4
     assert result.exit_code() == 2
     assert result.record_errors == ["boom"]
 
