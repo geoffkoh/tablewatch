@@ -9,3 +9,6 @@ checks:
       name: Price feed freshness
       warn: when > 1d
       fail: when > 7d
+  # A zoned (TIMESTAMPTZ) column: its age is exact whatever the datasource's
+  # timezone, which only changes how the newest row is shown.
+  - freshness(stock_synced_at) < 1h

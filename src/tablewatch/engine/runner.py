@@ -26,7 +26,7 @@ from tablewatch.config.loader import Project
 from tablewatch.config.project import MissingEnvironmentVariableError
 from tablewatch.datasources import DatasourceError, create_engine_for, timezone_of
 from tablewatch.engine.evaluate import evaluate, format_value
-from tablewatch.engine.executor import execute_plan
+from tablewatch.engine.executor import error_message, execute_plan
 from tablewatch.engine.planner import plan_dataset
 
 log = logging.getLogger(__name__)
@@ -218,7 +218,12 @@ def _run_datasource(
             except Exception as exc:  # the safety net: one dataset never ends the run
                 log.exception("unexpected failure running %s", dataset.name)
                 results.extend(
-                    CheckResult(check, Outcome.ERROR, None, f"internal error: {exc}")
+                    CheckResult(
+                        check,
+                        Outcome.ERROR,
+                        None,
+                        f"internal error: {_short_error(exc)}",
+                    )
                     for check in checks
                 )
     finally:
@@ -265,17 +270,55 @@ def _run_dataset(
             )
             continue
         values = {role: measured.values[key] for role, key in wiring.items()}
+        # One check's failure is that check's `error`, never the dataset's
+        # (rule 7). A TypeError/ValueError from compute is the data's fault
+        # and its text is the message; anything else, from compute or from
+        # evaluation, is a bug: logged with its traceback, named as internal.
         try:
             measurement = check.metric.compute(plan.contexts[check.id], values)
         except (TypeError, ValueError) as exc:
             results.append(
-                CheckResult(check, Outcome.ERROR, None, str(exc), measured.duration_ms)
+                CheckResult(
+                    check, Outcome.ERROR, None, _short_error(exc), measured.duration_ms
+                )
             )
             continue
-        outcome, message = evaluate(check, measurement)
+        except Exception as exc:
+            results.append(_internal_error(dataset, check, exc, measured.duration_ms))
+            continue
+        try:
+            outcome, message = evaluate(check, measurement)
+        except Exception as exc:
+            results.append(_internal_error(dataset, check, exc, measured.duration_ms))
+            continue
         results.append(
             CheckResult(
                 check, outcome, measurement.value, message, measured.duration_ms
             )
         )
     return results
+
+
+def _internal_error(
+    dataset: Dataset, check: Check, exc: Exception, duration_ms: float
+) -> CheckResult:
+    """A bug in a metric or in evaluation: that check's error, with a traceback."""
+    log.exception(
+        "%s: internal error in check %s (%s)", dataset.name, check.id, check.metric.name
+    )
+    return CheckResult(
+        check,
+        Outcome.ERROR,
+        None,
+        f"internal error in {check.metric.name}: {_short_error(exc)}",
+        duration_ms,
+    )
+
+
+def _short_error(exc: BaseException) -> str:
+    """An exception's first line, capped: it is stored and served over the API."""
+    try:
+        text = error_message(exc)
+    except Exception:  # an exception whose str() itself raises
+        text = type(exc).__name__
+    return text if len(text) <= 500 else f"{text[:497]}..."

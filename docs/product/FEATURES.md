@@ -151,7 +151,7 @@ contain row data. Every notification increment needs security review
 
 | ID | Feature | Value | Persona | Phase | Size | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| E0 | CLI for servers: exit codes, JSON logs, JUnit | Runs from cron | Priya | 1 | — | shipped (readable freshness messages and schema values on every surface in I-24; hardening continues in I-40, I-42 to I-45) |
+| E0 | CLI for servers: exit codes, JSON logs, JUnit | Runs from cron | Priya | 1 | — | shipped (readable freshness messages and schema values on every surface in I-24; freshness on DuckDB `TIMESTAMPTZ` and one check's crash staying on that check in I-41 and I-42; hardening continues in I-40, I-43 to I-45) |
 | E1 | `tablewatch agent`: cron in YAML, DB-backed HA lock | Scheduling without an external orchestrator | Priya | 3 | L | catalogue |
 | E2 | Docker image, Helm chart, K8s CronJob | Standard deployment | Priya | 3 | M | catalogue |
 | E3 | Airflow, Dagster, Prefect; GitHub Action; pre-commit | Fits existing pipelines | Dana | 3 | M | catalogue |

@@ -42,6 +42,8 @@ tw = "tablewatch.cli.main:cli"
 duckdb = [
     "duckdb>=1.1",
     "duckdb-engine>=0.13",
+    # duckdb imports pytz to fetch TIMESTAMPTZ values but does not declare it.
+    "pytz>=2024.1",
 ]
 postgres = [
     "psycopg[binary]>=3.2",
@@ -120,6 +122,7 @@ dev = [
     "ruff>=0.15.22,<0.17",
     "duckdb>=1.1",
     "duckdb-engine>=0.13",
+    "pytz>=2024.1",
     "jsonschema>=4.23",
     "types-jsonschema>=4.23",
     "psycopg[binary]>=3.2",

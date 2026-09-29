@@ -156,6 +156,14 @@ datasources:
 Getting this wrong fails silently: a local-time column read as UTC can look
 hours fresher than it really is.
 
+Timestamps *with* a time zone (Postgres `timestamptz`, DuckDB `TIMESTAMPTZ`)
+are exact instants. Their age does not depend on `timezone`, which only sets
+the zone the message shows them in, and rows written with different offsets
+are compared as instants. Prefer a zoned column when you have the choice. On
+DuckDB it needs the `duckdb` extra (`pip install 'tablewatch[duckdb]'`), which
+brings `pytz`: DuckDB's Python client needs it to read `TIMESTAMPTZ` values but
+does not install it.
+
 The message names the newest value in the datasource's zone, to the second,
 and the zone with its offset at that time:
 

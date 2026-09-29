@@ -10,12 +10,22 @@ comment next to the row that causes it; the checks under checks/ catch them.
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import duckdb
 
 HERE = Path(__file__).parent
+
+
+def _zoned(now: datetime, hours_ago: float, offset_hours: int) -> str:
+    """A TIMESTAMPTZ literal for `hours_ago` before naive-UTC `now`, at an offset."""
+    zone = timezone(timedelta(hours=offset_hours))
+    return (
+        (now.replace(tzinfo=UTC) - timedelta(hours=hours_ago))
+        .astimezone(zone)
+        .isoformat()
+    )
 
 
 def build(path: Path = HERE / "retail.duckdb") -> Path:
@@ -87,19 +97,36 @@ def build(path: Path = HERE / "retail.duckdb") -> Path:
         )
         con.execute(
             """CREATE TABLE inventory.products (
-                sku VARCHAR, name VARCHAR, price DECIMAL(10, 2), updated_at TIMESTAMP)"""
+                sku VARCHAR, name VARCHAR, price DECIMAL(10, 2), updated_at TIMESTAMP,
+                stock_synced_at TIMESTAMPTZ)"""
         )
+        # stock_synced_at is zoned (TIMESTAMPTZ): each row keeps the offset the
+        # warehouse system sent it with, and freshness compares instants.
         con.executemany(
-            "INSERT INTO inventory.products VALUES (?, ?, ?, ?)",
+            "INSERT INTO inventory.products VALUES (?, ?, ?, ?, ?)",
             [
-                ("SKU-001", "Kettle", 39.90, now - timedelta(days=3)),
-                ("SKU-002", "Toaster", 59.90, now - timedelta(days=3)),
+                # Not a defect: stock synced 30 minutes ago, sent in +08:00.
+                (
+                    "SKU-001",
+                    "Kettle",
+                    39.90,
+                    now - timedelta(days=3),
+                    _zoned(now, 0.5, 8),
+                ),
+                (
+                    "SKU-002",
+                    "Toaster",
+                    59.90,
+                    now - timedelta(days=3),
+                    _zoned(now, 1, 0),
+                ),
                 (
                     "SKU-003",
                     "Blender",
                     89.00,
                     now - timedelta(days=3),
-                ),  # defect: stale feed
+                    _zoned(now, 2, 0),
+                ),  # defect: stale feed (updated_at)
             ],
         )
     finally:

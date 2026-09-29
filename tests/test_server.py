@@ -152,7 +152,7 @@ def test_serve_prints_where_it_listens(
     assert started.stdout == ""
     assert re.fullmatch(
         r"tablewatch serve: http://127\.0\.0\.1:\d+/ "
-        r"\(project retail-example, 18 checks; API at /api/v1\)\n",
+        r"\(project retail-example, 19 checks; API at /api/v1\)\n",
         started.stderr,
     )
 
@@ -242,7 +242,7 @@ def test_check_file_mistakes_do_not_stop_serve(
     def probe(client: TestClient) -> None:
         project = get(client, "/api/v1/project")
         assert project["ok"] is False
-        assert project["counts"]["checks"] == 17
+        assert project["counts"]["checks"] == 18
         [diagnostic] = project["diagnostics"]
         assert diagnostic["location"] == {
             "file": "checks/sales/orders.yml",
@@ -264,7 +264,7 @@ def test_check_file_mistakes_do_not_stop_serve(
     )
     assert (
         lines[1]
-        == "tablewatch: 1 error in the project — serving the 17 checks that loaded"
+        == "tablewatch: 1 error in the project — serving the 18 checks that loaded"
     )
 
 
@@ -318,7 +318,7 @@ def test_the_store_is_migrated_once_at_startup(
         assert get(client, "/api/v1/runs") == {"items": [], "next_cursor": None}
         checks = get(client, "/api/v1/checks")["items"]
         assert all(c["latest"] is None for c in checks)
-        assert get(client, "/api/v1/checks?outcome=not_run")["total"] == 18
+        assert get(client, "/api/v1/checks?outcome=not_run")["total"] == 19
 
     started = start(retail, monkeypatch, probe=probe)
     assert started.code == 0, started.stderr
@@ -494,7 +494,7 @@ def test_project(recorded: Recorded) -> None:  # P1
     assert body["name"] == "retail-example"
     assert body["ok"] is True
     assert body["diagnostics"] == []
-    assert body["counts"] == {"datasets": 3, "checks": 18}
+    assert body["counts"] == {"datasets": 3, "checks": 19}
     assert body["datasources"] == [{"name": "lake", "type": "duckdb"}]
     assert body["version"] == tw.__version__
     assert body["loaded_at"].endswith("+00:00")
@@ -507,7 +507,7 @@ def test_every_check_with_its_latest_result(recorded: Recorded) -> None:  # C1
     listed = json.loads(out)
     with served(recorded.root) as client:
         body = get(client, "/api/v1/checks")
-    assert body["total"] == 18
+    assert body["total"] == 19
     assert [c["id"] for c in body["items"]] == [c["id"] for c in listed]
     item = {c["id"]: c for c in body["items"]}[CUSTOMERS_EMAIL]
     assert item["source"] == "checks/sales/customers.yml:6:5"
@@ -546,7 +546,7 @@ def test_filter_by_latest_outcome(recorded: Recorded) -> None:  # C2
         assert {PRICE_FRESHNESS, ORDER_VOLUME} <= set(both)
         assert ids("?outcome=error") == []
         assert ids("?outcome=not_run") == []
-        assert len(ids("?outcome=pass")) == 10
+        assert len(ids("?outcome=pass")) == 11
         assert ids("?outcome=skipped") == []
         for bad in ("bad", "FAIL"):
             body = assert_error(
@@ -572,7 +572,7 @@ def test_check_files_are_read_once(recorded: Recorded) -> None:  # C4
             customers.read_text(encoding="utf-8") + "  - row_count < 1000000\n",
             encoding="utf-8",
         )
-        assert get(client, "/api/v1/checks")["total"] == 18
+        assert get(client, "/api/v1/checks")["total"] == 19
         assert get(client, "/api/v1/project")["loaded_at"] == loaded_at
         invoke(recorded.root, "run", "checks/inventory")
         assert len(get(client, "/api/v1/runs")["items"]) == 3
@@ -782,7 +782,7 @@ def test_runs_newest_first_paginated(recorded: Recorded) -> None:  # R1
         second = get(client, f"/api/v1/runs?limit=1&cursor={page['next_cursor']}")
         [run_a] = second["items"]
         assert (run_a["id"], run_a["selection"]) == (recorded.run_a, {})
-        assert run_a["counts"]["total"] == 18
+        assert run_a["counts"]["total"] == 19
         assert second["next_cursor"] is None
         everything = get(client, "/api/v1/runs")
     assert [r["id"] for r in everything["items"]] == [recorded.run_b, recorded.run_a]

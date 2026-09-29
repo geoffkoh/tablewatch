@@ -553,7 +553,7 @@ def test_the_example_project_end_to_end(
     results = {r["check_id"]: r for r in report["results"]}
     outcomes = [r["outcome"] for r in report["results"]]
     assert (outcomes.count("pass"), outcomes.count("warn"), outcomes.count("fail")) == (
-        10,
+        11,
         2,
         6,
     )

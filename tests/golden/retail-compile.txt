@@ -1,6 +1,6 @@
 -- inventory.products on lake (checks/inventory/products.yml)
--- single scan: 3 measures
-SELECT count(*) AS m0, min(price) AS m1, max(updated_at) AS m2 
+-- single scan: 4 measures
+SELECT count(*) AS m0, min(price) AS m1, max(updated_at) AS m2, max(stock_synced_at) AS m3 
 FROM inventory.products;
 SELECT coalesce(sum(duplicate_groups.n - 1), 0) AS coalesce_1 
 FROM (SELECT count(*) AS n 

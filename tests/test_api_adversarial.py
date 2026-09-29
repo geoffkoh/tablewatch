@@ -221,7 +221,7 @@ def test_warning_diagnostics_are_logged_and_do_not_stop_the_run(
     (retail / "checks" / "empty.yml").write_text("", encoding="utf-8")
     with caplog.at_level(logging.WARNING, logger="tablewatch"):
         result = tw.run(retail, record=False)
-    assert len(result.results) == 18
+    assert len(result.results) == 19
     warned = [
         r
         for r in caplog.records
@@ -260,7 +260,7 @@ def test_a_store_failing_mid_save_leaves_no_partial_run(retail: Path) -> None:
         db.close()
 
     second = tw.run(retail, tags=["catalogue"])
-    assert second.count(tw.Outcome.PASS) == 3
+    assert second.count(tw.Outcome.PASS) == 4
     assert second.exit_code() == 2
     assert len(second.record_errors) == 1
     assert "disk said no" in second.record_errors[0]
@@ -404,7 +404,7 @@ def test_cli_quiet_with_a_broken_store(retail: Path) -> None:
     break_store(retail)
     code, out, err = _cli(retail, "-q", "run", "checks/inventory")
     assert code == 2
-    assert out.startswith("4 checks · 3 pass · 1 warn")
+    assert out.startswith("5 checks · 4 pass · 1 warn")
     assert out.count("\n") == 1
     assert err.count("tablewatch: could not record the run: ") == 1
     assert "Traceback" not in err
@@ -417,7 +417,7 @@ def test_cli_json_with_a_broken_store_is_still_a_valid_report(retail: Path) -> N
     report = json.loads(out)
     assert report["schema_version"] == 1
     assert report["run"]["trigger"] == "cli"
-    assert len(report["results"]) == 4
+    assert len(report["results"]) == 5
     assert "could not record the run" in err
 
 
@@ -479,7 +479,7 @@ def test_json_report_shape_is_unchanged(retail: Path) -> None:
         "tags",
         "duration_ms",
     }
-    assert report["run"]["counts"] == {"fail": 6, "pass": 10, "warn": 2}
+    assert report["run"]["counts"] == {"fail": 6, "pass": 11, "warn": 2}
 
 
 def test_python_and_cli_agree_check_by_check(retail: Path) -> None:
