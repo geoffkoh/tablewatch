@@ -6,24 +6,31 @@
 import type { ReactElement } from "react";
 import type { HistoryEntry } from "../api/types";
 import { zoneName, localTime, parseTimestamp } from "../lib/time";
+import { ResultValue } from "./LatestResult";
 import { StatusBadge } from "./StatusIcon";
 import { Ago } from "./Time";
 
 function Value({ entry }: { entry: HistoryEntry }): ReactElement {
-  // display_value is "—" when nothing was measured; words say why instead.
   if (entry.outcome === "error") return <span className="result__headline">Could not evaluate</span>;
-  if (entry.value === null) return <span className="quiet">No value measured</span>;
-  return <span className="result__value">{entry.display_value}</span>;
+  return <ResultValue result={entry} />;
 }
 
 interface HistoryTableProps {
   entries: readonly HistoryEntry[];
   /** The loaded check's expression and dataset; null for a check no longer loaded. */
   current: { expression: string; dataset: string; metric: string } | null;
+  /**
+   * The entries (API indexes) under the chart's current-rule band: the only
+   * rows called "Current" (spec 012 K2). From `buildSeries`, never recomputed.
+   */
+  currentRun: ReadonlySet<number>;
   now: number;
 }
 
-export function HistoryTable({ entries, current, now }: HistoryTableProps): ReactElement {
+/** A row judged by today's text that is not under the band (K1, K3). */
+export const SAME_BEFORE_CHANGE = "Same as current, before a rule change";
+
+export function HistoryTable({ entries, current, currentRun, now }: HistoryTableProps): ReactElement {
   const newest = entries[0];
   const expression = current?.expression ?? newest?.expression ?? "";
   const dataset = current?.dataset ?? newest?.dataset ?? "";
@@ -83,7 +90,9 @@ export function HistoryTable({ entries, current, now }: HistoryTableProps): Reac
                     </span>
                   )}
                   {!otherRule && !otherDataset && (
-                    <span className="quiet">{current === null ? "Same as the newest" : "Current"}</span>
+                    <span className="quiet">
+                      {current === null ? "Same as the newest" : currentRun.has(index) ? "Current" : SAME_BEFORE_CHANGE}
+                    </span>
                   )}
                 </td>
                 <td>{entry.trigger}</td>

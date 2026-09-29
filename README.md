@@ -231,12 +231,17 @@ loaded files and still shows its recorded results. The page shows:
 - **Rule**: the rule in the check files as `serve` loaded them, for example
   "Expected `< 5%`", or "Warn when `> 1d`" and "Fail when `> 7d`". A
   `schema` or `failed_rows` check with no triggers reads "Expected `= 0`".
-- **Latest result**, in the same words as the overview.
+- **Latest result**, in the same words as the overview. A result with
+  nothing to measure (an average over no rows, say) reads "No value
+  measured" with the reason, here, on the overview and in the history table.
 - **History**: a chart of the recorded values over time, then a table of
   every result, newest first. The table holds everything the chart draws,
-  with the full message. Its **Rule** column reads "Current" for a result
-  recorded under today's expression, and "Different rule" with the
-  recorded expression for one that was not. The page loads the latest 200
+  with the full message. Its **Rule** column reads "Current" for the
+  results the chart shades under the current rule: the newest run of
+  results judged by today's expression. A result judged by the same
+  expression before a later rule change reads "Same as current, before a
+  rule change", and one judged by another expression reads "Different
+  rule" with the recorded expression. The page loads the latest 200
   results. When there are more, the chart says so, and **Load older
   results** adds the next 200 to both.
 - **SQL**: the statements tablewatch sends to the database for this check,
@@ -253,8 +258,10 @@ How to read the chart:
   icons. The page never re-judges an old value against today's rule: a
   point keeps the outcome its run recorded.
 - **The shaded band is where the current rule fails** (red) or warns
-  (amber), with a line at each boundary labelled with the rule's text. For
-  `= 0`, everything above 0 is shaded, and the line is at 0. When a boundary
+  (amber), with a line at each boundary labelled with the rule's text
+  (`< 5%`). The two lines of a `between` each say which end they are:
+  `>= 50` and `<= 60` for `between 50 and 60`, `< 50` and `> 60` for `not
+  between`. For `= 0`, everything above 0 is shaded, and the line is at 0. When a boundary
   is far outside the values, the chart leaves it off the axis and names it
   at the edge instead: "10,000 above". "Current rule" above the chart
   always states the whole rule.
@@ -391,7 +398,7 @@ How to read the source:
 - **Copy the source** copies the lines exactly, without the line numbers;
   selecting the lines by hand skips the numbers too. Long lines do not wrap,
   because a YAML line's indentation is part of its meaning: scroll the block
-  sideways. Invisible characters are marked, as in the SQL.
+  sideways, and the line numbers stay at its left edge. Invisible characters are marked, as in the SQL.
 
 ### The JSON API
 

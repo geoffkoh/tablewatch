@@ -115,7 +115,7 @@ Notes:
 | C1 | Read-only REST API (runs, results, checks, history), OpenAPI | Contract for the UI and integrations | all | 2 | M | shipped (I-02) |
 | C2 | `tablewatch serve` (listens on 127.0.0.1 by default; `--host` opts in with a no-authentication warning), UI shell, overview (failing first) | Status at a glance, without a terminal | Sam, Alex | 2 | M | shipped (`serve` in I-02; UI shell and overview in I-03) |
 | C3 | Check explorer: tree mirroring `checks/`, filters, search | Find any check the way it was written | Sam | 2 | M | backlog |
-| C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | shipped (page, rule, history chart and table in I-05; SQL in I-26; source in I-29). Polish continues in I-27, I-35 and I-39; the freshness timestamp as a structured field is I-40 |
+| C4 | Check detail: history chart vs threshold, SQL, source | Understand one check completely | Sam, Dana | 2 | M | shipped (page, rule, history chart and table in I-05; SQL in I-26; source in I-29). Polish: I-27 and I-39 done (iteration 12); I-35 continues it; the freshness timestamp as a structured field is I-40 |
 | C5 | Run detail and diff against the previous run | "What broke since yesterday" | Sam | 2 | M | backlog |
 | C6 | Health scores and scorecards by domain, owner, tag; runbook links | A trust signal for consumers | Alex | 4 | M | catalogue |
 | C7 | Failed-rows viewer | See the bad rows (needs B6) | Sam | 2b | S | catalogue |

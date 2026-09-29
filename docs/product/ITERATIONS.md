@@ -6,6 +6,103 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 12 — Check detail polish: "Current" agrees with the band, "No value measured", `between` labels, sticky line numbers (I-27, I-39), 2026-09-29
+
+- **Spec:** [012-check-detail-polish](specs/012-check-detail-polish.md).
+  **Branch:** `iter/012-check-detail-polish`. **PR:** #17. The backlog
+  freeze holds: no items added.
+- **PLAN (2026-09-29)** combined I-27 and I-39 (both frontend-only
+  polish of the check page). I-35 did not ride: measured on `d39305f`,
+  its driver and URL messages come from `src/` and an undefined
+  datasource is served as `""`, so it needs an API change and an
+  architect review.
+- **REFINE.** The data-steward kept ASCII boundary labels (`>=` `<=` `<`
+  `>`, as the DSL and every compare label read) and the wording "Same
+  as current, before a rule change", and added K2's `should` ("Current"
+  follows the run, not whether a band is drawn). The ui-engineer
+  answered Q1 (gap 20 next to the latest label, 14 between other
+  labels; B8 asserted on the four B7 fixtures only, B7 wins otherwise),
+  Q2 (ASCII) and Q4 (no objection to changing the overview row). The
+  tech lead chose option (b) for L3: "No value measured" only when
+  `value` is null and `display_value` is `"—"`; a non-finite value shows
+  its `display_value`. Thresholds are never rounded; sticky numbers via
+  block-level `.line`. All recorded in the spec in this REVIEW (the
+  ui-engineer cannot edit specs).
+- **Shipped:** on the check page, the history table calls a rule
+  "Current" exactly where the chart shades it; one function
+  (`buildSeries`'s current run) decides both, and an older row judged by
+  today's text reads "Same as current, before a rule change". A result
+  with no value reads "No value measured" under Latest result, on the
+  overview row and in the table, from one module. A `between` rule's two
+  boundary lines read `>= 50` / `<= 60` (`not between`: `< 50` / `> 60`),
+  thresholds exact, never rounded; an off-range label sits on the side
+  it names, at least 20 units from the latest value's label (two on one
+  side ordered by value). Source-block line numbers stay at the left edge
+  while the text scrolls under them; copy and Select all are unchanged.
+  Frontend, `docs/UI_SPECIFICATION.md`, the bundle and the README only;
+  no `src/`, API, store, CLI or exit-code change. Commits `efc4a75`
+  (build), `a4ef70d` (QA fixes), `afb0eb5` (README), `bb3247a` (WebKit
+  Select all).
+- **Acceptance.** Every `must` and `should` in K1 to K4, L1 to L4, B1 to
+  B8 (B8 on the four B7 fixtures, per Q1) and N1, N3, G1 passes as an
+  automated test; N2 by hand. Frontend: **708 vitest**, `tsc` clean,
+  fresh bundle. Python: **1237 passed** (unchanged; no Python change).
+- **Reviewer findings and resolution:**
+  - *qa-engineer — pass with follow-ups, all fixed (`a4ef70d`).* The
+    threshold formatter rounded `1e-25` to `0` and `1.23e21` to
+    `1.235E21`: now exact through a `String(v)` fallback. Two off-range
+    labels on one side were ordered by id: now by value. QA's general-B8
+    case was rewritten to assert the REFINE decision (B7 wins).
+    Recorded, not fixed (out of scope): a `between` on a duration can
+    label both lines `1h` (spec non-goal: coarse durations); a
+    non-finite value's chart mark still reads "no value measured"
+    (L3's option (b) covers the text surfaces only).
+  - *data-steward — accept.* 114 hand checks in Chromium, Firefox and
+    WebKit (Playwright builds) at 1280 and 360 px, light and dark, K1,
+    L1, B1, B4 and N2 included. **Found a regression:** in WebKit,
+    Select all in the Source (and SQL) block added a trailing newline,
+    because the last `.line` became a block. Fixed in `bb3247a` (the
+    selection ends inside the last text node; shared by SQL and Source);
+    re-checked 12/12 exact in all three browsers. Added N2's "no blank
+    line between lines; the block is exactly three lines tall" (written
+    into the spec in this REVIEW). WebKit's End key does not scroll a
+    focused block sideways; that is the browser's behaviour, and N2 asks
+    only for the arrow keys.
+  - *architect, security-reviewer — not required* (spec: no `src/`, no
+    seam, no public API, no PROCESS.md trigger; D17 and the CSP hold).
+- **Not added (backlog freeze).** For the owner; neither fits an
+  existing item:
+  1. A `between` on a duration whose two ends differ by less than the
+     formatter's second unit can label both lines `1h` (qa-engineer).
+     The axis formatter shows two units at most; the labels would need
+     the exact duration or a finer unit. Close to I-43/I-44 (units), not the same.
+  2. The chart's mark (tooltip and accessible name) for a non-finite
+     value reads "no value measured", while the table and Latest result
+     now show its `display_value` (qa-engineer). The chart has no
+     inf lane; deciding where `inf` goes is a chart decision.
+- **Deferred:** nothing a `must` or `should` asked for. I-35 is next as
+  its own S.
+- **Backlog:** I-27 and I-39 done. No new items, no score moves.
+- **Learned:**
+  - Making a line a block changed what a browser selects: WebKit put a
+    newline after the last block. A CSS change to copyable text needs a
+    by-hand copy check in all three engines, not just a `textContent`
+    test; jsdom cannot see it. The data-steward's three-engine run found
+    it, which argues for keeping cross-engine hand checks in VERIFY for
+    any UI change to selectable text.
+  - The "Current" drift came from two functions answering one question.
+    K2's rule (the table asks the series) is worth repeating wherever
+    the chart and the table describe the same rows.
+  - REFINE decisions the ui-engineer makes do not reach the spec on
+    their own, because it cannot write there. The PM records them in
+    REVIEW; it would be better recorded at REFINE by the tech lead
+    passing them to the PM.
+- **Next:** I-35, the SQL section in plain words (1.0, rank 3). It is
+  the last check-page polish item under the owner's "UI first"
+  priority, already measured in iteration 12 PLAN, S, and touches `src/`
+  and the API, so the architect reviews. After it the UI chain has I-43
+  (1.0), I-04 (0.8) and I-21 (0.8) before I-06 (4.5).
+
 ## Iteration 11 — Freshness on DuckDB `TIMESTAMPTZ`; one check's crash stays on that check (I-41, I-42), 2026-09-29
 
 - **Spec:** [011-freshness-timestamptz](specs/011-freshness-timestamptz.md).

@@ -13,30 +13,52 @@ export function textWidth(text: string, charWidth = CHAR_WIDTH): number {
   return Array.from(text).length * charWidth;
 }
 
+/** Centre to centre, between the latest value's label and any other (spec 012 B7). */
+export const LATEST_GAP = 20;
+
 export interface Wanted {
   id: string;
   /** The label's desired centre. */
   y: number;
+  /**
+   * Where the label goes in the column's order, before its `y` is considered:
+   * -1 always first (top), 1 always last (bottom), 0 (the default) by `y`.
+   * An off-range edge label names a side, so it stays on that side (B7).
+   */
+  rank?: -1 | 0 | 1;
+  /** Breaks a tie in `y` before the id does: smaller first (higher up). */
+  order?: number;
 }
+
+/** The distance two neighbouring labels keep, centre to centre. */
+export type Gap = number | ((upper: Wanted, lower: Wanted) => number);
 
 /**
  * Vertical positions for a column of labels, each as close to its wanted
- * centre as possible, none overlapping (`gap` apart, centre to centre), all
- * inside [top, bottom] when they fit. Pure; returns centres by id.
+ * centre as possible, none overlapping (`gap` apart, centre to centre, or as
+ * `gap` says for each neighbouring pair), all inside [top, bottom] when they
+ * fit. Order is by `rank`, then wanted centre, then `order`, then id. Pure; returns centres
+ * by id.
  */
-export function stackLabels(items: readonly Wanted[], gap: number, top: number, bottom: number): Map<string, number> {
-  const sorted = [...items].sort((a, b) => a.y - b.y || a.id.localeCompare(b.id));
+export function stackLabels(items: readonly Wanted[], gap: Gap, top: number, bottom: number): Map<string, number> {
+  const gapOf = typeof gap === "number" ? (): number => gap : gap;
+  const sorted = [...items].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || a.y - b.y || (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
   const ys = sorted.map((i) => Math.min(Math.max(i.y, top), bottom));
+  const between = (i: number): number => {
+    const upper = sorted[i - 1];
+    const lower = sorted[i];
+    return upper === undefined || lower === undefined ? 0 : gapOf(upper, lower);
+  };
   for (let i = 1; i < ys.length; i += 1) {
     const prev = ys[i - 1] ?? top;
-    if ((ys[i] ?? 0) < prev + gap) ys[i] = prev + gap;
+    if ((ys[i] ?? 0) < prev + between(i)) ys[i] = prev + between(i);
   }
   const last = ys.length - 1;
   if (last >= 0 && (ys[last] ?? 0) > bottom) {
     ys[last] = bottom;
     for (let i = last - 1; i >= 0; i -= 1) {
       const next = ys[i + 1] ?? bottom;
-      if ((ys[i] ?? 0) > next - gap) ys[i] = next - gap;
+      if ((ys[i] ?? 0) > next - between(i + 1)) ys[i] = next - between(i + 1);
     }
   }
   const out = new Map<string, number>();

@@ -227,3 +227,31 @@ export function recordedHistory(id: string): HistoryPage {
 }
 
 export { email as emailSummary };
+
+// ---- spec 012 ---------------------------------------------------------------
+
+/**
+ * `avg-on-nothing` (spec 012 L1): `avg(amount) between 10 and 500` with a
+ * `where:` no row matches. `latest` is what `GET /api/v1/checks/avg-on-nothing`
+ * answered on a scratch retail copy on 2026-09-29; ids and times are the
+ * placeholders of `states.ts`.
+ */
+export const AVG_ON_NOTHING_ID = "avg-on-nothing";
+
+export const avgOnNothing: { check: CheckDetail; history: HistoryPage } = (() => {
+  const base = detailOf(recorded, "366d9254d889c910");
+  const latest = {
+    run_id: RUN_ID.B,
+    started_at: STARTED.B,
+    since: STARTED.B,
+    trigger: "cli",
+    outcome: "fail",
+    value: null,
+    display_value: "—",
+    message: "no non-NULL values in scope",
+    last_evaluated: null,
+  } as const;
+  const check: CheckDetail = { ...base, id: AVG_ON_NOTHING_ID, latest: { ...latest } };
+  const fields = { outcome: "fail", value: null, display_value: "—", message: latest.message } as const;
+  return { check, history: page([entry(check, "B", fields)]) };
+})();
