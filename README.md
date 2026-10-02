@@ -109,8 +109,12 @@ The full language — every metric, option and rule — is in
 | `tablewatch serve` | Serve checks and results as a web page and a read-only JSON API ([below](#serve-results-over-http)). |
 
 `list`, `compile` and `run` take selectors: paths (`checks/sales`), `--tag`,
-`--datasource`, `--exclude PATH_OR_GLOB`, and `--check ID`.
-`tw` is a short alias for `tablewatch`.
+`--datasource`, `--exclude PATH_OR_GLOB`, and `--check ID`. Every selector
+must match at least one check: `tw run checks/sales checks/slaes` runs
+nothing and exits `3`, naming `checks/slaes`, so a typo never passes for a
+checked folder. Paths and excludes resolve from where you run the command,
+and a run records them relative to the project (`checks/sales`), however
+you typed them. `tw` is a short alias for `tablewatch`.
 
 ## On servers
 
@@ -123,7 +127,7 @@ logs to stderr, as JSON with `--log-format json`, so stdout stays clean for
 | `0` | All checks passed (warnings too, unless `--fail-on warn`) | — |
 | `1` | A check **failed**: the data is bad | Alert the data owner |
 | `2` | A check could not be **evaluated**: connection, query, store | Retry, then page the platform team |
-| `3` | The project is invalid, or nothing matched: **nothing ran** | Fix the deployment |
+| `3` | The project is invalid, a selector matched nothing, or the command line is wrong: **nothing ran** | Fix the deployment |
 
 ```cron
 */30 * * * *  TABLEWATCH_PROJECT_DIR=/srv/dq  tablewatch --log-format json run --output junit --output-file /var/log/dq/latest.xml
@@ -615,7 +619,8 @@ only the data, so read `exit_code()` to decide what your pipeline does.
 `tw.run()` does not raise for bad data. It raises `tw.TablewatchError` only
 when **nothing ran**, the library's exit `3`: `tw.ProjectError` when the
 project has mistakes (all of them are on `exc.diagnostics`), and
-`tw.SelectionError` when no checks matched. Invalid arguments raise
+`tw.SelectionError` when a selector matched no checks (each one must match
+something on its own; the message names every one that did not). Invalid arguments raise
 `ValueError` or `TypeError`.
 
 ```python

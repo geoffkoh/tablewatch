@@ -432,7 +432,7 @@ def test_cli_selection_error_with_a_broken_store_is_exit_3(retail: Path) -> None
     break_store(retail)
     code, out, err = _cli(retail, "run", "--tag", "nope")
     assert code == 3
-    assert "no checks matched the selection — nothing ran" in err
+    assert "no checks match tag 'nope' — nothing ran" in err
     assert "could not record" not in err
 
 

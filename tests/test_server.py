@@ -907,7 +907,8 @@ def test_selection_is_shown_as_recorded(recorded: Recorded) -> None:  # R7
     result = tw.run(recorded.root, paths=[str(recorded.root / "checks" / "sales")])
     with served(recorded.root) as client:
         run = get(client, f"/api/v1/runs/{result.id}")
-    assert run["selection"] == {"paths": [str(recorded.root / "checks" / "sales")]}
+    # Recorded project-relative, however it was typed (spec 020).
+    assert run["selection"] == {"paths": ["checks/sales"]}
     assert run["trigger"] == "python"
 
 
