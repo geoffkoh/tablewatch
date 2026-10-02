@@ -217,16 +217,21 @@ class ResultStore:
             return session.scalars(statement).one_or_none()
 
     def latest_results(
-        self, project: str, check_id: str | None = None
+        self,
+        project: str,
+        check_id: str | None = None,
+        *,
+        as_of: PageKey | None = None,
     ) -> dict[str, Latest]:
         """Each check id's newest result in this project, and its current state.
 
         Newest is by `(started_at, run id)`, the same order as history, so a
         check's latest result is always the head of its history. Two
         queries, however many checks: every result's outcome in history
-        order, then the head rows.
+        order, then the head rows. `as_of` reads history as it stood when
+        that run was recorded: it and older runs only.
         """
-        scope = [RunRow.project == project]
+        scope = [RunRow.project == project, *_not_newer_than(as_of)]
         if check_id is not None:
             scope.append(CheckResultRow.check_id == check_id)
         outcomes = (
@@ -305,6 +310,20 @@ class ResultStore:
                         done.add(check)
         return found
 
+    def matching_run_ids(self, project: str, prefix: str, limit: int = 10) -> list[str]:
+        """Up to `limit` of this project's run ids that start with `prefix`."""
+        statement = (
+            select(RunRow.id)
+            .where(
+                RunRow.project == project,
+                RunRow.id.startswith(prefix.lower(), autoescape=True),
+            )
+            .order_by(RunRow.id)
+            .limit(limit)
+        )
+        with _reading(), Session(self.engine) as session:
+            return list(session.scalars(statement))
+
     def history_page(
         self, project: str, check_id: str, *, limit: int, before: PageKey | None = None
     ) -> list[tuple[CheckResultRow, RunRow]]:
@@ -340,6 +359,18 @@ def _older_than(before: PageKey | None) -> list[ColumnElement[bool]]:
         or_(
             RunRow.started_at < before.started_at,
             and_(RunRow.started_at == before.started_at, RunRow.id < before.run_id),
+        )
+    ]
+
+
+def _not_newer_than(as_of: PageKey | None) -> list[ColumnElement[bool]]:
+    # `_older_than`, but including the run itself.
+    if as_of is None:
+        return []
+    return [
+        or_(
+            RunRow.started_at < as_of.started_at,
+            and_(RunRow.started_at == as_of.started_at, RunRow.id <= as_of.run_id),
         )
     ]
 
