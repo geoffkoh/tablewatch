@@ -491,9 +491,12 @@ def test_one_word_everywhere() -> None:  # S1
         encoding="utf-8"
     )
     assert "violation" not in docs.lower()
-    for other in ("missing_count", "duplicate_count", "failed_rows", "row_count"):
+    for other in ("missing_count", "duplicate_count"):
         metric = get_metric(other)
         assert metric is not None and metric.count_noun is None
+    for rows in ("failed_rows", "row_count"):  # spec 014, I-43
+        metric = get_metric(rows)
+        assert metric is not None and metric.count_noun == ("row", "rows")
 
 
 # --- every surface agrees ----------------------------------------------------------

@@ -48,6 +48,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -79,6 +80,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -110,6 +112,7 @@ export const recorded: OverviewResponses = {
         "unit": "number",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -141,6 +144,7 @@ export const recorded: OverviewResponses = {
         "unit": "duration",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -172,6 +176,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -204,6 +209,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -236,6 +242,7 @@ export const recorded: OverviewResponses = {
         "unit": "percent",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -268,6 +275,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -300,6 +308,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -332,6 +341,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -364,6 +374,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -396,6 +407,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -428,6 +440,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -460,6 +473,7 @@ export const recorded: OverviewResponses = {
         "unit": "percent",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -492,6 +506,7 @@ export const recorded: OverviewResponses = {
         "unit": "number",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -524,6 +539,7 @@ export const recorded: OverviewResponses = {
         "unit": "duration",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -556,6 +572,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -588,6 +605,7 @@ export const recorded: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -674,6 +692,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -705,6 +724,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -736,6 +756,7 @@ export const beforeF: OverviewResponses = {
         "unit": "number",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -767,6 +788,7 @@ export const beforeF: OverviewResponses = {
         "unit": "duration",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -798,6 +820,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -834,6 +857,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -870,6 +894,7 @@ export const beforeF: OverviewResponses = {
         "unit": "percent",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -906,6 +931,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -942,6 +968,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -978,6 +1005,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1010,6 +1038,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1042,6 +1071,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1074,6 +1104,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1106,6 +1137,7 @@ export const beforeF: OverviewResponses = {
         "unit": "percent",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1138,6 +1170,7 @@ export const beforeF: OverviewResponses = {
         "unit": "number",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1170,6 +1203,7 @@ export const beforeF: OverviewResponses = {
         "unit": "duration",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1202,6 +1236,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1234,6 +1269,7 @@ export const beforeF: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1320,6 +1356,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -1351,6 +1388,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -1382,6 +1420,7 @@ export const interrupted: OverviewResponses = {
         "unit": "number",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -1413,6 +1452,7 @@ export const interrupted: OverviewResponses = {
         "unit": "duration",
         "dataset": "inventory.products",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "data-platform@example.com",
         "tags": [
           "example",
@@ -1444,6 +1484,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1476,6 +1517,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1508,6 +1550,7 @@ export const interrupted: OverviewResponses = {
         "unit": "percent",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1540,6 +1583,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1572,6 +1616,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.customers",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1604,6 +1649,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1636,6 +1682,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1668,6 +1715,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1700,6 +1748,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1732,6 +1781,7 @@ export const interrupted: OverviewResponses = {
         "unit": "percent",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1764,6 +1814,7 @@ export const interrupted: OverviewResponses = {
         "unit": "number",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1796,6 +1847,7 @@ export const interrupted: OverviewResponses = {
         "unit": "duration",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1828,6 +1880,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",
@@ -1860,6 +1913,7 @@ export const interrupted: OverviewResponses = {
         "unit": "count",
         "dataset": "sales.orders",
         "datasource": "lake",
+        "datasource_state": "defined",
         "owner": "sales-data@example.com",
         "tags": [
           "example",

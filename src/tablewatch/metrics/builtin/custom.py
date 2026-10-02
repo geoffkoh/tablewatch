@@ -30,6 +30,7 @@ class FailedRows(Metric):
     name = "failed_rows"
     unit = Unit.COUNT
     summary = "Rows matching a SQL `condition` that marks them as bad."
+    count_noun = ("row", "rows")
     default_condition = Compare(Op.EQ, Number(0))
     options: ClassVar[Mapping[str, OptionType]] = {"condition": OptionType.STRING}
     identity_options = ("condition",)

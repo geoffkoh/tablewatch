@@ -402,11 +402,11 @@ def test_an_unresolved_datasource(broken: Path) -> None:  # S12
     with served(broken) as client:
         lost = _sql(client, LOST)
         percent = _sql(client, PERCENT)
-    assert lost["datasource"] == ""
+    assert lost["datasource"] == "nowhere"  # spec 014: the name as written
     assert lost["dialect"] is None
     assert lost["statements"] == []
     assert lost["error"] == (
-        "this dataset's datasource is not defined; run tablewatch validate"
+        "datasource 'nowhere' is not defined in tablewatch.yml; run tablewatch validate"
     )
     assert percent["error"] is None
     assert percent["statements"][0]["measures"] == 4

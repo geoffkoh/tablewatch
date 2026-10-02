@@ -70,7 +70,7 @@ describe("P1 edges: singular counts", () => {
     const scan = VOLUME_SQL.statements[0];
     if (scan?.kind !== "scan") throw new Error("fixture");
     await renderSql({ ...VOLUME_SQL, check_id: EMAIL, statements: [{ ...scan, measures: 1, shared_by: 1 }] });
-    expect(text(sqlSection())).toContain("That one read computes 1 value, for this check and 1 other.");
+    expect(text(sqlSection())).toContain("That one read computes 1 value, used by this check and 1 other.");
   });
 
   it("a query shared with one other check says '1 other check uses'", async () => {

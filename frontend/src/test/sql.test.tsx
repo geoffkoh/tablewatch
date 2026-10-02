@@ -116,7 +116,7 @@ describe("P1: the SQL section", () => {
     expect(within(section).getByRole("heading", { level: 2 }).textContent).toBe("SQL");
     expect(text(section)).toContain(
       "When tablewatch checks sales.customers on lake (duckdb), it reads the table once with this statement. " +
-        "That one read computes 4 values, for this check and 3 others. This check uses:",
+        "That one read computes 4 values, used by this check and 3 others. This check uses:",
     );
     const uses = within(section).getAllByRole("listitem").map(text);
     expect(uses).toEqual([
@@ -134,14 +134,29 @@ describe("P1: the SQL section", () => {
 
   it("counts other checks in the plural (S4: Order volume)", async () => {
     await renderSql(VOLUME, VOLUME_SQL);
-    expect(text(sqlSection())).toContain("That one read computes 6 values, for this check and 6 others.");
+    expect(text(sqlSection())).toContain("That one read computes 6 values, used by this check and 6 others.");
     expect(within(sqlSection()).getAllByRole("listitem").map(text)).toEqual(["m0 count(*), also used by 2 other checks"]);
   });
 
-  it("says 'for this check only' and '1 value' when nothing else shares the scan", async () => {
+  it("says 'used by this check only' and '1 value' when nothing else shares the scan", async () => {
     await renderSql(EMAIL, genericSql(EMAIL));
-    expect(text(sqlSection())).toContain("That one read computes 1 value, for this check only.");
+    expect(text(sqlSection())).toContain("That one read computes 1 value, used by this check only.");
     expect(text(sqlSection())).not.toContain("also used by");
+  });
+
+  it("W2 (spec 014): three values used by this check only", async () => {
+    const scan = VOLUME_SQL.statements[0];
+    if (scan?.kind !== "scan") throw new Error("fixture");
+    await renderSql(VOLUME, { ...VOLUME_SQL, statements: [{ ...scan, measures: 3, shared_by: 0 }] });
+    expect(text(sqlSection())).toContain("That one read computes 3 values, used by this check only.");
+  });
+
+  it("W3 (spec 014): a column shared with one other check keeps its own sentence", async () => {
+    const scan = VOLUME_SQL.statements[0];
+    if (scan?.kind !== "scan") throw new Error("fixture");
+    const uses = scan.uses.map((u) => ({ ...u, shared_by: 1 }));
+    await renderSql(VOLUME, { ...VOLUME_SQL, statements: [{ ...scan, uses }] });
+    expect(within(sqlSection()).getAllByRole("listitem").map(text)).toEqual(["m0 count(*), also used by 1 other check"]);
   });
 
   it("a query of the check's own: its sentence, its block and no scan (S2)", async () => {

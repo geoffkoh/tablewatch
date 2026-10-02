@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, WithJsonSche
 
 from tablewatch import dsl
 from tablewatch._version import __version__
-from tablewatch.checks.model import Check
+from tablewatch.checks.model import Check, DatasourceState
 from tablewatch.diagnostics import Diagnostic as DiagnosticModel
 from tablewatch.diagnostics import SourceLocation
 from tablewatch.engine.compiled import CompiledDataset, QueryUse, ScanUse
@@ -189,6 +189,8 @@ class CheckSummary(_Model):
     unit: Unit
     dataset: str
     datasource: str
+    # Whether `datasource` names a defined datasource, and if not, why not.
+    datasource_state: DatasourceState
     owner: str | None
     tags: list[str]  # the dataset's tags; checks have none of their own
     source: str
@@ -205,6 +207,7 @@ class CheckSummary(_Model):
             unit=check.metric.unit.value,
             dataset=check.dataset.name,
             datasource=check.dataset.datasource,
+            datasource_state=check.dataset.datasource_state,
             owner=check.dataset.owner,
             tags=list(check.dataset.tags),
             source=str(check.location),

@@ -6,6 +6,40 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 14 — An undefined datasource shown by name; counts name their unit (I-35 part 2, I-43), 2026-10-02
+
+- **Spec:** [014-datasource-by-name-count-units](specs/014-datasource-by-name-count-units.md).
+  **Branch:** `iter/014`. Full track. No items added (freeze).
+- **REFINE.** The architect proposed a bool for the new field; security
+  required the loader to filter the written name before keeping it. The
+  tech lead chose the string `datasource_state` (D2): a bool cannot tell
+  `not_a_name` from `none` once the name is `""`.
+- **Process.** The auto-mode permission classifier blocked both the
+  ui-engineer's launch and a memory edit; the owner approved the
+  ui-engineer launch by hand.
+- **Shipped.** `Dataset.datasource` holds the name as written (D4);
+  `datasource_state` (`defined`/`not_defined`/`not_a_name`/`none`) on
+  `CheckSummary`; the shared-scan sentence reads "used by"; `failed_rows`
+  and `row_count` display `N rows`. Suite: Python **1339 passed, 1
+  xfailed**; frontend vitest, ruff, mypy and the fresh bundle clean.
+- **Reviewer findings and resolution:**
+  - *architect — approve, 3 non-blocking findings, all fixed.* One
+    shared `DatasourceState` type; a `Dataset` built in Python (not
+    through the loader) gets the right reason; a private helper.
+  - *qa-engineer — pass, 19/19 must scenarios, 35 tests added.* Fixed:
+    a non-string `datasource:` value is `not_a_name` and never falls
+    back. Not fixed: `Identity.tsx` has no default case.
+  - *data-steward — accept.*
+- **Not added (backlog freeze).** For the owner:
+  1. The loader diagnostic echoes the raw name to `validate` and
+     `/project` (security).
+  2. `test-connection` connect errors still name the host.
+  3. `Identity.tsx` has no default case.
+- **Backlog:** I-35 and I-43 done. No new items (freeze); no score moves.
+- **The loop stops here** (owner, 2026-10-02). Next, when it resumes:
+  I-04 (0.8), the check explorer — the UI chain's last open item before
+  I-06 (4.5).
+
 ## Iteration 13 — Datasource errors in plain words; a bad URL no longer ends a run (I-35 part 1), 2026-10-02
 
 ### Owner instruction, 2026-10-02: one more iteration, then stop
