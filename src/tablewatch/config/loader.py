@@ -176,6 +176,13 @@ def _key_at(source: YAMLSource, node: CommentedMap, name: str) -> SourceLocation
 
 def _describe_validation(err: Any) -> str:
     loc = [str(step) for step in err["loc"]]
+    if (
+        loc[:1] == ["notifiers"]
+        and len(loc) > 1
+        and not NOTIFIER_NAME.fullmatch(loc[1])
+    ):
+        # A name that is not plain may be a pasted URL: never echo it.
+        loc[1] = "…"
     setting = loc[-1] if loc else "setting"
     match err["type"]:
         case "missing":

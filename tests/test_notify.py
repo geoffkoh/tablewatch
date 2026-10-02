@@ -756,3 +756,27 @@ def test_editor_schemas_know_notify() -> None:  # N25
         "notifiers": {"a": {"type": "webhook", "url": "x", "token": "y"}},
     }
     assert list(project.iter_errors(bad))
+
+
+def test_a_pasted_url_as_a_notifier_name_is_not_echoed(project: Path) -> None:
+    _write(
+        project,
+        "tablewatch.yml",
+        TABLEWATCH_YML
+        + '  "https://hooks.example.com/SECRET": "https://hooks.example.com/SECRET"\n',
+    )
+    code, out, err = invoke(project, "validate")
+    assert code == 3
+    assert "SECRET" not in out + err
+
+
+def test_loopback_http_never_goes_through_a_proxy(
+    project: Path, hook: Hook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:1")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    set_rows(project, "b", "c")
+    run(project)
+    assert names(hook) == [("has a", "failing")]

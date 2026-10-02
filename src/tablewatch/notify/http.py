@@ -38,11 +38,13 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
         raise NotifyError("redirect not followed")
 
 
-def _opener() -> urllib.request.OpenerDirector:
+def _opener(*, proxies: bool) -> urllib.request.OpenerDirector:
     # Built by hand: `build_opener` would also add the file: and ftp: handlers.
     opener = urllib.request.OpenerDirector()
     for handler in (
-        urllib.request.ProxyHandler(),
+        # Plain http is allowed only to this machine; a proxy would carry it
+        # elsewhere in clear text.
+        urllib.request.ProxyHandler() if proxies else urllib.request.ProxyHandler({}),
         urllib.request.HTTPHandler(),
         urllib.request.HTTPSHandler(context=ssl.create_default_context()),
         _NoRedirects(),
@@ -62,8 +64,11 @@ def _is_loopback(host: str) -> bool:
         return False
 
 
-def check_url(url: str) -> None:
-    """Raise `NotifyError` unless `url` is one tablewatch will post to."""
+def check_url(url: str) -> bool:
+    """Raise `NotifyError` unless `url` is one tablewatch will post to.
+
+    Returns whether it is plain `http` to this machine.
+    """
     try:
         parts = urlsplit(url)
         host = parts.hostname
@@ -76,6 +81,7 @@ def check_url(url: str) -> None:
         raise NotifyError("the url is not a valid URL")
     if parts.scheme == "http" and not _is_loopback(host):
         raise NotifyError("the url is not https")
+    return parts.scheme == "http"
 
 
 def post_json(url: str, body: bytes, *, timeout: float | None = None) -> None:
@@ -84,7 +90,7 @@ def post_json(url: str, body: bytes, *, timeout: float | None = None) -> None:
     `timeout` (default `TIMEOUT_SECONDS`) bounds each socket operation, not
     the whole request (name resolution is not covered).
     """
-    check_url(url)
+    plain_http = check_url(url)
     timeout = TIMEOUT_SECONDS if timeout is None else timeout
     try:
         request = urllib.request.Request(
@@ -99,7 +105,7 @@ def post_json(url: str, body: bytes, *, timeout: float | None = None) -> None:
     except ValueError:
         raise NotifyError("the url is not a valid URL") from None
     try:
-        with _opener().open(request, timeout=timeout) as response:
+        with _opener(proxies=not plain_http).open(request, timeout=timeout) as response:
             response.read(MAX_RESPONSE_BYTES)  # read, then dropped unparsed
             status = response.status
     except NotifyError:
