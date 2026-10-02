@@ -43,8 +43,11 @@ _GROUPS = (
     _Group("recovered", "Recovered", "recovered", ("recovered", "recovered")),
 )
 
-# C0 and C1 controls (newline and tab included) and the bidi controls.
-_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+# C0 and C1 controls (newline and tab included), the Unicode line and
+# paragraph separators, and every bidi control and mark.
+_CONTROL = re.compile(
+    r"[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]"
+)
 
 
 def clean(text: str, limit: int = MAX_STRING) -> str:
@@ -77,6 +80,28 @@ def _line(event: PayloadEvent) -> str:
     if check.owner:
         line += f" (owner: {_user(check.owner)})"
     return line
+
+
+def _header(project: str, counts: str) -> str:
+    """`project: counts` in Slack's 150, cutting the project, never the totals.
+
+    Counted in UTF-16 units, the stricter reading of Slack's limit, so an
+    emoji counts as two.
+    """
+    tail = f": {counts}"
+    room = MAX_HEADER - _utf16(tail) - 1  # 1 for the "…"
+    if _utf16(project) + _utf16(tail) <= MAX_HEADER:
+        return project + tail
+    cut = ""
+    for char in project:
+        if _utf16(cut) + _utf16(char) > room:
+            break
+        cut += char
+    return f"{cut}…{tail}"
+
+
+def _utf16(text: str) -> int:
+    return len(text.encode("utf-16-le", "surrogatepass")) // 2
 
 
 def _section(group: _Group, events: list[PayloadEvent]) -> str:
@@ -122,7 +147,7 @@ def render_payload(payload: Payload) -> dict[str, Any]:
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": _cut(f"{project}: {counts}", MAX_HEADER - 1),
+                "text": _header(project, counts),
                 "emoji": False,
             },
         },
