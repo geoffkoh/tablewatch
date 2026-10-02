@@ -6,6 +6,32 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 18 — Notifications 1, part 1: webhook, `notify:`, state-change events (I-06 part 1), 2026-10-02
+
+- **Spec:** [018-notifications-webhook](specs/018-notifications-webhook.md). **Branch:** `iter/018`.
+  Full track. No items added (freeze).
+- **REFINE.** data-steward answered Q1–Q3, adding N27–N33; the tech lead amended D1 so `warn`
+  is transparent and added N34. security answered R1–R9; R5's blocker was adopted as D7.
+  architect's two blockers — the `notify:` shorthand for I-11's `to:` with `owner` reserved, and
+  amending CLAUDE.md rule 6 to "resolved at the moment of use" — were resolved in D3 and D9.
+- **Shipped:** a `notify/` package (seam, `webhook.py`, `http.py`, `payload.py`), `notifiers:` in
+  `tablewatch.yml`, per-check `notify:` inherited through `_defaults.yml`, one POST per notifier
+  per run on `failing`/`erroring`/`recovered` only, `docs/api/notification.schema.json`, and
+  `tablewatch/jsonvalues.py` split out of `server/schemas.py`. Suite: Python **1489 passed, 1
+  xfailed**.
+- **Reviewer findings and resolution:**
+  - *security-reviewer — approve.* Fixed: a non-plain notifier name is never echoed back; loopback
+    `http` skips proxies; D7 now records the fixed "could not evaluate" message rather than the
+    real error text.
+  - *qa-engineer — pass; 34/34 must scenarios; tests in `tests/test_notify_qa.py`.* Fixed: a
+    refused redirect's response is closed, a trickled response now has an overall read deadline,
+    and a `null:` notifier key is a diagnostic rather than a crash.
+  - *data-steward — accept*, after a live retail run: 6 failing, then silence, then 1 recovered.
+- **Not added (backlog freeze):** stderr lines carry the logger prefix (`WARNING
+  tablewatch.notify: …`), unlike the spec's bare example; `fail`/`warn` messages are sent as is
+  and the freshness detail includes the newest timestamp (revisit with I-30).
+- **Next:** I-06 part 2 (Slack), iteration 19.
+
 ## Iteration 17 — Overview wording: "since" is a date, "incomplete" once, checks not loaded now (I-21), 2026-10-02
 
 - **Spec:** [017-overview-wording-counts](specs/017-overview-wording-counts.md). **Branch:**
