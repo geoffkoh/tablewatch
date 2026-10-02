@@ -1,6 +1,6 @@
 # Spec 013: Datasource errors in plain words (I-35, part 1)
 
-Status: ready (iteration 13 PLAN, 2026-09-30). Backlog item: I-35. Size: S.
+Status: shipped (iteration 13, PR #18, 2026-10-02). Backlog item: I-35 (part 1; part 2 stays in I-35). Size: S.
 
 ## Problem and persona
 

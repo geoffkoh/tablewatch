@@ -6,6 +6,107 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 13 — Datasource errors in plain words; a bad URL no longer ends a run (I-35 part 1), 2026-10-02
+
+### Owner instruction, 2026-10-02: one more iteration, then stop
+
+The owner said: "resume for just 1 more iteration". **This is the last
+iteration; the loop stops after it.** Nothing is planned beyond naming
+the next candidate (below). The backlog freeze still holds.
+
+### The iteration
+
+- **Spec:** [013-sql-plain-words](specs/013-sql-plain-words.md).
+  **Branch:** `iter/013-sql-plain-words`. **PR:** #18. Build `e5ae422`,
+  verify fixes `7a697d3`. No items added (freeze).
+- **PLAN** split I-35: part 1 (datasource messages, and two run crashes
+  on a bad URL) is this spec; part 2 (an undefined datasource shown by
+  the name as written) stays in I-35.
+- **REFINE.** The PM's PLAN/REFINE turn stalled three times (usage
+  limits, watchdog), so the tech lead recorded the REFINE decisions in
+  the spec himself (section "REFINE decisions"): security R1–R4 (fixed
+  reason text only, never driver or SQLAlchemy exception text; a run-path
+  backstop that records the exception type only; test-connection on the
+  same messages; leak tests), the architect's design (one private
+  `_url_problem` shared by compile and run, a private driver table keyed
+  on the dialect name, a public `datasource_problem` building the
+  prefix), and the data-steward's wording, with every package name
+  verified on PyPI. S4b was reworded to fit R1.
+- **Shipped.** One set of reasons, shared by `tw compile`, the check
+  page's SQL section (`/checks/{id}/sql`), a run's recorded `error` and
+  `tw test-connection`, prefixed `datasource '<name>' in tablewatch.yml: `
+  (test-connection keeps `FAILED  <name>: <reason>`): install hints for
+  known dialects (snowflake, bigquery, redshift, databricks, trino);
+  `postgres://` → write `postgresql://`; an unknown scheme asks to check
+  its spelling first; an unknown driver after `+`; a missing DBAPI
+  module named by its import name; a malformed url; two drivers; an
+  `${env:}` scheme. Added in VERIFY: "url could not be read after the
+  scheme: check the user, password, host, port, database and query
+  parts", and "the X dialect could not be loaded (Type)". `src/`
+  (`datasources/`, `engine/compiled.py`, `engine/runner.py`,
+  `cli/main.py`), tests, one frontend fixture string; no store, API
+  shape, layout or exit-code change.
+- **Acceptance.** S1–S10 pass as automated tests (S2c, S2b and S4b
+  included; S4b with R1's wording). Python **1287+ passed, 1 xfailed**;
+  frontend **708 vitest**; ruff, mypy and the fresh-bundle check clean.
+- **Reviewer findings and resolution:**
+  - *security-reviewer — approve (R1–R4 met; follow-ups adopted).*
+    Closed two **live leaks on main**: SQLAlchemy and driver exception
+    text echoed a sqlite URL's user, host and query, and a Postgres
+    password typed into the port slot, into the store and the API. Every
+    reason is now fixed text; a bad port is never quoted.
+  - *architect — approve (follow-ups adopted).* Rule 7 restored: a
+    missing DBAPI module or `a+b+c://` crashed the whole run with exit 1
+    (read by orchestrators as "checks failed"); now that datasource's
+    checks are `error` and the run exits 2. An unexpected engine error
+    is recorded by type only, logged at warning without a traceback. A
+    third-party dialect raising anything on load no longer crashes
+    `compile` or returns a 500 from `/sql`.
+  - *qa-engineer — pass.* Added an S7 end-to-end leak test, S9 with a
+    timezone, and a fuzz of about 45 URL shapes; its one finding (a
+    `compile` crash on a dialect that raises on load) was fixed in
+    `7a697d3`.
+  - *data-steward — accept, 14/14.* No doc changes needed.
+- **Not added (backlog freeze).** For the owner; none fits an existing
+  item:
+  1. Connect-time driver errors on a run and in test-connection still
+     print the driver's text, which names the host (pre-existing). This
+     falls short of the spec's outcome line ("no message ever contains
+     the URL or any part of it"); the nearest item is I-31 (redacted
+     error detail), which is opt-in and not the same.
+  2. S4b's reason ("could not be imported") gives no next step.
+  3. test-connection skips `engine.dispose()` on failure and labels a
+     connect-time error "creating the engine".
+  4. A DuckDB path that does not exist prints its absolute path in
+     test-connection (close to I-20's "no absolute server paths", which
+     covers the API only).
+- **Deferred:** I-35 part 2, as planned: an undefined datasource shown
+  by its name as written, marked "not defined", and the "computes 6
+  values, used by this check and 6 others" wording.
+- **Backlog:** I-35 stays `in-progress` (part 2). No new items, no score
+  moves.
+- **Learned:**
+  - Plain-words work found real leaks. Passing `str(exc)` through looked
+    harmless and was echoing credentials; fixed text with whitelisted
+    inputs (a scheme matching `URL_SCHEME`, an import name matching an
+    identifier pattern) is the only safe shape for error messages built
+    from configuration. Worth applying to the connect-time path next.
+  - "Messages" items hide rule-7 bugs: the same code that produced the
+    bad text also let two exception types escape the runner and exit 1.
+    Measuring "today" per surface in the spec (compile, run,
+    test-connection) is what found them.
+  - When the PM stalls, the tech lead recording REFINE decisions in the
+    spec kept the record whole; it worked, and is better than the
+    iteration 12 pattern of the PM reconstructing them in REVIEW.
+  - Two concurrent pytest runs deadlocked on a shared DuckDB file. Run
+    the suite one process at a time (a note for whoever owns the test
+    setup; not a product item).
+- **Next (not started; the loop stops here):** I-35 part 2 (1.0, rank 3,
+  in progress). It is the last check-page polish under "UI first" and
+  the smallest open S; it changes the loader, the public `Dataset` model,
+  two wire schemas and the page, so the architect reviews. After it:
+  I-43 (1.0), I-04 (0.8), I-21 (0.8), then I-06 (4.5).
+
 ## Iteration 12 — Check detail polish: "Current" agrees with the band, "No value measured", `between` labels, sticky line numbers (I-27, I-39), 2026-09-29
 
 - **Spec:** [012-check-detail-polish](specs/012-check-detail-polish.md).

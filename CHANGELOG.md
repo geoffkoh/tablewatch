@@ -254,6 +254,20 @@ All notable changes to tablewatch. The format follows
   such a message was kept in full. Results recorded before the upgrade
   keep their text.
 
+- Problems with a datasource now say which datasource and where it is
+  defined, and say what is wrong in words: `datasource 'warehouse' in
+  tablewatch.yml: the snowflake driver is not installed: pip install
+  snowflake-sqlalchemy` instead of `Can't load plugin:
+  sqlalchemy.dialects:snowflake`. `tablewatch compile`, the SQL section
+  of a check's page, a run's recorded `error` and `tablewatch
+  test-connection` all give the same reason. Other cases covered: a
+  `postgres://` url (write `postgresql://`), a misspelt or unknown
+  scheme, an unknown driver after `+`, a missing Python driver module
+  (named), and a url that cannot be read. Errors recorded for a
+  datasource on a run now start `datasource '<name>' in tablewatch.yml:`
+  instead of `datasource <name>:`; results recorded before the upgrade
+  keep their text.
+
 ### Fixed
 
 - A number in a check too large to represent (for example a threshold
@@ -348,6 +362,23 @@ All notable changes to tablewatch. The format follows
   back one measured value (for example a year-1 `TIMESTAMPTZ` on DuckDB
   in a time zone west of UTC): only the checks that need that value
   error. Exit codes are unchanged.
+
+- A datasource error no longer shows any part of the url's user,
+  password, host or query. Before, some malformed urls (for example a
+  password typed where the port goes) put that text into the stored
+  result, the API and the check page. Messages are now fixed text; a bad
+  port is never quoted. Results recorded before the upgrade keep their
+  text. Errors raised by the driver while connecting can still name the
+  host.
+- A datasource whose Python driver is not installed (for example
+  `mysql://` without `mysqlclient`), or whose url names two drivers
+  (`a+b+c://`), no longer ends the whole run with a traceback and exit
+  code 1. Its checks report `error` and the run exits 2, as for any
+  other datasource problem; other datasources run as usual.
+  `tablewatch test-connection` reports it and exits 2 too.
+- A third-party SQLAlchemy dialect that fails while loading no longer
+  crashes `tablewatch compile` or makes the check page's SQL section
+  fail; it reads "the X dialect could not be loaded".
 
 ## 0.1.0 — not yet published
 
