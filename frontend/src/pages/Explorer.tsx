@@ -103,7 +103,7 @@ export function Explorer({ path, search }: { path: string; search: string }): Re
   // Keep the URL in step, without a new history entry (decision 1).
   useEffect(() => {
     const next = explorerSearch(query);
-    if (next !== window.location.search) window.history.replaceState(window.history.state, "", `${path}${next}`);
+    if (next !== window.location.search) window.history.replaceState(window.history.state, "", `${path}${next}${window.location.hash}`);
   }, [query, path]);
 
   const items = checks.state === "ok" ? checks.data.items : null;

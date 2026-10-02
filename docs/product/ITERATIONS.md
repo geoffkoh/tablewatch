@@ -6,6 +6,35 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 15 — Check explorer 1: the `checks/` tree with search and a status filter (I-04 part 1), 2026-10-02
+
+- **Owner instruction (2026-10-02):** "run 3 iterations": 15, 16 and 17, then the
+  loop stops. The backlog freeze still holds.
+- **Spec:** [015-check-explorer-tree](specs/015-check-explorer-tree.md). **Branch:**
+  `iter/015`. Light track (frontend only; `/api/v1/checks` already serves the data).
+  Builder: ui-engineer. No items added (freeze).
+- **PLAN** split I-04 (M): part 1 is the tree, search and status filter; part 2 (tag,
+  owner and datasource filters) stays in I-04.
+- **Decisions (tech lead):** `history.replaceState` is accepted. Spec 004 D7 forbids a
+  router and `pushState` for moving between pages; rewriting the current entry's query
+  is neither. There is no debounce (`useDeferredValue`), and counts keep the console's
+  words.
+- **Shipped:** `/checks` lists the folder tree with counts (`18 checks · 6 fail · 2 warn
+  · 10 pass`). Problem nodes are open; search and status are kept in the URL, and Back
+  restores the view. The overview gains a "Browse all checks" link. UI spec §4B, README.
+  Suite: Python **1339 passed, 1 xfailed**; vitest **782 passed**; ruff, mypy and the
+  fresh bundle are clean.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — pass; 16/17 must scenarios automated (E20, docs, checked by hand);
+    21 tests added.* The E18 timing test would have flaked on CI, so it was rewritten as
+    best of 3 and a growth ratio. Fixed: replaceState dropped a `#fragment`, and the
+    200-character cut could split an emoji (now cut by code point). Both have tests.
+  - *data-steward — accept.* Decision 3's wording is accepted. Fixed: §4B notes that "no
+    result" and "skipped" are UI-only words. Not fixed: the never-run toggle reads "No
+    result recorded N", longer than "Fail 6".
+- **Not added (backlog freeze):** none beyond the above.
+- **Next:** I-04 part 2 (tag, owner and datasource filters).
+
 ## Iteration 14 — An undefined datasource shown by name; counts name their unit (I-35 part 2, I-43), 2026-10-02
 
 - **Spec:** [014-datasource-by-name-count-units](specs/014-datasource-by-name-count-units.md).

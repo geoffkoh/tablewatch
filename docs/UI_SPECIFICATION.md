@@ -909,7 +909,8 @@ The overview links here: "Browse all checks" sits beside the heading
 - **Counts** (decision 3): the total, then each non-zero status in the
   overview's order with the console's word, joined by ` · `:
   `18 checks · 6 fail · 2 warn · 10 pass`. The words are fail, error,
-  warn, no result, skipped, pass; "1 check" is singular. While filtering,
+  warn, no result, skipped, pass; "1 check" is singular. "No result" and
+  "skipped" are the UI's words: the console's summary has no such counts. While filtering,
   counts are of the matching checks only.
 - **A check row**: the status badge (§5; status from `statusOf`), the name
   as a link to `checkHref(id)`, the expression in monospace when it differs
@@ -952,7 +953,7 @@ The overview links here: "Browse all checks" sits beside the heading
   change rewrites the current entry with `history.replaceState` (no new
   entry), so reloading, sharing the address, or Back from a check's page
   restores the view. On load the page reads `location.search`: unknown
-  statuses are dropped, `q` is cut to 200 characters, and the URL is
+  statuses are dropped, `q` is cut to 200 characters (code points), and the URL is
   rewritten to that normal form. `q` is shown only as the box's value and is
   never put in an `href` (§9).
 - **No match**: "No checks match." and a link "Clear search and filters" to
@@ -1209,7 +1210,7 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 - **Routes** make no request for an id that fails the id pattern, and the
   not-found page shows only a well-formed id, inside `<code>`.
 - **The explorer's query** (spec 015, E12) is untrusted input from the
-  address bar. `q` is cut to 200 characters and shown only as the search
+  address bar. `q` is cut to 200 characters (code points) and shown only as the search
   box's value, never in an `href` or as markup; `status` keeps only the six
   known values. A `q` of `<img src=x onerror=alert(1)>` is tested to create
   no element.

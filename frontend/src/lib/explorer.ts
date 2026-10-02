@@ -25,13 +25,18 @@ export function orderStatuses(statuses: Iterable<Status>): Status[] {
   return STATUS_ORDER.filter((s) => chosen.has(s));
 }
 
+/** `q` cut to its limit by code point, so an emoji is never split in half. */
+function cutQuery(q: string): string {
+  return Array.from(q).slice(0, MAX_QUERY_LENGTH).join("");
+}
+
 /**
  * The query from `location.search`. Unknown statuses are ignored and `q` is
  * cut to 200 characters (E12). `q` is kept as written: the box shows it.
  */
 export function parseExplorerQuery(search: string): ExplorerQuery {
   const params = new URLSearchParams(search);
-  const q = (params.get("q") ?? "").slice(0, MAX_QUERY_LENGTH);
+  const q = cutQuery(params.get("q") ?? "");
   const statuses = orderStatuses(params.getAll("status").filter(isStatus));
   return { q, statuses };
 }
@@ -42,7 +47,7 @@ export function parseExplorerQuery(search: string): ExplorerQuery {
  */
 export function explorerSearch(query: ExplorerQuery): string {
   const params = new URLSearchParams();
-  if (query.q.trim() !== "") params.set("q", query.q.slice(0, MAX_QUERY_LENGTH));
+  if (query.q.trim() !== "") params.set("q", cutQuery(query.q));
   for (const status of orderStatuses(query.statuses)) params.append("status", status);
   const text = params.toString();
   return text === "" ? "" : `?${text}`;
