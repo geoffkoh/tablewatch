@@ -11,6 +11,7 @@ the UI does it: wording, layout, colour, and the rules behind them.
 | I-05 (part 1) | `specs/004-check-detail-history.md` | Check page (`/checks/<id>`): identity, rule, latest result, history chart and table; links from the overview; the shared load hook |
 | I-26 | `specs/005-check-detail-sql-source.md` | The check page's SQL section: `CodeBlock`, `CopyButton`, `lib/clipboard.ts`, invisible-character marking |
 | I-29 | `specs/006-check-detail-source.md` | The check page's Source section: the check's own YAML lines (`SourceBlock`), the file's `filter:` in words, `#source` |
+| I-04 (part 1) | `specs/015-check-explorer-tree.md` | The check explorer (`/checks`): the `checks/` tree with counts, search and a status filter kept in the URL; "Browse all checks" on the overview |
 
 ## 1. Who it is for
 
@@ -92,14 +93,16 @@ It has no inline script or style and no absolute URL.
 
 ```
 frontend/src/
-  main.tsx                 mounts <App path={location.pathname}>
-  App.tsx                  parseRoute(path) -> Overview | CheckPage | NotFound
+  main.tsx                 mounts <App path={location.pathname} search={location.search}>
+  App.tsx                  parseRoute(path) -> Overview | Explorer | CheckPage | NotFound
   api/schema.gen.ts        GENERATED from docs/api/openapi.json; never edit
   api/types.ts             aliases into schema.gen.ts (Project, CheckSummary, CheckDetail,
                            Rule, Condition, HistoryEntry, HistoryPage, Run, Unit, ...)
   api/api.ts               the ONE client: getProject, listChecks, listRuns, getCheck,
                            getHistory, getCheckSql, getCheckSource; failureOf, isNotFound
-  lib/route.ts             parseRoute(path), checkHref(id), the id pattern
+  lib/route.ts             parseRoute(path), checkHref(id), EXPLORER_HREF, the id pattern
+  lib/explorer.ts          the explorer's query (parse, to URL), search and status filter,
+                           commonFolder, buildTree, counts wording (countsText)
   lib/clipboard.ts         canCopy, copyText, selectContents: the only clipboard code
   lib/invisible.ts         which code points are marked, and the text split into segments
   lib/useLoads.ts          the one load/refresh hook (named slots, generation guard,
@@ -115,7 +118,7 @@ frontend/src/
                            StatusIcon/StatusBadge, shapes (status shapes), Time (Ago),
                            LoadError (useId heading id; `level` 2|3; `scope` page|section),
                            CodeBlock, SourceBlock (numbered, never wraps), CopyButton,
-                           Marked (invisible characters)
+                           Marked (invisible characters), ExplorerTree (the `checks/` tree)
   components/check/        the check page's sections: Identity, RuleSection, LatestSection,
                            NotFoundPanel, HistorySection, SqlSection, SourceSection;
                            useOlderHistory
@@ -123,6 +126,7 @@ frontend/src/
   components/chart/        HistoryFigure (title, key, captions), HistoryChart (SVG and
                            interaction), ChartKey
   pages/Overview.tsx       the overview
+  pages/Explorer.tsx       the check explorer: loads, filters in memory, keeps the URL
   pages/CheckPage.tsx      a check's page: decides which sections show from what loaded
   pages/NotFound.tsx       "Page not found"
   styles/tokens.css        colour tokens, light and dark (status and chart)
@@ -145,19 +149,23 @@ frontend/src/
 - **Routing** (spec 004, decision 7). The server answers every extensionless
   non-API path with `index.html` (W3). Links are plain `<a href>` and every
   navigation is a full page load: no router, no `pushState`, and the Back
-  button just works. `lib/route.ts` maps a path to a page:
+  button just works. The explorer rewrites its own entry's query with
+  `history.replaceState` (spec 015, decision 1): that adds no entry and
+  navigates nowhere. `lib/route.ts` maps a path to a page; the query is the
+  page's to read:
 
   | Path | Page |
   | --- | --- |
   | `/`, `/index.html` | the overview |
+  | `/checks`, `/checks/` | the check explorer (§4B); `?q=` and `?status=` are read by the page |
   | `/checks/<id>`, `/checks/<id>/` | the check page, when `<id>` is one non-empty segment that decodes (once, inside try/catch) to a string matching `^[A-Za-z0-9][A-Za-z0-9_.:-]*$` of at most 64 characters (the loader's `ID_PATTERN` and the store's column width) |
-  | anything else | "Page not found", and **no request is made**: `/checks/`, `/checks/a/b`, `/checks/..`, `/checks/%2e%2e`, `/checks/a%2Fb`, `/checks/a%3Fb`, a malformed `%`, 65 characters |
+  | anything else | "Page not found", and **no request is made**: `/checks//`, `/checks/a/b`, `/checks/..`, `/checks/%2e%2e`, `/checks/a%2Fb`, `/checks/a%3Fb`, a malformed `%`, 65 characters |
 
   `checkHref(id)` is `/checks/` + `encodeURIComponent(id)`. Every API path
   segment and query value is built with `encodeURIComponent` in `api.ts`.
 - **One load/refresh hook** (`lib/useLoads.ts`, D14, decision 8). A page
   names its requests as independent slots (the overview: `project`,
-  `results`; the check page: `project`, `check`, `history`, `runs`, `sql`,
+  `results`; the explorer: `project`, `checks`; the check page: `project`, `check`, `history`, `runs`, `sql`,
   `source`). Each
   slot is `loading`, `ok` or `failed`. `reload` starts every slot again and
   bumps a generation counter; only the newest round writes state, so an
@@ -262,7 +270,8 @@ With no runs: "No runs are recorded for this project yet. Run
 
 ### 4.5 Checks, problems first (O1, O2, O4, O5)
 
-Heading "Checks, problems first". This is a real `<table>` with a
+Heading "Checks, problems first", with a link "Browse all checks" to the
+check explorer (§4B) beside it. This is a real `<table>` with a
 visually hidden caption and the columns **Status**, **Check**, **Latest
 result** and **When**.
 
@@ -864,6 +873,108 @@ nobody knows.
 **`#source`** scrolls to the section once the first round settles, as
 `#sql` does.
 
+## 4B. The check explorer (`/checks`)
+
+Spec 015 (I-04, part 1). It reads `GET /api/v1/project` and
+`GET /api/v1/checks` through the shared hook, as two slots, and nothing
+else: search and the status filter run in memory over the loaded list, so
+typing never fetches (E18). Refresh reloads both. The document title is
+"Checks · tablewatch".
+
+### 4B.1 Layout
+
+Top to bottom: the header (§4.1, the project name as a paragraph), a link
+"Overview" to `/`, the `<h1>` "Checks", the check-file banner (§4.2) when
+the project has broken files (the tree is incomplete, E17), then one panel
+(`<section aria-label="Check files">`) holding the controls, a "Showing …"
+line, and the tree.
+
+The overview links here: "Browse all checks" sits beside the heading
+"Checks, problems first" (E16).
+
+### 4B.2 The tree (E2–E6)
+
+- **Root.** The longest common folder of every loaded `location.file`
+  (`commonFolder`), computed over all loaded checks so it stays put while
+  filtering. `checks/a.yml` alone gives `checks/`. Files under `checks/`
+  and `shared/` give an unnamed root: its children are the top level, after
+  a line with the total counts. Segments are shown as written; `..` is not
+  resolved.
+- **Order.** Under a folder, folders first, then files, each by name
+  (case-insensitive, then exact, so the order is the same in every
+  browser). Under a file, its checks by `location.line`, then `column`.
+- **A folder** reads its name with a trailing `/` (the root: its whole path,
+  `checks/`), then its counts. **A file** reads its name, its dataset (each
+  distinct dataset, normally one), then its counts.
+- **Counts** (decision 3): the total, then each non-zero status in the
+  overview's order with the console's word, joined by ` · `:
+  `18 checks · 6 fail · 2 warn · 10 pass`. The words are fail, error,
+  warn, no result, skipped, pass; "1 check" is singular. "No result" and
+  "skipped" are the UI's words: the console's summary has no such counts. While filtering,
+  counts are of the matching checks only.
+- **A check row**: the status badge (§5; status from `statusOf`), the name
+  as a link to `checkHref(id)`, the expression in monospace when it differs
+  from the name, and, for pass, warn and fail, the value through
+  `ResultValue` (a value nobody measured reads "No value measured", §7). An
+  error, skipped or unrecorded row shows no value: its badge says why. Rows
+  with fail, error or warn carry the overview's status edge.
+- **Open or closed.** Each folder and file is a native `<details>` with its
+  label in `<summary>`, so it opens by mouse, Enter or Space with no script.
+  On load, a node with any fail, error or warn is open; one with only pass,
+  skipped or no result is closed. While a search or a status is active,
+  every remaining node is open. Switching between "filtering" and "not
+  filtering" re-applies these defaults; within either, a node the user
+  opened or closed stays so. The disclosure mark is a drawn chevron
+  (borders), never generated text, so a screen reader reads only the label.
+- Nested `<ul>` lists carry the hierarchy; there is no `role="tree"` and no
+  roving focus (spec non-goal).
+
+### 4B.3 Search and status (E7–E12)
+
+- **Search box**: `<input type="search">` labelled "Search checks", with
+  the hint "Name, expression, dataset, file or id", inside
+  `<form role="search">` (Enter does nothing; there is no submit). A check
+  matches when its name, expression, dataset, `location.file` or id
+  contains the text, ignoring case, after trimming leading and trailing
+  spaces. Owner and tags are not searched (part 2). Filtering runs on every
+  keystroke (decision 2); the tree follows a `useDeferredValue` copy of the
+  query so typing stays responsive. At most 200 characters (`maxLength`).
+- **Status** is a `<fieldset>` with the legend "Status" and one checkbox per
+  status present among the loaded checks (or selected in the URL), in the
+  overview's order. Each is labelled with the §5 label and a count, for
+  example "Fail 6"; the count is of the checks the search matches, so it
+  says what ticking it shows. None ticked means all.
+- **Both** apply together (AND). The line above the tree reads "Showing
+  *n* of *N* checks." while filtering and "Showing all *N* checks."
+  otherwise (`aria-live="polite"`).
+- **The URL.** The query is `?q=<text>&status=<s>&status=<s>`, statuses in
+  the overview's order (`fail`, `error`, `warn`, `none`, `skipped`, `pass`),
+  `q` omitted when blank, and nothing at all when nothing is filtered. Every
+  change rewrites the current entry with `history.replaceState` (no new
+  entry), so reloading, sharing the address, or Back from a check's page
+  restores the view. On load the page reads `location.search`: unknown
+  statuses are dropped, `q` is cut to 200 characters (code points), and the URL is
+  rewritten to that normal form. `q` is shown only as the box's value and is
+  never put in an `href` (§9).
+- **No match**: "No checks match." and a link "Clear search and filters" to
+  `/checks` (a full page load).
+
+### 4B.4 Empty and failed loads (E14, E15)
+
+- No checks loaded: the panel reads "No checks are loaded." with no search
+  box and no status filter.
+- `/checks` fails: `LoadError` ("Could not load the checks", the message,
+  HTTP status and code, **Try again**), and no controls or tree. `/project`
+  failing gets its own panel, as on the overview. Refresh and Try again
+  reload both slots.
+
+### 4B.5 Narrow screens (E19)
+
+Under 48rem a check row becomes one column (badge, name and expression,
+value, stacked) and nesting indents less. Names, paths, datasets and
+expressions use `overflow-wrap: anywhere`, so a long path wraps instead of
+scrolling the page.
+
 ## 5. Status: label, icon, colour
 
 Every status has a **text label**, an **icon shape** and a **colour**.
@@ -1054,6 +1165,9 @@ tooltip draws `attr(data-full)` on `:focus-visible`.
   (Rule, Latest result, History, SQL, Source), the chart as `role="img"` with a title and
   a summary description, a keyboard-operable focus group for its tooltip,
   and the history table as the chart's full text alternative.
+- The check explorer (§4B): one `<h1>` ("Checks"), a labelled section, a
+  `role="search"` form with a labelled search box, a `<fieldset>` of
+  labelled checkboxes, and nested lists of native `<details>`/`<summary>`.
 
 **How this was checked:** component tests query by role and accessible name
 (landmarks, headings, table, column headers, buttons, links, icon names);
@@ -1095,6 +1209,11 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
   name are marked in place, never stripped.
 - **Routes** make no request for an id that fails the id pattern, and the
   not-found page shows only a well-formed id, inside `<code>`.
+- **The explorer's query** (spec 015, E12) is untrusted input from the
+  address bar. `q` is cut to 200 characters (code points) and shown only as the search
+  box's value, never in an `href` or as markup; `status` keeps only the six
+  known values. A `q` of `<img src=x onerror=alert(1)>` is tested to create
+  no element.
 - Nothing is loaded from a third party: no web fonts (system font stack),
   no CDN, no analytics, no remote images.
 
@@ -1113,6 +1232,7 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | `test/chart.test.ts` | the chart's pure functions: the D6 bands table, the D10 tick table and domain cases, series and lanes (D5, D9), rule changes and the band's span (D7), recorded outcomes (D8), other metrics (D20), label stacking and rows, hover columns, tooltip placement, the key, x ticks, the summary (D11) |
 | `test/polish.test.tsx` | spec 012: "Current" from the band's run (K1–K4), "No value measured" everywhere and its one source (L1–L4, including a non-finite value), `between` boundary labels and `formatThreshold` (B1–B6), right-label sides and gaps (B7), the latest label near its mark on the four B7 fixtures (B8), the stack function's ranks and per-pair gaps, sticky numbers in CSS and generated content (N1) |
 | `test/route.test.ts` | the route table and `checkHref` (decision 7) |
+| `test/explorer.test.tsx` | spec 015 E1–E19 by scenario id: requests, the tree and its counts, order, open on load, the root rule, search fields, status toggles, the URL (`replaceState`, no new entry, restore, normal form), hostile queries, no match, no checks, load failure with Refresh and Try again, the overview link, the banner, 500 checks in 40 folders under 200 ms and no fetch while typing, the narrow-screen CSS. E20 (these docs) is checked in review: Vite will not import files outside `frontend/` |
 | `test/security.test.tsx` | X4 rendering, source rules (§9), the chart's source rules (decision 14) |
 | `test/contrast.test.ts` | the palette and the chart tokens, both schemes (§5) |
 | `test/lib.test.ts` | age boundaries and rounding, DST, absolute format, selection wording, status order and counts |
@@ -1152,6 +1272,13 @@ captions read "2 hours ago"; plus built bodies for P8 and P14. The stub
 answers `/source` by the same rule as `/sql`.
 
 ## 11. Known limits and follow-ups
+
+- **The explorer by hand (spec 015).** jsdom cannot lay out, so E19 (one
+  column under 48rem, long paths wrapping) and the chevron's look are for the
+  data-steward's VERIFY run, light and dark. E18 measured about 140 ms for a
+  first render of 500 rows in jsdom on macOS; if CI runs slower, render
+  closed folders' contents lazily before raising the budget.
+- Tag, owner and datasource filters are I-04 part 2.
 
 - **Cross-platform bundle identity (spec 003 Q7).** Two local builds on
   macOS/Node 24.13.0 are byte-identical. Linux/CI identity is proven only

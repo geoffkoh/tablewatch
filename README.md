@@ -36,7 +36,7 @@ All of a table's aggregate checks run in **one table scan**, however many
 there are.
 
 > **Status: alpha (`0.1.0`).** The engine and CLI are complete, and `serve`
-> has a web page: the overview, and a page for each check. More of the web UI, alerting, and
+> has a web page: the overview, a check explorer, and a page for each check. More of the web UI, alerting, and
 > scheduling come next — see the [roadmap](docs/ROADMAP.md).
 
 ## Install
@@ -215,6 +215,32 @@ The times on each row:
   the last time it could be measured. The error count in the summary adds
   how many of those checks were failing then ("5 errors could not evaluate; 2
   were failing"). They still need attention, but not in the failing count.
+
+### Browsing checks: the check explorer
+
+**Browse all checks**, beside the overview's check list, opens the check
+explorer at `/checks`. It shows your `checks/` folder as a tree, the same
+folders and files you write, select with (`tw run checks/sales`) and inherit
+`_defaults.yml` through:
+
+- **Every folder and file carries its counts**, problems first, in the
+  console's words: `sales/  14 checks · 6 fail · 1 warn · 7 pass`. A file
+  also names its dataset.
+- **Folders and files with a fail, error or warning are open** when the page
+  loads; the rest are closed. Click one, or press Enter or Space on it, to
+  open or close it.
+- **Under each file, its checks in file order**: the status, the name (a link
+  to the check's page), the expression when the check has a `name:`, and the
+  latest value.
+- **Search** finds a check by any part of its name, expression, dataset, file
+  path or id, ignoring case. **Status** shows only the statuses you tick
+  (none ticked shows all). Both together narrow by both, every folder left
+  opens, and the counts become those of the checks that match.
+- **The address keeps the view**, for example
+  `/checks?q=orders&status=fail`. Send it to a colleague, or reload it; Back
+  from a check's page returns to the same view.
+
+Filters by tag, owner and datasource come later.
 
 ### A check's page
 

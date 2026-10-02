@@ -8,6 +8,10 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- A check explorer in the web UI at `/checks`: your `checks/` folders as a
+  tree, with fail, warn and pass counts on every folder and file, a search
+  box and a status filter. The filters are kept in the URL, so a view can be
+  shared and Back returns to it.
 - Run checks from Python: `tablewatch.run()` runs a project's checks in
   your own process — a pipeline task, a notebook, a test — and returns
   typed results instead of text to parse. `tablewatch.load()` reads a
