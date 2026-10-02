@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from tablewatch.checks.model import Check, Dataset
+from tablewatch.checks.model import DATASOURCE_NAME, Check, Dataset
 from tablewatch.config.project import PROJECT_FILE
 from tablewatch.datasources import (
     DatasourceConfig,
@@ -34,16 +34,23 @@ NOT_A_NAME = (
 )
 
 
-def undefined_datasource(dataset: Dataset) -> str:
-    """Why a dataset has no usable datasource, naming it only if it is a name."""
-    if dataset.datasource_state == "not_defined":
-        return (
-            f"datasource '{dataset.datasource}' is not defined in {PROJECT_FILE}; "
-            "run tablewatch validate"
-        )
+def _undefined_datasource(dataset: Dataset) -> str:
+    """Why a dataset has no usable datasource, naming it only if it is a name.
+
+    Reads the name too, not only the loader's state: a `Dataset` built in
+    Python keeps the default state whatever its datasource.
+    """
+    name = dataset.datasource
     if dataset.datasource_state == "not_a_name":
         return NOT_A_NAME
-    return NO_DATASOURCE
+    if dataset.datasource_state == "none" or not name:
+        return NO_DATASOURCE
+    if DATASOURCE_NAME.fullmatch(name):
+        return (
+            f"datasource '{name}' is not defined in {PROJECT_FILE}; "
+            "run tablewatch validate"
+        )
+    return NOT_A_NAME
 
 
 @dataclass(frozen=True)
@@ -159,7 +166,7 @@ def compile_dataset(
     """
     config = datasources.get(dataset.datasource)
     if config is None:
-        return _failed(undefined_datasource(dataset))
+        return _failed(_undefined_datasource(dataset))
     try:
         dialect = dialect_for(config)
         plan = plan_dataset(

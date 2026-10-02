@@ -213,3 +213,21 @@ def test_c1_the_value_stays_a_number(counted: Path) -> None:
     )
     [result] = tw.run(counted, record=False).results
     assert (result.value, result.display_value) == (1, "1 row")
+
+
+def test_a_dataset_built_in_python_gets_the_right_reason() -> None:  # architect
+    from tablewatch.diagnostics import SourceLocation
+    from tablewatch.engine.compiled import compile_dataset
+
+    def reason(name: str) -> str | None:
+        dataset = tw.Dataset(
+            name="orders",
+            datasource=name,
+            path=Path("checks/o.yml"),
+            location=SourceLocation(Path("checks/o.yml"), 1, 1),
+        )
+        return compile_dataset(dataset, {}).error
+
+    assert reason("warehous") == NOT_DEFINED
+    assert reason("") == NO_DATASOURCE
+    assert reason(PASTED) == NOT_A_NAME
