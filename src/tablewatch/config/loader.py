@@ -20,8 +20,10 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.nodes import MappingNode
 
 from tablewatch.checks.model import (
+    DATASOURCE_NAME,
     Check,
     Dataset,
+    DatasourceState,
     SourceSpan,
     canonical_text,
     derive_check_id,
@@ -283,9 +285,11 @@ class _ChecksLoader:
                 )
             return None
 
+        datasource, state = self._resolve_datasource(source, node, defaults)
         dataset = Dataset(
             name=name,
-            datasource=self._resolve_datasource(source, node, defaults) or "",
+            datasource=datasource,
+            datasource_state=state,
             path=source.relative,
             location=source.of_key(node, "dataset"),
             filter=self._string(source, node, "filter"),
@@ -320,7 +324,12 @@ class _ChecksLoader:
 
     def _resolve_datasource(
         self, source: YAMLSource, node: CommentedMap, defaults: _Defaults
-    ) -> str | None:
+    ) -> tuple[str, DatasourceState]:
+        """The dataset's datasource and its state; the one place that decides.
+
+        An undefined name is kept only if it is a name, so a URL pasted into
+        `datasource:` is never shown back by the API or the page.
+        """
         configured = self.project.config.datasources
         explicit = self._string(source, node, "datasource")
         name = explicit or defaults.datasource
@@ -331,14 +340,14 @@ class _ChecksLoader:
         )
         if name is None:
             if len(configured) == 1:
-                return next(iter(configured))
+                return next(iter(configured)), "defined"
             self.diagnostics.append(
                 error(
                     "no datasource for this dataset — set `datasource:` here or in a _defaults.yml",
                     where,
                 )
             )
-            return None
+            return "", "none"
         if name not in configured:
             known = ", ".join(sorted(configured)) or "none are defined"
             self.diagnostics.append(
@@ -347,8 +356,10 @@ class _ChecksLoader:
                     where,
                 )
             )
-            return None
-        return name
+            if DATASOURCE_NAME.fullmatch(name):
+                return name, "not_defined"
+            return "", "not_a_name"
+        return name, "defined"
 
     # -- checks --
 

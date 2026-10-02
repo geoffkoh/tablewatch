@@ -743,7 +743,7 @@ def test_units_of_value(recorded: Recorded) -> None:  # U1
     assert 259200 <= freshness["latest"]["value"] < 259200 + 600
     assert freshness["latest"]["display_value"].startswith("3d")
     volume = checks[ORDER_VOLUME]["latest"]
-    assert (volume["value"], volume["display_value"]) == (7.0, "7")
+    assert (volume["value"], volume["display_value"]) == (7.0, "7 rows")
 
 
 def test_timestamps_are_always_utc() -> None:  # T1

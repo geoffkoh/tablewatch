@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from tablewatch.checks.model import Check, Dataset
+from tablewatch.config.project import PROJECT_FILE
 from tablewatch.datasources import (
     DatasourceConfig,
     DatasourceError,
@@ -23,9 +24,26 @@ from tablewatch.datasources import (
 )
 from tablewatch.engine.planner import SCHEMA_KEY, plan_dataset, render
 
-UNDEFINED_DATASOURCE = (
-    "this dataset's datasource is not defined; run tablewatch validate"
+NO_DATASOURCE = (
+    "this dataset has no datasource; add datasource: to its check file or a "
+    "_defaults.yml; run tablewatch validate"
 )
+NOT_A_NAME = (
+    "this dataset's datasource: value is not a name defined in tablewatch.yml; "
+    "run tablewatch validate"
+)
+
+
+def undefined_datasource(dataset: Dataset) -> str:
+    """Why a dataset has no usable datasource, naming it only if it is a name."""
+    if dataset.datasource_state == "not_defined":
+        return (
+            f"datasource '{dataset.datasource}' is not defined in {PROJECT_FILE}; "
+            "run tablewatch validate"
+        )
+    if dataset.datasource_state == "not_a_name":
+        return NOT_A_NAME
+    return NO_DATASOURCE
 
 
 @dataclass(frozen=True)
@@ -141,7 +159,7 @@ def compile_dataset(
     """
     config = datasources.get(dataset.datasource)
     if config is None:
-        return _failed(UNDEFINED_DATASOURCE)
+        return _failed(undefined_datasource(dataset))
     try:
         dialect = dialect_for(config)
         plan = plan_dataset(

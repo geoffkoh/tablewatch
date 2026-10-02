@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from tablewatch.diagnostics import SourceLocation
 from tablewatch.dsl import CheckExpr, Condition
@@ -71,12 +72,24 @@ class SourceSpan:
     end_line: int
 
 
+# What a check file's `datasource:` may hold to be shown back as written:
+# no URL, `${env:}`, quote, space or control character can match.
+DATASOURCE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.\-]{0,63}")
+
+DatasourceState = Literal["defined", "not_defined", "not_a_name", "none"]
+
+
 @dataclass(eq=False)
 class Dataset:
     """One check file: a table on a datasource, and the checks against it.
 
     Public: `name`, `datasource`, `path`, `owner`, `tags`. Other attributes
     are provisional and may change between releases.
+
+    `datasource` is the name as written (or inherited, or the only one
+    defined). It is `""` when none is set or the value is not a name
+    (`DATASOURCE_NAME`), and may be missing from the project's datasources
+    when the project has errors; `datasource_state` says which.
     """
 
     name: str
@@ -90,6 +103,7 @@ class Dataset:
     # The file's lines as loaded, and the 1-based line of its `filter:`.
     source_lines: tuple[str, ...] = field(default=(), repr=False)
     filter_line: int | None = None
+    datasource_state: DatasourceState = "defined"
 
     @property
     def table(self) -> TableRef:

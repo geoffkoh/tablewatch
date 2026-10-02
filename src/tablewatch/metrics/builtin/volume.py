@@ -20,6 +20,7 @@ class RowCount(Metric):
     name = "row_count"
     unit = Unit.COUNT
     summary = "Number of rows in scope."
+    count_noun = ("row", "rows")
 
     def measures(self, ctx: MetricContext) -> dict[str, Measure]:
         return {"rows": ctx.row_count()}

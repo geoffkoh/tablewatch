@@ -46,6 +46,16 @@
             "title": "Datasource",
             "type": "string"
           },
+          "datasource_state": {
+            "enum": [
+              "defined",
+              "not_defined",
+              "not_a_name",
+              "none"
+            ],
+            "title": "Datasource State",
+            "type": "string"
+          },
           "expression": {
             "title": "Expression",
             "type": "string"
@@ -119,6 +129,7 @@
           "unit",
           "dataset",
           "datasource",
+          "datasource_state",
           "owner",
           "tags",
           "source",
@@ -308,6 +319,16 @@
             "title": "Datasource",
             "type": "string"
           },
+          "datasource_state": {
+            "enum": [
+              "defined",
+              "not_defined",
+              "not_a_name",
+              "none"
+            ],
+            "title": "Datasource State",
+            "type": "string"
+          },
           "expression": {
             "title": "Expression",
             "type": "string"
@@ -378,6 +399,7 @@
           "unit",
           "dataset",
           "datasource",
+          "datasource_state",
           "owner",
           "tags",
           "source",
