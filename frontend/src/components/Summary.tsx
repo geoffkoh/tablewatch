@@ -21,21 +21,14 @@ interface TileProps {
   count: number;
   label: string;
   note?: ReactNode;
-  incomplete?: boolean;
 }
 
-function Tile({ status, count, label, note, incomplete = false }: TileProps): ReactElement {
+function Tile({ status, count, label, note }: TileProps): ReactElement {
   return (
     <li className={`tile status--${status}`} data-status={status}>
       <span className="tile__head">
         <StatusIcon status={status} /> <span className="tile__count">{count}</span>{" "}
         <span className="tile__label">{label}</span>
-        {incomplete && (
-          <>
-            {" "}
-            <IncompleteMarker />
-          </>
-        )}
       </span>
       {note !== undefined && (
         <>
@@ -48,7 +41,9 @@ function Tile({ status, count, label, note, incomplete = false }: TileProps): Re
 }
 
 /**
- * Every loaded check's latest result (D3). This is not the latest run's
+ * Every loaded check's latest result (D3). When a check file is broken, the
+ * caption alone says "incomplete" (spec 017 P1): every count is incomplete in
+ * the same way, and the banner sits directly above. This is not the latest run's
  * counts: the caption names the scope, and the latest-run panel names its own.
  */
 export function Summary({ project, checks }: { project: Project; checks: readonly CheckSummary[] }): ReactElement {
@@ -75,7 +70,7 @@ export function Summary({ project, checks }: { project: Project; checks: readonl
       {allClear && <p className="all-clear">All checks passing</p>}
       {n === 0 && <p className="caption">No checks are loaded, so there is nothing to report.</p>}
       <ul className="tiles">
-        <Tile status="fail" count={counts.fail} label="failing" incomplete={incomplete} />
+        <Tile status="fail" count={counts.fail} label="failing" />
         <Tile
           status="error"
           count={counts.error}
@@ -90,7 +85,7 @@ export function Summary({ project, checks }: { project: Project; checks: readonl
         <Tile status="warn" count={counts.warn} label={counts.warn === 1 ? "warning" : "warnings"} />
         <Tile status="none" count={counts.none} label="no result" note="state unknown" />
         {counts.skipped > 0 && <Tile status="skipped" count={counts.skipped} label="skipped" />}
-        <Tile status="pass" count={counts.pass} label="passing" incomplete={incomplete} />
+        <Tile status="pass" count={counts.pass} label="passing" />
       </ul>
     </section>
   );

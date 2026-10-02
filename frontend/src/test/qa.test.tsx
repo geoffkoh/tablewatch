@@ -72,7 +72,7 @@ describe("O5 and P7 at the edges", () => {
     expect(row).not.toMatch(/last evaluated|failing|passing/i);
   });
 
-  it("a since in the future (clock skew) reads 'just now', never negative", async () => {
+  it("a since in the future (clock skew) reads as its day, the age as 'just now', never negative", async () => {
     const fixture = mapLatest(recorded, (c) =>
       c.id === "fc9cc3088acaf77a" && c.latest
         ? { ...c.latest, since: "2026-09-27T00:00:00.000000+00:00", started_at: "2026-09-27T00:00:00.000000+00:00" }
@@ -80,7 +80,8 @@ describe("O5 and P7 at the edges", () => {
     );
     await renderOverview(fixture);
     const row = text(rowFor("fc9cc3088acaf77a"));
-    expect(row).toContain("Failing since just now");
+    expect(row).toContain("just now");
+    expect(row).toContain("Failing since Sep 27");
     expect(row).not.toMatch(/-\d/);
   });
 

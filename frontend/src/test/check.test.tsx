@@ -215,7 +215,7 @@ describe("D4: the latest result in the overview's words", () => {
     expect(content).toContain("Could not evaluate");
     expect(content).toContain(IO_ERROR);
     expect(content).toContain("Last evaluated: Fail");
-    expect(content).toContain("failing since 3 hours ago");
+    expect(content).toContain("failing since 14:55 today");
     expect(content).not.toContain("—");
     expect(content).not.toContain("Failing since");
     const failingSince = Array.from(latest().querySelectorAll(".last-evaluated time")).map((t) => t.getAttribute("datetime"));
@@ -227,7 +227,7 @@ describe("D4: the latest result in the overview's words", () => {
     const content = text(latest());
     expect(content).toContain("20.00%");
     expect(content).toContain("expected < 5%");
-    expect(content).toContain("Failing since 3 hours ago");
+    expect(content).toContain("Failing since 14:55 today");
     expect(latest().querySelector(".since time")?.getAttribute("datetime")).toBe(STARTED.A);
   });
 
