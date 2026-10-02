@@ -144,6 +144,15 @@ def _load_config(root: Path) -> ProjectConfig:
         error(message, _key_at(source, node, name))
         for name, message in _notifier_name_problems(config)
     ]
+    notifiers = node.get("notifiers")
+    if isinstance(notifiers, CommentedMap):
+        # YAML turns `null:` or `1:` into a key that is not text; pydantic
+        # would quietly make it the name "None" or "1".
+        problems.extend(
+            error(_BAD_NOTIFIER_NAME, source.of_key(notifiers, key))
+            for key in notifiers
+            if not isinstance(key, str)
+        )
     if problems:
         raise ProjectError(problems)
     return config

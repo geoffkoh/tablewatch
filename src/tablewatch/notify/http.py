@@ -12,6 +12,7 @@ from __future__ import annotations
 import http.client
 import ipaddress
 import ssl
+import time
 import urllib.error
 import urllib.request
 from typing import IO
@@ -35,6 +36,7 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
         headers: http.client.HTTPMessage,
         newurl: str,
     ) -> urllib.request.Request | None:
+        fp.close()  # raising skips urllib's own close of the 3xx response
         raise NotifyError("redirect not followed")
 
 
@@ -106,8 +108,8 @@ def post_json(url: str, body: bytes, *, timeout: float | None = None) -> None:
         raise NotifyError("the url is not a valid URL") from None
     try:
         with _opener(proxies=not plain_http).open(request, timeout=timeout) as response:
-            response.read(MAX_RESPONSE_BYTES)  # read, then dropped unparsed
             status = response.status
+            _drain(response, deadline=time.monotonic() + 3 * timeout)
     except NotifyError:
         raise
     except urllib.error.HTTPError as exc:
@@ -119,6 +121,22 @@ def post_json(url: str, body: bytes, *, timeout: float | None = None) -> None:
         raise NotifyError(_reason(exc)) from None
     if not 200 <= status < 300:
         raise NotifyError(f"HTTP {status}")
+
+
+def _drain(response: http.client.HTTPResponse, *, deadline: float) -> None:
+    """Read and drop up to `MAX_RESPONSE_BYTES`, within an overall deadline.
+
+    The socket timeout bounds each read only, so a server trickling a byte
+    at a time could otherwise hold the run for hours.
+    """
+    read = 0
+    while read < MAX_RESPONSE_BYTES:
+        if time.monotonic() > deadline:
+            raise TimeoutError
+        chunk = response.read1(min(8192, MAX_RESPONSE_BYTES - read))
+        if not chunk:
+            return
+        read += len(chunk)
 
 
 def _reason(exc: object) -> str:

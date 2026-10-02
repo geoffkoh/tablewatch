@@ -44,6 +44,7 @@ class Hook:
     status: int = 200
     delay: float = 0.0
     location: str | None = None
+    trickle: bool = False
 
     @property
     def events(self) -> list[dict[str, Any]]:
@@ -60,6 +61,18 @@ def _serve() -> tuple[ThreadingHTTPServer, Hook]:
             if hook.delay:
                 time.sleep(hook.delay)
             hook.bodies.append(json.loads(body))
+            if hook.trickle:
+                self.send_response(200)
+                self.send_header("Content-Length", "1000")
+                self.end_headers()
+                try:
+                    for _ in range(100):
+                        self.wfile.write(b"x")
+                        self.wfile.flush()
+                        time.sleep(0.05)
+                except OSError:
+                    pass
+                return
             self.send_response(hook.status)
             if hook.location:
                 self.send_header("Location", hook.location)
@@ -780,3 +793,21 @@ def test_loopback_http_never_goes_through_a_proxy(
     set_rows(project, "b", "c")
     run(project)
     assert names(hook) == [("has a", "failing")]
+
+
+def test_a_trickled_answer_cannot_hold_the_run(
+    project: Path,
+    hook: Hook,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # QA: the per-read timeout alone would wait for every byte
+    import tablewatch.notify.http as http
+
+    monkeypatch.setattr(http, "TIMEOUT_SECONDS", 0.2)
+    hook.trickle = True
+    set_rows(project, "b", "c")
+    started = time.monotonic()
+    with caplog.at_level(logging.WARNING, logger="tablewatch"):
+        assert run(project).exit_code() == 1
+    assert time.monotonic() - started < 4
+    assert "could not send: timed out" in caplog.text
