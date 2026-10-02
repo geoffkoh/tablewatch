@@ -161,8 +161,30 @@ All notable changes to tablewatch. The format follows
   all, for example a URL), or `"none"` (no `datasource:` is set anywhere
   for this check).
 
+### Changed (breaking)
+
+- A selector that matches nothing — a path, `--tag`, `--check`,
+  `--datasource` or `--exclude` with a typo, or a tag not yet used —
+  exits 3 and runs nothing, naming the value: `no checks match path
+  'checks/inventry' — nothing ran`. Before, a typo among several
+  selectors silently ran what the others matched and exited 0 on clean
+  data. `tablewatch list` and `tablewatch compile` follow the same rule.
+  In Python, `tablewatch.run()` raises `tablewatch.SelectionError`.
+  Selectors that each match something but together match nothing keep
+  today's message, "no checks matched the selection".
+- A command-line mistake — an unknown option, an unknown command, a
+  missing argument — now exits 3, the same code as an invalid project,
+  instead of 2 (which still means tablewatch could not evaluate a
+  check). `--help` and `--version` still exit 0.
+
 ### Changed
 
+- A run's recorded `selection` is now one normalised, project-relative
+  form — `checks/inventory`, not `./checks/inventory/` or an absolute
+  path — whichever way you passed it, in the CLI or `tablewatch.run()`.
+  The project root is recorded as `.`; `--exclude` globs are kept as
+  typed. Runs recorded before this change keep the form they were
+  recorded with.
 - The overview says when a check started failing as a date ("Failing since
   Sep 19", "since 10:05 today"), not "since 7 days ago". "Incomplete" is
   on the summary caption only, and the overview says how many checks the
@@ -431,6 +453,15 @@ All notable changes to tablewatch. The format follows
 - A third-party SQLAlchemy dialect that fails while loading no longer
   crashes `tablewatch compile` or makes the check page's SQL section
   fail; it reads "the X dialect could not be loaded".
+- `--exclude` is now resolved the same way a path selector is: `./checks/inventory`,
+  an absolute path, or a bare name typed from inside `checks/` all exclude
+  the folder they name. Before, only the exact string `checks/inventory`
+  worked and every other spelling silently excluded nothing.
+- Excluding the whole project (`tablewatch run --exclude .`) now reads
+  "no checks matched the selection — nothing ran", like any other empty
+  result, instead of being treated as an unmatched selector.
+- `tablewatch list` and `tablewatch compile` now exit 3, like `run`,
+  when their selectors each match something but together match nothing.
 
 ## 0.1.0 — not yet published
 

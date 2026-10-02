@@ -8,7 +8,8 @@ Built to run unattended: no prompts, logs on stderr (stdout stays clean for
     0  every selected check passed (warnings too, unless --fail-on warn)
     1  a check failed — the data is bad
     2  a check could not be evaluated — tablewatch could not do its job
-    3  the project is invalid, or nothing matched — nothing ran
+    3  the project is invalid, a selector matched nothing, or the command
+       line is wrong — nothing ran
 
 `serve` is a long-running command: it exits 0 when stopped by SIGINT or
 SIGTERM, and 3 when it could not start. It never exits 1 or 2 itself.
@@ -57,7 +58,35 @@ class _Settings:
     quiet: bool
 
 
-@click.group()
+class _Group(click.Group):
+    """click's group, with usage errors exiting 3 rather than click's 2.
+
+    2 means a check could not be evaluated; a mistyped command line means
+    nothing ran, which is 3. `--help` and `--version` still exit 0.
+    """
+
+    def make_context(
+        self,
+        info_name: str | None,
+        args: list[str],
+        parent: click.Context | None = None,
+        **extra: Any,
+    ) -> click.Context:
+        try:
+            return super().make_context(info_name, args, parent, **extra)
+        except click.UsageError as exc:
+            exc.exit_code = EXIT_INVALID_PROJECT  # type: ignore[misc]  # per instance, by design
+            raise
+
+    def invoke(self, ctx: click.Context) -> Any:
+        try:
+            return super().invoke(ctx)
+        except click.UsageError as exc:
+            exc.exit_code = EXIT_INVALID_PROJECT  # type: ignore[misc]  # per instance, by design
+            raise
+
+
+@click.group(cls=_Group)
 @click.version_option(version=__version__, prog_name="tablewatch")
 @click.option(
     "--project-dir",
@@ -154,9 +183,13 @@ def _selector_options[F: Callable[..., Any]](command: F) -> F:
 def _select(
     project: Project, **selectors: tuple[str, ...]
 ) -> tuple[Selection, list[Check]]:
-    selection = Selection(**selectors)
     try:
-        return selection, select_checks(project, selection)
+        selection = Selection(**selectors).resolve(project, Path.cwd())
+        checks = select_checks(project, selection)
+        if not checks and selection.as_dict():
+            # As `run` does: selectors that each match but not together.
+            raise SelectionError("no checks matched the selection — nothing ran")
+        return selection, checks
     except SelectionError as exc:
         _fail(str(exc))
 

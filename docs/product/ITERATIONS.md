@@ -6,6 +6,35 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 20 — Selection honesty and usage errors (I-16 whole, I-17 part 1), 2026-10-02
+
+- **Spec:** [020-selection-honesty](specs/020-selection-honesty.md). **Branch:** `iter/020`.
+  Full track. No items added (freeze).
+- **REFINE.** data-steward → D1–D4: each selector judged alone against the whole project; unmatched
+  excludes and globs exit 3; `list`/`compile` follow the rule; root as `.`, values quoted; a blank
+  value is unmatched. architect → D5–D6: `Selection.resolve` called once, by `execute` and `_select`;
+  `SelectionError` stays message-only; a `click.Group` subclass gives usage errors exit 3. PLAN also
+  found that `--exclude` was never resolved like paths; fixed in the same spec.
+- **Shipped:** unmatched paths, tags, check ids, datasources and excludes name themselves and exit 3,
+  in the CLI and `tw.run()`; `list`/`compile` exit 3 on the same rule; `--exclude` resolves like a
+  path; recorded `selection` is project-relative POSIX, root as `.`. Suite: Python **1713 passed,
+  1 xfailed**.
+- **Reviewer findings and resolution:**
+  - *data-steward — accept*, 22/22 live.
+  - *qa-engineer — pass; 18/18 must; 61 tests in `tests/test_selection_honesty_qa.py`.* Fixed:
+    excluding the root (`.`) now reads "no checks matched the selection", not an unmatched selector;
+    `list`/`compile` exit 3 on an empty intersection, as `run` does.
+- **Also fixed:** README said 18 checks for the retail example; it has 19.
+- **Not added (backlog freeze):** `select_checks` trusts it is given an already-resolved selection;
+  the S20 test does not check the API serving an old row; a suspected flake in
+  `tests/test_server.py::test_sigterm_stops_serve_cleanly` (seen once, as in iteration 11).
+- **Lesson:** a review's own small finding ("PLAN also found...") can ride in the same spec when it
+  is the same rule applied consistently (`--exclude` is a path selector); splitting it out would have
+  cost a whole iteration for one line of code.
+- **I-16 is done** in full. **I-17 part 1 is done**; the rest (tracebacks in `runs`/`history`/
+  `--output-file`, a malformed `results.url`, one root discovery) stays open.
+- **Next:** I-10, `tablewatch report` (rank 10, 2.4).
+
 ## Iteration 19 — Notifications 1, part 2: `type: slack` (I-06 part 2, completes I-06), 2026-10-02
 
 - **Spec:** [019-notifications-slack](specs/019-notifications-slack.md). **Branch:** `iter/019`.

@@ -147,7 +147,8 @@ def execute(
         raise ProjectError(
             [d for d in project.diagnostics if d.severity is Severity.ERROR]
         )
-    checks: list[Check] = select_checks(project, selection, cwd)
+    selection = selection.resolve(project, cwd)
+    checks: list[Check] = select_checks(project, selection)
     if not checks:
         raise SelectionError("no checks matched the selection — nothing ran")
     result = run_checks(

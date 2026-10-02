@@ -7,7 +7,7 @@ of selection: `tablewatch run checks/sales` runs everything under sales.
 from __future__ import annotations
 
 import fnmatch
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,16 +43,73 @@ class Selection:
             if value
         }
 
+    def resolve(self, project: Project, cwd: Path) -> Selection:
+        """This selection checked and normalised against `project`.
 
-def select_checks(
-    project: Project, selection: Selection, cwd: Path | None = None
-) -> list[Check]:
-    roots = [
-        _relative_to_project(project, arg, cwd or Path.cwd()) for arg in selection.paths
-    ]
-    unknown = sorted(set(selection.datasources) - set(project.config.datasources))
-    if unknown:
-        raise SelectionError(f"unknown datasource: {', '.join(unknown)}")
+        Paths and literal excludes become project-relative POSIX paths (the
+        root is `.`), resolved against `cwd` first, then the project root;
+        glob excludes stay as typed. Every selector must match at least one
+        check on its own — a typo beside a real selector must not pass as
+        "checked" — so one `SelectionError` names each that matches nothing.
+        A blank value never widens a selection: it matches nothing.
+        """
+        unknown = sorted(
+            {d for d in self.datasources if d.strip()} - set(project.config.datasources)
+        )
+        if unknown:
+            raise SelectionError(f"unknown datasource: {', '.join(unknown)}")
+        checks = project.checks
+        unmatched: list[str] = []
+
+        def check(label: str, value: str, matched: bool) -> None:
+            if not value.strip() or not matched:
+                unmatched.append(f"{label} '{value}'")
+
+        paths: list[str] = []
+        for arg in self.paths:
+            root = _relative_to_project(project, arg, cwd) if arg.strip() else None
+            check(
+                "path",
+                arg,
+                root is not None and any(_under(c.dataset.path, root) for c in checks),
+            )
+            if root is not None:
+                paths.append(root.as_posix())
+        for tag in self.tags:
+            check("tag", tag, any(tag in c.dataset.tags for c in checks))
+        for prefix in self.check_ids:
+            check("check id", prefix, any(c.id.startswith(prefix) for c in checks))
+        for name in self.datasources:
+            check("datasource", name, any(c.dataset.datasource == name for c in checks))
+        excludes: list[str] = []
+        for arg in self.excludes:
+            pattern = arg
+            if arg.strip() and not _GLOB_CHARS & set(arg):
+                pattern = _relative_to_project(project, arg, cwd).as_posix()
+            check(
+                "exclude", arg, any(_excluded(c.dataset.path, pattern) for c in checks)
+            )
+            excludes.append(pattern)
+        if unmatched:
+            raise SelectionError(
+                f"no checks match {', '.join(unmatched)} — nothing ran"
+            )
+        return Selection(
+            paths=_unique(paths),
+            tags=_unique(self.tags),
+            datasources=_unique(self.datasources),
+            excludes=_unique(excludes),
+            check_ids=_unique(self.check_ids),
+        )
+
+
+def _unique(values: Iterable[str]) -> list[str]:
+    return list(dict.fromkeys(values))
+
+
+def select_checks(project: Project, selection: Selection) -> list[Check]:
+    """The checks a resolved selection (`Selection.resolve`) chooses."""
+    roots = [Path(p) for p in selection.paths]
     chosen = []
     for check in project.checks:
         dataset = check.dataset
@@ -95,4 +152,4 @@ def _excluded(path: Path, pattern: str) -> bool:
     if _GLOB_CHARS & set(pattern):
         return fnmatch.fnmatch(posix, pattern)
     prefix = pattern.rstrip("/")
-    return posix == prefix or posix.startswith(prefix + "/")
+    return prefix == "." or posix == prefix or posix.startswith(prefix + "/")

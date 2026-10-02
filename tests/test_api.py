@@ -259,7 +259,7 @@ def test_a_missing_checks_directory_runs_nothing(tmp_path: Path) -> None:  # R5
 
 def test_nothing_runs_when_nothing_matches(retail: Path, tmp_path: Path) -> None:  # R6
     with pytest.raises(
-        tw.SelectionError, match="^no checks matched the selection — nothing ran$"
+        tw.SelectionError, match="^no checks match tag 'no-such-tag' — nothing ran$"
     ):
         tw.run(retail, tags=["no-such-tag"])
     with pytest.raises(tw.SelectionError, match="^unknown datasource: nope$"):
