@@ -66,3 +66,10 @@ a poor design into a public contract (API, report format, check identity),
 or fails to deliver a seam its spec requires. Everything else — naming,
 structure that could be tidier, a helpful refactor — is non-blocking and
 goes to the backlog through the product-manager.
+
+## Report
+
+Your final report is **at most 15 lines**: verdict; blocking findings and
+non-blocking findings, one line each with file:line; files you changed. Do
+not list what holds or restate the brief. Detail belongs in tests or files,
+not in the report.

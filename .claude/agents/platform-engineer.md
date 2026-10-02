@@ -45,3 +45,10 @@ changes that a connector needs go through the tech lead; propose them.
 
 Gates green; connector or deployment tested as far as possible locally, with
 the rest stated plainly; docs updated (README install and configuration).
+
+## Report
+
+Your final report is **at most 15 lines**: verdict; blocking findings and
+non-blocking findings, one line each with file:line; files you changed. Do
+not list what holds or restate the brief. Detail belongs in tests or files,
+not in the report.

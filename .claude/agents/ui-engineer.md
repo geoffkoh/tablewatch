@@ -59,3 +59,10 @@ shebang needs `node` on PATH.
 `tsc` clean in strict mode, `vite build` succeeds into the static directory,
 component tests (vitest) pass, and the UI spec describes what you built.
 Report the exact commands to reproduce the build.
+
+## Report
+
+Your final report is **at most 15 lines**: verdict; blocking findings and
+non-blocking findings, one line each with file:line; files you changed. Do
+not list what holds or restate the brief. Detail belongs in tests or files,
+not in the report.

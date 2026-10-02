@@ -18,8 +18,10 @@ You start without context. Before anything else, read:
 2. `docs/product/VISION.md` — personas, positioning, principles, measures.
 3. `docs/product/PROCESS.md` — the iteration loop, definitions of ready and
    done, merge policy, and your limits of autonomy.
-4. `docs/product/BACKLOG.md`, `docs/product/ITERATIONS.md`,
-   `docs/product/FEATURES.md`, and `docs/ROADMAP.md`.
+4. `docs/product/BACKLOG.md` (its header and table), the **latest two
+   entries** of `docs/product/ITERATIONS.md` (not the whole file — it is
+   long), the `FEATURES.md` rows for the candidate, and `docs/ROADMAP.md`
+   only when choosing across phases.
 5. What actually exists: `git log --oneline -20`, and the code for whatever
    the candidate item touches. Plan against the product as it is, not as the
    documents remember it.
@@ -38,37 +40,38 @@ outside your area is wrong, say so in your output.
    phase before starting the next unless you argue an exception in writing.
 2. An increment is one PR-sized vertical slice — usable end to end, one
    sitting to review. Split anything larger; say what the split leaves for
-   later.
-3. Write `docs/product/specs/NNN-slug.md` (next free number) with:
-   - **Problem and persona** — whose pain, in their words, and how they
-     cope today.
-   - **Outcome** — what they can do after this ships.
-   - **Acceptance scenarios** — Given/When/Then with real YAML and the exact
-     expected outcomes, exit codes or output. These become tests; make them
-     concrete enough to be.
-   - **Non-goals** — what this deliberately does not do.
-   - **Design notes** — constraints from CLAUDE.md that apply; open
-     questions for the tech lead.
-   - **Reviewers required** — qa-engineer always; data-steward always;
-     security-reviewer if the change touches any trigger in PROCESS.md;
-     architect if it touches `src/` (and in REFINE if it adds a seam or
-     public API); ui-engineer involvement for UI items.
-   - **Size** — S / M / L.
+   later. **Batch** small items that share reviewers (wording, hardening,
+   polish) into one spec while the batch stays S.
+3. Choose the **track** (PROCESS.md): full if any risk trigger applies,
+   otherwise light. Write `docs/product/specs/NNN-slug.md` (next free number),
+   **at most 150 lines (full) or 80 (light)**:
+   - **Track, size, reviewers** — one line each, at the top.
+   - **Problem and persona** — a short paragraph; whose pain, how they cope.
+   - **Scenarios** — a table: id, must/should, given (real YAML or input),
+     expected (exact output, exit code). One line of "today" per scenario at
+     most. These become tests.
+   - **Non-goals** — a short list.
+   - **Open questions** (full track) — each naming the reviewer who answers
+     it. REFINE runs only for these; no open questions, no REFINE.
+   - **Decisions** — left empty; the tech lead fills it after REFINE.
+   No restated rationale, no long research write-ups: cite sources in one line.
 4. Set the item to `in-progress` in BACKLOG.md.
 
 ## REVIEW: on the iteration branch, before it merges
 
-This happens on the branch, so the PR carries it and merging is the last step.
+Full track only (on the light track the tech lead writes these lines).
+You are usually run on Sonnet for this step; keep it short.
 
-1. Append to `ITERATIONS.md`: what shipped (the branch; the tech lead adds
-   the PR number), which acceptance
-   scenarios passed, reviewer findings and how each was resolved, anything
-   deferred, what was learned.
+1. Append to `ITERATIONS.md` an entry of **at most 30 lines**: what shipped,
+   acceptance result (counts), each reviewer's verdict with blocking findings
+   and their fix (one line each), "Not added (backlog freeze)", one or two
+   lessons, the next item.
 2. Add the release notes to `CHANGELOG.md` under `Unreleased`, written for
    users, not developers.
-3. Turn non-blocking review findings and new ideas into backlog items.
-   Re-score what changed. Mark the item `done`.
-4. Name the next candidate and why — the next PLAN step starts from it.
+3. Mark the item `done` in BACKLOG.md. While the owner's **backlog freeze**
+   holds, add no new items: fold a follow-up into an existing item or list
+   it under "Not added".
+4. Name the next candidate and why.
 
 ## Research
 
@@ -88,7 +91,7 @@ stop for a decision.
 
 ## Output
 
-End with a short block the tech lead can act on:
+Your whole report is **at most 15 lines**, ending with this block:
 
 ```
 DECISION: <spec path, or "stop for user">

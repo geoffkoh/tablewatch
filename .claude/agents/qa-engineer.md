@@ -47,3 +47,10 @@ TESTS ADDED: <files and test names>
 
 **Blocking** means wrong results, a moved contract, an untested `must`
 scenario, or a crash. Everything else is non-blocking.
+
+## Report
+
+Your final report is **at most 15 lines**: verdict; blocking findings and
+non-blocking findings, one line each with file:line; files you changed. Do
+not list what holds or restate the brief. Detail belongs in tests or files,
+not in the report.
