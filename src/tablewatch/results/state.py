@@ -1,7 +1,8 @@
 """A check's current state from its history: how long it has been this way.
 
-One rule, shared by the API ("failing since") and, later, state-change
-alerts, so the page and the alert never disagree about when a problem began.
+One rule, shared by the API ("failing since") and state-change
+notifications (`transition`), so the page and the alert never disagree about
+when a problem began.
 
 A result that could not be evaluated (`error`, `skipped`, or an outcome this
 version does not know) says nothing about the data. So it neither ends nor
@@ -14,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 from tablewatch.checks.model import Outcome
 
@@ -103,3 +105,49 @@ def _streak_start(history: Sequence[Entry]) -> datetime:
             break
         since = entry.started_at
     return since
+
+
+EventName = Literal["failing", "erroring", "recovered"]
+
+# What an alert is about: the data failing or passing. `warn`, `error` and
+# `skipped` neither open nor close one.
+_ALERT_STATES = frozenset({Outcome.FAIL, Outcome.PASS})
+
+
+@dataclass(frozen=True)
+class Transition:
+    """A change worth telling someone about, and what it changed from.
+
+    `previous_outcome` is the result the rule compared against: the newest
+    `fail` or `pass` for `failing` and `recovered`, the newest result that
+    was not `skipped` for `erroring`; None when there was none.
+    """
+
+    event: EventName
+    previous_outcome: str | None
+
+
+def transition(outcome: str, previous: Sequence[Entry]) -> Transition | None:
+    """The event, if any, when a check records `outcome` after `previous`.
+
+    `previous` is the check's earlier history, newest first, without this
+    result. A `fail` alerts unless the data was already failing; a `pass`
+    after a `fail` is a recovery; `warn` and `error` in between change
+    neither, so a flaky database never re-alerts a known failure. An `error`
+    alerts unless the check was already erroring (a `skipped` run does not
+    end that streak). `warn` and `skipped` never alert.
+    """
+    outcome = recorded(outcome)
+    earlier = [recorded(e.outcome) for e in previous]
+    if outcome in _ALERT_STATES:
+        before = next((o for o in earlier if o in _ALERT_STATES), None)
+        if outcome == Outcome.FAIL and before != Outcome.FAIL:
+            return Transition("failing", before)
+        if outcome == Outcome.PASS and before == Outcome.FAIL:
+            return Transition("recovered", before)
+        return None
+    if outcome == Outcome.ERROR:
+        before = next((o for o in earlier if o != Outcome.SKIPPED), None)
+        if before != Outcome.ERROR:
+            return Transition("erroring", before)
+    return None

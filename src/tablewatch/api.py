@@ -29,6 +29,7 @@ from tablewatch.engine.runner import (
     RunResult,
     run_checks,
 )
+from tablewatch.notify import NOT_RECORDED, notify_sink
 from tablewatch.results.store import store_sink
 from tablewatch.selection import Selection, SelectionError, select_checks
 
@@ -67,6 +68,7 @@ def run(
     excludes: Sequence[str] = (),
     check_ids: Sequence[str] = (),
     record: bool = True,
+    notify: bool = True,
     fail_on: FailOn = "fail",
     concurrency: int = 4,
 ) -> RunResult:
@@ -74,7 +76,10 @@ def run(
 
     Selectors work as on the CLI; `paths` are relative to the project root
     and `check_ids` match by prefix. `record=False` keeps the run out of
-    history. `fail_on="warn"` makes warnings count in `exit_code()`.
+    history. A recorded run tells the project's notifiers about state
+    changes unless `notify=False` — a run that records but does not notify
+    would use up a change the next scheduled run should alert on.
+    `fail_on="warn"` makes warnings count in `exit_code()`.
 
     Raises `ProjectError` if the project has errors, `SelectionError` if
     nothing was selected — in both cases nothing ran.
@@ -109,7 +114,7 @@ def run(
     result = execute(
         project,
         Selection(**selectors),
-        sinks=default_sinks(project, record=record),
+        sinks=default_sinks(project, record=record, notify=notify),
         fail_on=fail_on,
         concurrency=concurrency,
         trigger="python",
@@ -161,14 +166,23 @@ def execute(
     return result
 
 
-def default_sinks(project: Project, *, record: bool) -> list[ResultSink]:
-    """Where a run goes: the project's results store, unless `record` is off.
+def default_sinks(
+    project: Project, *, record: bool, notify: bool = True
+) -> list[ResultSink]:
+    """Where a run goes: the results store, then the notifiers.
 
-    Internal, shared by the CLI and the server.
+    Nothing when `record` is off: notifications are computed from history,
+    so an unrecorded run cannot send them. Internal, shared by the CLI and
+    the server.
     """
     if not record:
+        if notify and project.config.notifiers:
+            log.info(NOT_RECORDED)
         return []
-    return [store_sink(project.config.results.url, project.root)]
+    sinks = [store_sink(project.config.results.url, project.root)]
+    if notify:
+        sinks.append(notify_sink(project))
+    return sinks
 
 
 def _sequence(name: str, value: Sequence[PathArg]) -> list[str]:

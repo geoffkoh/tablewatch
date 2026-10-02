@@ -104,6 +104,8 @@ class Dataset:
     source_lines: tuple[str, ...] = field(default=(), repr=False)
     filter_line: int | None = None
     datasource_state: DatasourceState = "defined"
+    # Notifier names for its checks, after `_defaults.yml` inheritance.
+    notify: tuple[str, ...] = ()
 
     @property
     def table(self) -> TableRef:
@@ -137,6 +139,9 @@ class Check:
     # Its own lines in the file; None when they could not be told apart.
     # Never part of its identity.
     span: SourceSpan | None = None
+    # Notifier names to tell when its state changes. Never part of its
+    # identity: adding a notifier keeps the check's history.
+    notify: tuple[str, ...] = ()
 
     @property
     def source_text(self) -> str | None:

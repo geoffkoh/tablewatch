@@ -7,7 +7,7 @@ upgrading tablewatch never needs a separate migration step on a server.
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -264,6 +264,47 @@ class ResultStore:
                 for result, run in rows
             }
 
+    def previous_results(
+        self, project: str, check_ids: Iterable[str], before: PageKey
+    ) -> dict[str, list[Entry]]:
+        """Each check's results in this project before `before`, newest first.
+
+        Read only as deep as `transition` looks: down to and including the
+        newest `fail` or `pass`. Runs at or after `before` — this run, and
+        any run recorded concurrently after it — are left out.
+        """
+        wanted = list(dict.fromkeys(check_ids))
+        found: dict[str, list[Entry]] = {}
+        done: set[str] = set()
+        with _reading(), Session(self.engine) as session:
+            # In chunks: a database caps the parameters in one statement.
+            for start in range(0, len(wanted), _CHUNK):
+                statement = (
+                    select(
+                        CheckResultRow.check_id,
+                        CheckResultRow.outcome,
+                        RunRow.started_at,
+                    )
+                    .join(RunRow, CheckResultRow.run_id == RunRow.id)
+                    .where(
+                        RunRow.project == project,
+                        CheckResultRow.check_id.in_(wanted[start : start + _CHUNK]),
+                        *_older_than(before),
+                    )
+                    .order_by(
+                        CheckResultRow.check_id,
+                        RunRow.started_at.desc(),
+                        RunRow.id.desc(),
+                    )
+                )
+                for check, outcome, started_at in session.execute(statement):
+                    if check in done:
+                        continue
+                    found.setdefault(check, []).append(Entry(outcome, started_at))
+                    if outcome in (Outcome.FAIL, Outcome.PASS):
+                        done.add(check)
+        return found
+
     def history_page(
         self, project: str, check_id: str, *, limit: int, before: PageKey | None = None
     ) -> list[tuple[CheckResultRow, RunRow]]:
@@ -285,6 +326,9 @@ class ResultStore:
         )
         with _reading(), Session(self.engine) as session:
             return [(result, run) for result, run in session.execute(statement)]
+
+
+_CHUNK = 500
 
 
 def _older_than(before: PageKey | None) -> list[ColumnElement[bool]]:
