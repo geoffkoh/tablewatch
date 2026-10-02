@@ -185,7 +185,11 @@ def _select(
 ) -> tuple[Selection, list[Check]]:
     try:
         selection = Selection(**selectors).resolve(project, Path.cwd())
-        return selection, select_checks(project, selection)
+        checks = select_checks(project, selection)
+        if not checks and selection.as_dict():
+            # As `run` does: selectors that each match but not together.
+            raise SelectionError("no checks matched the selection — nothing ran")
+        return selection, checks
     except SelectionError as exc:
         _fail(str(exc))
 

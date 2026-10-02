@@ -152,4 +152,4 @@ def _excluded(path: Path, pattern: str) -> bool:
     if _GLOB_CHARS & set(pattern):
         return fnmatch.fnmatch(posix, pattern)
     prefix = pattern.rstrip("/")
-    return posix == prefix or posix.startswith(prefix + "/")
+    return prefix == "." or posix == prefix or posix.startswith(prefix + "/")
