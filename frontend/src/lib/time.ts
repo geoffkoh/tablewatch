@@ -119,3 +119,20 @@ export function calendarDay(ms: number): string {
 export function sameLocalDay(a: number, b: number): boolean {
   return calendarDay(a) === calendarDay(b);
 }
+
+const YEAR = new Intl.DateTimeFormat(undefined, { year: "numeric" });
+
+/**
+ * A streak's start as a point in time, in the viewer's zone (spec 017 P2):
+ * "10:05 today" on the same local day as now, "Sep 19" in the same local
+ * year, otherwise "Dec 31, 2025". A point, not a duration: it stays true when
+ * the latest result is old. Uses the same `Intl` zone as `absolute`.
+ */
+export function sincePoint(iso: string, nowMs: number): string {
+  const ms = parseTimestamp(iso);
+  if (Number.isNaN(ms)) return "an unknown time";
+  const d = new Date(ms);
+  if (sameLocalDay(ms, nowMs)) return `${MINUTES.format(d)} today`;
+  if (YEAR.format(d) === YEAR.format(new Date(nowMs))) return DAY_ONLY.format(d);
+  return FULL_DAY.format(d);
+}

@@ -5,7 +5,7 @@
  * different people, so each state has its own label, icon and colour; colour
  * is never the only signal.
  */
-import type { CheckSummary, Outcome } from "../api/types";
+import type { CheckSummary, Outcome, Run } from "../api/types";
 
 /** A recorded outcome, or `none` when the check has no result in the store. */
 export type Status = Outcome | "none";
@@ -72,4 +72,17 @@ export function errorsLastFailing(checks: readonly CheckSummary[]): number {
   return checks.filter(
     (c) => c.latest?.outcome === "error" && c.latest.last_evaluated?.outcome === "fail",
   ).length;
+}
+
+/**
+ * How many checks the run counted that are not loaded now (spec 017 P3):
+ * `run.counts.total` less the loaded checks whose latest result is from that
+ * run. A run needs a clean project, so each was dropped by a broken file,
+ * edited (a derived id changes) or removed. Never negative: inconsistent data
+ * gives 0, and 0 means say nothing.
+ */
+export function notLoadedFromRun(run: Run | null, checks: readonly CheckSummary[]): number {
+  if (run === null) return 0;
+  const inRun = checks.filter((c) => c.latest !== null && c.latest.run_id === run.id).length;
+  return Math.max(0, run.counts.total - inRun);
 }

@@ -6,7 +6,7 @@
 import type { ReactElement } from "react";
 import type { LastEvaluated, LatestResult } from "../api/types";
 import { SINCE_PREFIX, STATUS_META } from "../lib/status";
-import { Ago } from "./Time";
+import { Ago, Since } from "./Time";
 
 export function LastEvaluatedNote({ last, now }: { last: LastEvaluated; now: number }): ReactElement {
   const since = SINCE_PREFIX[last.outcome];
@@ -16,7 +16,7 @@ export function LastEvaluatedNote({ last, now }: { last: LastEvaluated; now: num
       <Ago iso={last.started_at} now={now} />
       {since !== null && (
         <>
-          ; <Ago iso={last.since} now={now} prefix={since.toLowerCase()} />
+          ; <Since iso={last.since} now={now} prefix={since.toLowerCase()} />
         </>
       )}
     </span>
@@ -93,7 +93,7 @@ export function When({ latest, newestRunId, now }: WhenProps): ReactElement | nu
       <Ago iso={latest.started_at} now={now} />
       {since !== null && (
         <span className={`since status-text--${latest.outcome}`}>
-          <Ago iso={latest.since} now={now} prefix={since} />
+          <Since iso={latest.since} now={now} prefix={since} />
         </span>
       )}
       {newestRunId !== null && latest.run_id !== newestRunId && (

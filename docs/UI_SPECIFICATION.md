@@ -26,7 +26,8 @@ Sam (data steward) and Alex (analytics lead), who may not read SQL (see
 - Problems first, in every list and every summary.
 - The UI never claims more than the records show. A check with no result is
   unknown, not healthy. A broken check file makes every count incomplete.
-  "Failing since" never says "continuously".
+  "Failing since" never says "continuously", and names a point in time,
+  never an age (spec 017).
 
 ## 2. Build, toolchain, and dependencies
 
@@ -211,6 +212,12 @@ shown above everything else:
 - "Checks from this file may be missing from this page and from every count
   on it, so the counts are incomplete." It says **may**, and never gives a
   number: the UI cannot know how many checks a broken file held.
+- When the latest run counted checks that are not loaded now (*k* > 0, §4.4,
+  spec 017 P3), the next paragraph says so exactly: "The latest run checked
+  *k* checks that are not loaded now. Its counts include them; the
+  summary's do not." (singular: "checked 1 check that is not loaded now. Its
+  counts include it; …"). *k* is about the run, not the file, so the
+  "may" above still gives no number for the file.
 - Each error as `file:line:col` (monospace) followed by the message.
 - Warnings, if any, under a "Warnings" subheading below the errors.
 - "`tablewatch serve` reads the check files once, when it starts. Fix the
@@ -225,18 +232,20 @@ and no marker.
 Heading "Summary". Caption: "Latest result of each of the *N* checks
 loaded". It counts **loaded** checks only. A check id that has results but
 is no longer in the files is not counted. When `ok` is false, the caption
-ends "(incomplete)", and "incomplete" links to the banner.
+ends "(incomplete)", and "incomplete" links to the banner. The caption is
+the only place "incomplete" appears (spec 017 P1): every count is incomplete
+in the same way, and the banner sits directly above, so no tile repeats it.
 
 Tiles, in problem-first order. Each has an icon, a count and a label:
 
 | Tile | Text | Note |
 | --- | --- | --- |
-| fail | "*n* failing" | the "incomplete" marker when `ok` is false |
+| fail | "*n* failing" | |
 | error | "*n* errors" | "could not evaluate". When error checks were failing at their last evaluation (P7): "; *k* were failing" |
 | warn | "*n* warnings" | |
 | no result | "*n* no result" | "state unknown" |
 | skipped | "*n* skipped" | shown only when *n* > 0 |
-| pass | "*n* passing" | the "incomplete" marker when `ok` is false |
+| pass | "*n* passing" | |
 
 The counts always add up to the number of loaded checks. Errors are never
 added to failures. An error whose last evaluation failed stays under
@@ -268,6 +277,16 @@ results" with "*a* pass", "*b* warn", "*c* fail" and "*d* error" (plus
 "*e* skipped" when non-zero). "This run" keeps these counts from being
 read as the summary's.
 
+**Not loaded now** (spec 017 P3). *k* = `counts.total` − the number of
+loaded checks whose `latest.run_id` is the run's `id`. When *k* > 0, quiet
+text directly under "This run: *N* checks" reads "*k* of them are not loaded
+now." ("1 of them is …"). When `project.ok` is true it adds "They were
+edited or removed since the run." ("It was …"): a run needs a clean project,
+so with no broken file the only causes are an edit (a derived id changes) or
+a removal. When `ok` is false the banner (§4.2) explains instead. Nothing is
+shown when *k* ≤ 0: a run of one folder is smaller than the project, and
+inconsistent data never shows a negative number.
+
 With no runs: "No runs are recorded for this project yet. Run
 `tablewatch run` to record the first results."
 
@@ -295,17 +314,20 @@ so within a status the API's order (project file order) is kept.
   - error: "Could not evaluate", then `message` as text (monospace), or
     "No message was recorded." `display_value` (`—`) is **not** shown,
     because it is not a measured value. When `last_evaluated` is present:
-    "Last evaluated: Fail, *3 hours ago*; failing since *3 hours ago*". The
+    "Last evaluated: Fail, *3 hours ago*; failing since *14:55 today*". The
     "since" part appears only for fail and warn ("warning since").
   - skipped: "Skipped", then `message`, and `last_evaluated` as for errors.
   - no result: "No result recorded" / "Its state is unknown."
 - **When** (empty for no result):
   - The age of `latest.started_at`.
-  - A streak line from `latest.since`: fail "Failing since *7 days ago*";
+  - A streak line from `latest.since`: fail "Failing since *Sep 19*";
     warn "Warning since …"; error "Could not evaluate since …"; skipped
-    "Skipped since …". pass has none. Both ages are visible without
-    hovering. An error row never says "failing since" for the error
-    itself.
+    "Skipped since …". pass has none. The start is a **point in time**,
+    never an age (spec 017 P2; §6 "Streak starts"): "since 10:05 today",
+    "since Sep 19", "since Dec 31, 2025". So no text reads "since … ago":
+    "ago" is only on the age of the latest result. Both are visible
+    without hovering. An error row never says "failing since" for the
+    error itself.
   - "Not in the latest run" when `latest.run_id` differs from the newest
     run's id. This is quiet secondary text: muted colour, no icon, no
     status colour. On a project that runs folders on different schedules
@@ -402,8 +424,8 @@ The results below were judged by an earlier rule."
 Heading "Latest result": the status badge, then `Result` and `When`, the
 same components as the overview's row. So an error reads "Could not
 evaluate", the message, and "Last evaluated: Fail, *3 hours ago*; failing
-since *3 hours ago*", and never shows `display_value` (`—`). A failure reads
-`20.00%`, `expected < 5%`, "Failing since *3 hours ago*". A pass, warn or
+since *14:55 today*", and never shows `display_value` (`—`). A failure reads
+`20.00%`, `expected < 5%`, "Failing since *14:55 today*". A pass, warn or
 fail with nothing measured reads "No value measured" and its message ("no
 non-NULL values in scope"), never a bare `—` (spec 012 L1, L3). The words
 are `NO_VALUE_MEASURED` in `LatestResult.tsx`, and `ResultValue` there
@@ -1155,7 +1177,22 @@ hours. Neither the viewer's time zone nor a DST change affects an age.
 stated**, via `Intl.DateTimeFormat` (browser locale, 24-hour clock,
 `timeZoneName: 'short'`). In Singapore: "Sep 26, 2026, 14:56:12 GMT+8".
 
-Every age is a `<time datetime="…">`, and the attribute holds the API's
+**Streak starts** ("Failing since …", spec 017 P2) are a point in time in
+the viewer's zone, by the same `Intl` zone as absolute times (`sincePoint`
+in `lib/time.ts`):
+
+| `since`, in the viewer's zone | Reads |
+| --- | --- |
+| the same local day as now (also a few seconds ahead, clock skew) | "10:05 today" (24-hour) |
+| an earlier day of the same local year | "Sep 19" |
+| another year | "Dec 31, 2025" |
+| not a timestamp | "an unknown time" |
+
+A point stays true when the latest result is old; a duration ("for 7 days")
+would suggest the check is failing now. The chart's streak label keeps its
+full absolute time (§4A.6.4).
+
+Every age and streak start is a `<time datetime="…">`, and the attribute holds the API's
 UTC string unchanged. The full time shows on **hover** (`title`) and on
 **keyboard focus**: the element is focusable (`tabindex="0"`), and a CSS
 tooltip draws `attr(data-full)` on `:focus-visible`.
@@ -1167,8 +1204,11 @@ tooltip draws `attr(data-full)` on `:focus-visible`.
   is `error` is never called "failed".
 - "since", never "continuously". Runs happen at intervals, and errors that
   were passed over sit inside a streak.
+- "since" is followed by a point in time ("since Sep 19"), never an age:
+  no text reads "since … ago" (spec 017 S7).
 - A missing check "may be missing". The UI never gives a number it cannot
-  know.
+  know. It does give the number it can: the checks the latest run counted
+  that are not loaded now (§4.2, §4.4).
 - "No result recorded" / "state unknown". Never "not run yet" (the id may
   have changed) and never anything that reads as healthy.
 - The summary is "Latest result of each of the N checks loaded". The run
@@ -1268,6 +1308,7 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | --- | --- |
 | `test/overview.test.tsx` | O1–O11 and W3 at component level (W3 now uses `/runs/<id>`, since `/checks/<id>` is a page) |
 | `test/qa.test.tsx` | spec 003 VERIFY edge cases (qa-engineer) |
+| `test/wording.test.tsx` | spec 017 C1–C3 (the caption alone says "incomplete"), S1–S9 ("since" as a point in time, on the overview and the check page), R1–R7 (checks the latest run counted that are not loaded now) |
 | `test/sql.test.tsx` | spec 005 P1–P15 and S9 on the page: words, the wording guard on every fixture, schema, cannot compile, not loaded, section-scoped failures and a late `/sql` after Refresh, text is text, copy / Copied / refused / Select all, P10, `#sql`, regions, unknown kinds; the clipboard source rules |
 | `test/source.test.tsx` | spec 006 P4–P16 on the page: the block (one numbered span per line, `textContent === text`, blank lines, digits), the exact captions, below the SQL, `/project` failing, the wording guard on every fixture (lines exempt), not loaded, section-scoped failures and a late `/source` after Refresh, Try again, text is text, copy and Select all of the `<code>` only, `#source` / `#sql` / other fragments, the identity link, P13's filter sentences by `applies` and metric, P14's marked characters (U+202E, U+2028, U+200B path, BOM, ESC in a file name), P15, P16's region and CSS rules; `getCheckSource`'s URL |
 | `test/loaderror.test.tsx` | `LoadError`: unique `useId` ids, heading level, section wording |

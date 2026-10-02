@@ -166,17 +166,24 @@ top down, it shows:
   **Refresh** fetches the results again. The page never refreshes itself.
 - **A banner, if a check file failed to load.** It lists each mistake
   at `file:line:col`. That file's checks are missing from the page, so the
-  counts are marked **incomplete**. The page cannot tell how many checks the
-  broken file held, so a count marked incomplete, such as "5 failing",
-  covers only the checks the page can see. There may be more. Fix the file
-  and restart `serve`.
+  summary's caption is marked **incomplete**, once, for every count under
+  it. The page cannot tell how many checks the broken file held, so a count
+  such as "5 failing" covers only the checks the page can see. There may be
+  more. If the latest run checked some of those checks, the banner says how
+  many ("The latest run checked 3 checks that are not loaded now"): the
+  run's counts include them, and the summary's do not. Fix the file and
+  restart `serve`.
 - **Summary**: the latest result of every loaded check, counted as failing,
   errors, warnings, no result, and passing.
 - **Latest run**: when the most recent run started, what triggered it, what
   it selected ("all checks" or, for example, "paths: checks/sales"), and its
   own counts under "This run". A run of one folder counts only that folder,
   so its numbers can differ from the summary's. The summary is the state of
-  the project. The run panel says what the last run looked at.
+  the project. The run panel says what the last run looked at. If the run
+  counted checks that are not loaded now, the panel says how many under
+  "This run" ("3 of them are not loaded now"). With no broken file, those
+  checks were edited (an edit can give a check a new id) or removed since
+  the run.
 - **Every check, problems first**: failing, then could not evaluate, then
   warning, then no result recorded, then passing. Each check's name links
   to its own page (below).
@@ -201,17 +208,20 @@ The times on each row:
   time to see it in full, in your own time zone. A row marked **Not in the
   latest run** has an older result because the latest run selected other
   checks. Check its age before you rely on it.
-- **"Failing since"** or **"Warning since"**: the oldest result in the
-  current streak of that outcome. Errors do not break a streak. A check that
+- **"Failing since"** or **"Warning since"**: when the current streak of
+  that outcome began, as a point in your time zone: "since 10:05 today",
+  "since Sep 19", or "since Dec 31, 2025" in an earlier year. It is the
+  oldest result in the streak. A date stays true when the latest result is
+  old, so it is never written as an age. Errors do not break a streak. A check that
   failed, errored during a database outage, and failed again is "failing
   since" the first failure, because the outage showed nothing about the
   data. Any other evaluated result ends the streak: a pass, or a warn
   between fails. "Since" means "in every evaluation since", not "every
   minute since": runs happen at intervals, and the check's history
   (`/api/v1/checks/{id}/history`, below) shows the gaps.
-- **"Could not evaluate since"** on an error row: how long tablewatch has
-  been unable to measure the check. Below the message, **"Last evaluated:
-  Fail, 4 days ago; failing since 7 days ago"** says what the data showed
+- **"Could not evaluate since"** on an error row: when tablewatch became
+  unable to measure the check. Below the message, **"Last evaluated:
+  Fail, 4 days ago; failing since Sep 19"** says what the data showed
   the last time it could be measured. The error count in the summary adds
   how many of those checks were failing then ("5 errors could not evaluate; 2
   were failing"). They still need attention, but not in the failing count.

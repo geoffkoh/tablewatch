@@ -121,7 +121,7 @@ describe("O2: error and fail never look alike", () => {
     await renderOverview(beforeF);
     const wasFailing = text(rowFor("b1ceb8262d8b5441"));
     expect(wasFailing).toContain("Last evaluated: Fail");
-    expect(wasFailing).toContain("failing since 3 hours ago");
+    expect(wasFailing).toContain("failing since 14:55 today");
     const wasPassing = text(rowFor("32c8f939b90f6367"));
     expect(wasPassing).toContain("Last evaluated: Pass");
     expect(wasPassing).not.toMatch(/failing since/i);
@@ -229,7 +229,7 @@ describe("O4: the age of every latest result", () => {
 });
 
 describe("O5: failing since", () => {
-  it("shows both the latest age and the failing-since age from latest.since", async () => {
+  it("shows the latest age and, from latest.since, the day the streak began (spec 017 P2)", async () => {
     setClock("2026-09-26T09:00:05Z");
     const fixture = mapLatest(recorded, (c) =>
       c.id === "fc9cc3088acaf77a" && c.latest !== null
@@ -239,7 +239,7 @@ describe("O5: failing since", () => {
     await renderOverview(fixture);
     const row = text(rowFor("fc9cc3088acaf77a"));
     expect(row).toContain("3 hours ago");
-    expect(row).toContain("Failing since 7 days ago");
+    expect(row).toContain("Failing since Sep 19");
     expect(row).not.toMatch(/continuously/i);
   });
 
@@ -248,16 +248,16 @@ describe("O5: failing since", () => {
     for (const id of ["fc9cc3088acaf77a", "b1ceb8262d8b5441"]) {
       const since = rowFor(id).querySelector(".since time");
       expect(since?.getAttribute("datetime")).toBe(STARTED.A);
-      expect(text(rowFor(id))).toContain("Failing since 3 hours ago");
+      expect(text(rowFor(id))).toContain("Failing since 14:55 today");
     }
   });
 
-  it("gives an error row a could-not-evaluate age from run E, never 'failing since' for itself", async () => {
+  it("gives an error row a could-not-evaluate time from run E, never 'failing since' for itself", async () => {
     await renderOverview(beforeF);
     const row = rowFor("b1ceb8262d8b5441");
     const since = row.querySelector(".since time");
     expect(since?.getAttribute("datetime")).toBe(STARTED.E);
-    expect(text(row.querySelector(".since") ?? row)).toBe("Could not evaluate since 3 hours ago");
+    expect(text(row.querySelector(".since") ?? row)).toBe("Could not evaluate since 14:56 today");
     expect(row.querySelector(".cell-when")?.textContent).not.toMatch(/failing since/i);
   });
 
@@ -278,10 +278,12 @@ describe("O6: the project banner and an honest count", () => {
     expect(text(banner)).toMatch(/may be missing from this page and from every count/);
     const fail = tile("fail");
     expect(text(fail)).toContain("5 failing");
-    const marker = within(fail).getByRole("link", { name: "incomplete" });
+    // Spec 017 P1: the caption alone carries the marker.
+    const summary = screen.getByRole("region", { name: "Summary" });
+    const marker = within(summary).getByRole("link", { name: "incomplete" });
     expect(marker.getAttribute("href")).toBe(`#${banner.id}`);
-    expect(within(tile("pass")).getByRole("link", { name: "incomplete" })).toBeTruthy();
-    expect(text(screen.getByRole("region", { name: "Summary" }))).toContain(
+    expect(within(fail).queryByRole("link", { name: "incomplete" })).toBeNull();
+    expect(text(summary)).toContain(
       "Latest result of each of the 17 checks loaded (incomplete)",
     );
   });
@@ -295,7 +297,7 @@ describe("O6: the project banner and an honest count", () => {
     expect(text(banner)).toMatch(/may be missing/);
     expect(rows()).toHaveLength(9);
     expect(text(tile("fail"))).toContain("2 failing");
-    expect(within(tile("fail")).getByRole("link", { name: "incomplete" })).toBeTruthy();
+    expect(text(document.querySelector(".summary .caption") ?? document.body)).toContain("(incomplete)");
   });
 
   it("shows neither banner nor marker when ok", async () => {

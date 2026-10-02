@@ -27,8 +27,27 @@ function Selection({ run }: { run: Run }): ReactElement {
   );
 }
 
+interface LatestRunProps {
+  run: Run | null;
+  now: number;
+  /** Checks the run counted that are not loaded now (spec 017 P3). */
+  notLoaded: number;
+  /** The project loaded cleanly; then nothing was dropped by a broken file. */
+  projectOk: boolean;
+}
+
+function NotLoaded({ k, projectOk }: { k: number; projectOk: boolean }): ReactElement {
+  const one = k === 1;
+  return (
+    <p className="quiet run-counts__not-loaded">
+      {k} of them {one ? "is" : "are"} not loaded now.
+      {projectOk && ` ${one ? "It was" : "They were"} edited or removed since the run.`}
+    </p>
+  );
+}
+
 /** The newest run (O8). Its counts are only what that run selected. */
-export function LatestRun({ run, now }: { run: Run | null; now: number }): ReactElement {
+export function LatestRun({ run, now, notLoaded, projectOk }: LatestRunProps): ReactElement {
   return (
     <section className="panel latest-run" aria-labelledby="run-heading">
       <h2 id="run-heading" className="panel__title">
@@ -69,6 +88,7 @@ export function LatestRun({ run, now }: { run: Run | null; now: number }): React
           <p className="caption run-counts__caption">
             This run: {run.counts.total} {run.counts.total === 1 ? "check" : "checks"}
           </p>
+          {notLoaded > 0 && <NotLoaded k={notLoaded} projectOk={projectOk} />}
           <ul className="run-counts" aria-label="This run's results">
             <li>{run.counts.pass} pass</li>
             <li>{run.counts.warn} warn</li>

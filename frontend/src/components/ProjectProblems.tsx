@@ -30,9 +30,17 @@ function DiagnosticList({ items }: { items: readonly Diagnostic[] }): ReactEleme
 /**
  * The banner for a project that did not load cleanly (O6). The UI cannot
  * know how many checks a broken file held, so it says they *may* be missing
- * and never states a number.
+ * and never states a number for that file. It can say exactly how many
+ * checks the latest run counted that are not loaded now (spec 017 R1).
  */
-export function ProjectProblems({ project }: { project: Project }): ReactElement | null {
+export function ProjectProblems({
+  project,
+  notLoaded = 0,
+}: {
+  project: Project;
+  /** Checks the latest run counted that are not loaded now (spec 017 P3); 0 says nothing. */
+  notLoaded?: number;
+}): ReactElement | null {
   const errors = project.diagnostics.filter((d) => d.severity === "error");
   const warnings = project.diagnostics.filter((d) => d.severity === "warning");
 
@@ -59,6 +67,12 @@ export function ProjectProblems({ project }: { project: Project }): ReactElement
         Checks from {plural ? "these files" : "this file"} may be missing from this page and from
         every count on it, so the counts are incomplete.
       </p>
+      {notLoaded > 0 && (
+        <p className="not-loaded">
+          The latest run checked {notLoaded} {notLoaded === 1 ? "check that is" : "checks that are"} not loaded
+          now. Its counts include {notLoaded === 1 ? "it" : "them"}; the summary&apos;s do not.
+        </p>
+      )}
       <DiagnosticList items={errors} />
       {warnings.length > 0 && (
         <>

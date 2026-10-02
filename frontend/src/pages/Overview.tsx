@@ -7,6 +7,7 @@ import { LatestRun } from "../components/LatestRun";
 import { LoadError } from "../components/LoadError";
 import { ProjectProblems } from "../components/ProjectProblems";
 import { Summary } from "../components/Summary";
+import { notLoadedFromRun } from "../lib/status";
 import { useLoads, type Requests } from "../lib/useLoads";
 
 interface Results {
@@ -29,6 +30,8 @@ export function Overview(): ReactElement {
   const { slots, busy, now, reload } = useLoads(REQUESTS);
   const { project, results } = slots;
   const loadedProject = project.state === "ok" ? project.data : null;
+  const latestRun = results.state === "ok" ? (results.data.runs.items[0] ?? null) : null;
+  const notLoaded = results.state === "ok" ? notLoadedFromRun(latestRun, results.data.checks.items) : 0;
 
   let status: string;
   if (busy) status = "Loading…";
@@ -43,7 +46,7 @@ export function Overview(): ReactElement {
           {status}
         </p>
         {project.state === "failed" && <LoadError what="the project" failure={project.failure} onRetry={reload} />}
-        {loadedProject !== null && <ProjectProblems project={loadedProject} />}
+        {loadedProject !== null && <ProjectProblems project={loadedProject} notLoaded={notLoaded} />}
         {results.state === "failed" && <LoadError what="results" failure={results.failure} onRetry={reload} />}
         {(project.state === "loading" || results.state === "loading") &&
           project.state !== "failed" &&
@@ -52,11 +55,16 @@ export function Overview(): ReactElement {
           <>
             <div className="overview-grid">
               <Summary project={loadedProject} checks={results.data.checks.items} />
-              <LatestRun run={results.data.runs.items[0] ?? null} now={now} />
+              <LatestRun
+                run={latestRun}
+                now={now}
+                notLoaded={notLoaded}
+                projectOk={loadedProject.ok}
+              />
             </div>
             <CheckTable
               checks={results.data.checks.items}
-              newestRunId={results.data.runs.items[0]?.id ?? null}
+              newestRunId={latestRun?.id ?? null}
               now={now}
             />
           </>
