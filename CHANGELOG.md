@@ -130,8 +130,32 @@ All notable changes to tablewatch. The format follows
   It is read from the check files as `serve` loaded them; nothing is read
   from disk while answering, and nothing from `tablewatch.yml` or
   `_defaults.yml` is ever served.
+- `GET /api/v1/checks` and `/checks/{id}` now say why a check's
+  datasource isn't ready to run: the new `datasource_state` field is
+  `"defined"`, `"not_defined"` (the name is written but not in
+  `tablewatch.yml`), `"not_a_name"` (the value isn't a datasource name at
+  all, for example a URL), or `"none"` (no `datasource:` is set anywhere
+  for this check).
 
 ### Changed
+
+- A check whose `datasource:` names a datasource that isn't defined, or
+  isn't a datasource name at all, now shows that name as written — in
+  `/checks`, `/checks/{id}`, `/checks/{id}/sql`, and in the Datasource
+  row on the check page, marked "not defined" or "not a datasource
+  name" — instead of a blank value. **If you read `Dataset.datasource`
+  from Python**, it is now the name exactly as written in the check
+  file (or `""` only when none is set or the value isn't a name), not
+  always `""` for an undefined datasource; check `datasource_state` or
+  look it up in `config.datasources` before using it.
+- On a check's page, the SQL section's shared-scan sentence now reads
+  "that one read computes 6 values, used by this check and 6 others"
+  instead of "…for this check and 6 others": the check does not compute
+  values for the checks it shares the read with, it shares the read.
+- `failed_rows` and `row_count` values now say `1 row`, `3 rows`,
+  `1,204 rows` — on the console, in JSON and JUnit reports, in the
+  results store and on the check page — instead of a bare number.
+  Results recorded before the upgrade keep their text.
 
 - On a check's page, the history table's Rule column now says
   "Current" only for the results the chart shades under today's rule.
