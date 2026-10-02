@@ -20,9 +20,9 @@ checks:
 ## Folders and `_defaults.yml`
 
 Organise files in any folder structure. A `_defaults.yml` in a folder applies
-to every check file beneath it and may set `datasource`, `owner` and `tags`.
-The `_defaults.yml` nearest a file wins for `datasource` and `owner`; `tags`
-accumulate all the way down. If a project has exactly one datasource, datasets
+to every check file beneath it and may set `datasource`, `owner`, `tags` and
+`notify`. The `_defaults.yml` nearest a file wins for `datasource`, `owner`
+and `notify`; `tags` accumulate all the way down. If a project has exactly one datasource, datasets
 use it without saying so.
 
 ## Writing a check
@@ -86,6 +86,7 @@ no unit.
 | `id` | Pins the check's identity (see below). Letters, digits, `.` `_` `:` `-`. |
 | `warn`, `fail` | Triggers, as above. |
 | `where` | A SQL condition restricting the rows this check looks at. Not available on `schema` and `sql_metric`. |
+| `notify` | Notifiers to tell when this check changes state, overriding its file's (see Notifications). |
 
 ## Metrics
 
@@ -219,6 +220,75 @@ conditions on one dataset are two checks, each with its own history.
 - An explicit `id:` is never derived, so edits to the check don't change it.
   It uses letters, digits, `.`, `_`, `:` and `-`, starts with a letter or
   digit, and is at most 64 characters.
+
+## Notifications
+
+tablewatch tells you when a check **changes state**, then stays quiet while
+it stays that way. Define notifiers in `tablewatch.yml` and name them with
+`notify:` in a check file, a `_defaults.yml`, or on one check:
+
+```yaml
+# tablewatch.yml
+notifiers:
+  data-alerts:
+    type: webhook
+    url: ${env:TW_DATA_ALERTS_URL}
+```
+
+```yaml
+# checks/sales/_defaults.yml
+notify: data-alerts          # or a list: [data-alerts, platform]
+```
+
+- A webhook URL is a secret: `url:` must be exactly one `${env:NAME}`
+  reference, read only when a notification is sent. `validate`, `list` and
+  `compile` work without it.
+- `notify:` is inherited like `owner`: the nearest setting wins, and
+  `notify: []` turns notifications off below it. Adding or removing
+  `notify:` keeps a check's id and history.
+- A notifier name is letters, digits, `_`, `.` and `-`. `owner` is reserved.
+
+**Events.** After a run is recorded, each check's result is compared with
+its history:
+
+| Event | When |
+| --- | --- |
+| `failing` | It fails, and the newest earlier `fail` or `pass` was a `pass` (or there is none). |
+| `recovered` | It passes, and the newest earlier `fail` or `pass` was a `fail`. |
+| `erroring` | tablewatch could not evaluate it, and the newest earlier result that was not `skipped` was not an `error`. |
+
+`warn` and `skipped` send nothing. `warn` and `error` results neither open nor
+close a failure: `fail`, `error`, `fail` alerts once, and `fail`, `warn`,
+`pass` is a recovery. A check that fails on its first run alerts; one that
+passes does not. A run of some checks (`--path`, `--tag`) only considers
+those checks. Editing a check so that its id changes starts it afresh, so
+it alerts as new.
+
+**Delivery.** Each notifier gets one POST per run that has at least one
+event for it: JSON, `https` only (plain `http` only to this machine),
+redirects not followed, a 10-second timeout per network step, no retry.
+A notification that cannot be sent is a warning on stderr that names the
+notifier and the reason (`HTTP 500`, `timed out`), never the URL. It never
+changes the exit code. `run --no-store` and `tw.run(record=False)` send
+nothing, because events come from history. `run --no-notify` and
+`tw.run(notify=False)` record the run without notifying.
+
+**Payload** (`schema_version` 1; [JSON Schema](api/notification.schema.json)):
+
+```json
+{"schema_version": 1, "project": "retail-example", "notifier": "data-alerts",
+ "run": {"id": "…", "started_at": "2026-10-02T08:00:00.000000+00:00", "trigger": "cli"},
+ "events": [{"event": "failing", "outcome": "fail", "previous_outcome": "pass",
+   "check": {"id": "…", "name": "…", "path": "checks/sales/orders.yml",
+             "dataset": "orders", "datasource": "lake",
+             "owner": "sales-data@example.com", "tags": ["sales"]},
+   "value": 3.0, "display_value": "3 rows", "message": "…"}]}
+```
+
+An `erroring` event's `message` is always `could not evaluate`. The
+database's own error text can quote your data, so it stays in the run's
+results (`tablewatch history`, the web UI). Adding a field keeps
+`schema_version`; removing or renaming one changes it.
 
 ## Security note
 

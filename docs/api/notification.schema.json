@@ -1,0 +1,203 @@
+{
+  "$defs": {
+    "PayloadCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "title": "Dataset",
+          "type": "string"
+        },
+        "datasource": {
+          "title": "Datasource",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Owner"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "path",
+        "dataset",
+        "datasource",
+        "owner",
+        "tags"
+      ],
+      "title": "PayloadCheck",
+      "type": "object"
+    },
+    "PayloadEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "check": {
+          "$ref": "#/$defs/PayloadCheck"
+        },
+        "display_value": {
+          "title": "Display Value",
+          "type": "string"
+        },
+        "event": {
+          "enum": [
+            "failing",
+            "erroring",
+            "recovered"
+          ],
+          "title": "Event",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "error",
+            "skipped"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "previous_outcome": {
+          "anyOf": [
+            {
+              "enum": [
+                "pass",
+                "warn",
+                "fail",
+                "error",
+                "skipped"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Previous Outcome"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "event",
+        "outcome",
+        "previous_outcome",
+        "check",
+        "value",
+        "display_value",
+        "message"
+      ],
+      "title": "PayloadEvent",
+      "type": "object"
+    },
+    "PayloadRun": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "trigger": {
+          "title": "Trigger",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "started_at",
+        "trigger"
+      ],
+      "title": "PayloadRun",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One run's state changes, for one notifier.",
+  "properties": {
+    "events": {
+      "items": {
+        "$ref": "#/$defs/PayloadEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "notifier": {
+      "title": "Notifier",
+      "type": "string"
+    },
+    "project": {
+      "title": "Project",
+      "type": "string"
+    },
+    "run": {
+      "$ref": "#/$defs/PayloadRun"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "project",
+    "notifier",
+    "run",
+    "events"
+  ],
+  "title": "tablewatch notification",
+  "type": "object"
+}

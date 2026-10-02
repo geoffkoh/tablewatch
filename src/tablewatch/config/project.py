@@ -1,8 +1,9 @@
 """Models for `tablewatch.yml`.
 
 String settings may reference the environment as `${env:NAME}`. References
-are resolved only when a connection is actually opened (`resolve_env`), so
-`validate`, `list` and `compile` work on a machine with no credentials.
+are resolved only at the moment of use — a connection being opened, a
+notification being sent (`resolve_env`) — so `validate`, `list` and
+`compile` work on a machine with no credentials.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ import os
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ENV_REFERENCE = re.compile(r"\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -80,6 +81,28 @@ Datasource = Annotated[
 ]
 
 
+class WebhookNotifier(_Strict):
+    """POSTs each run's state changes as JSON (`tablewatch.notify.payload`)."""
+
+    type: Literal["webhook"]
+    # A webhook URL is a bearer secret, so it may only come from the
+    # environment: a literal in YAML would end up in git.
+    url: str
+
+    @field_validator("url")
+    @classmethod
+    def _env_only(cls, value: str) -> str:
+        if not ENV_REFERENCE.fullmatch(value):
+            raise ValueError(
+                "a notifier url must be an ${env:NAME} reference — it is a secret"
+            )
+        return value
+
+
+NotifierConfig = Annotated[WebhookNotifier, Field(discriminator="type")]
+NOTIFIER_TYPES = ("webhook",)
+
+
 class ResultsConfig(_Strict):
     # Relative SQLite paths resolve against the project root, not the cwd,
     # so a cron job run from / writes to the same store as a developer.
@@ -91,3 +114,4 @@ class ProjectConfig(_Strict):
     checks_path: str = "checks"
     datasources: dict[str, Datasource] = Field(default_factory=dict)
     results: ResultsConfig = Field(default_factory=ResultsConfig)
+    notifiers: dict[str, NotifierConfig] = Field(default_factory=dict)

@@ -28,7 +28,7 @@ from tablewatch.checks.model import (
     canonical_text,
     derive_check_id,
 )
-from tablewatch.config.project import PROJECT_FILE, ProjectConfig
+from tablewatch.config.project import NOTIFIER_TYPES, PROJECT_FILE, ProjectConfig
 from tablewatch.config.spans import check_span, compose, split_lines
 from tablewatch.config.yamlsource import YAMLSource, plain, quote_offset
 from tablewatch.diagnostics import (
@@ -56,9 +56,13 @@ log = logging.getLogger(__name__)
 DEFAULTS_FILES = frozenset({"_defaults.yml", "_defaults.yaml"})
 CHECK_FILE_SUFFIXES = frozenset({".yml", ".yaml"})
 
-DATASET_KEYS = ("dataset", "datasource", "filter", "owner", "tags", "checks")
-DEFAULTS_KEYS = ("datasource", "owner", "tags")
-COMMON_CHECK_KEYS = ("name", "id", "warn", "fail")
+DATASET_KEYS = ("dataset", "datasource", "filter", "owner", "tags", "notify", "checks")
+DEFAULTS_KEYS = ("datasource", "owner", "tags", "notify")
+COMMON_CHECK_KEYS = ("name", "id", "warn", "fail", "notify")
+# Notifier names: echoed in diagnostics and on stderr, so nothing that could
+# be a URL or a secret. `owner` is kept for routing to a check's owner (I-11).
+NOTIFIER_NAME = DATASOURCE_NAME
+RESERVED_NOTIFIER = "owner"
 ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
 # The results store's check_id column is this wide.
 MAX_ID_LENGTH = 64
@@ -128,7 +132,7 @@ def _load_config(root: Path) -> ProjectConfig:
             [error(f"{PROJECT_FILE} must be a mapping", source.at(0, 0))]
         )
     try:
-        return ProjectConfig.model_validate(plain(node))
+        config = ProjectConfig.model_validate(plain(node))
     except ValidationError as exc:
         raise ProjectError(
             [
@@ -136,20 +140,73 @@ def _load_config(root: Path) -> ProjectConfig:
                 for e in exc.errors()
             ]
         ) from None
+    problems = [
+        error(message, _key_at(source, node, name))
+        for name, message in _notifier_name_problems(config)
+    ]
+    notifiers = node.get("notifiers")
+    if isinstance(notifiers, CommentedMap):
+        # YAML turns `null:` or `1:` into a key that is not text; pydantic
+        # would quietly make it the name "None" or "1".
+        problems.extend(
+            error(_BAD_NOTIFIER_NAME, source.of_key(notifiers, key))
+            for key in notifiers
+            if not isinstance(key, str)
+        )
+    if problems:
+        raise ProjectError(problems)
+    return config
+
+
+_BAD_NOTIFIER_NAME = (
+    "a notifier name is letters, digits, '_', '.' or '-' (at most 64 characters)"
+)
+
+
+def _notifier_name_problems(config: ProjectConfig) -> list[tuple[str, str]]:
+    """Names are echoed in diagnostics and warnings, so they must be plain."""
+    problems = []
+    for name in config.notifiers:
+        if name == RESERVED_NOTIFIER:
+            problems.append(
+                (name, "'owner' is reserved for routing to a check's owner — rename it")
+            )
+        elif not NOTIFIER_NAME.fullmatch(name):
+            problems.append((name, _BAD_NOTIFIER_NAME))
+    return problems
+
+
+def _key_at(source: YAMLSource, node: CommentedMap, name: str) -> SourceLocation:
+    notifiers = node.get("notifiers")
+    if isinstance(notifiers, CommentedMap) and name in notifiers:
+        return source.of_key(notifiers, name)
+    return source.locate(node, ("notifiers",))
 
 
 def _describe_validation(err: Any) -> str:
     loc = [str(step) for step in err["loc"]]
+    if (
+        loc[:1] == ["notifiers"]
+        and len(loc) > 1
+        and not NOTIFIER_NAME.fullmatch(loc[1])
+    ):
+        # A name that is not plain may be a pasted URL: never echo it.
+        loc[1] = "…"
     setting = loc[-1] if loc else "setting"
     match err["type"]:
         case "missing":
             return f"missing required setting '{setting}'"
         case "extra_forbidden":
             return f"unknown setting '{setting}'"
+        case "union_tag_invalid" | "union_tag_not_found" if loc[:1] == ["notifiers"]:
+            return f"notifier 'type' must be one of: {', '.join(NOTIFIER_TYPES)}"
         case "union_tag_invalid" | "union_tag_not_found":
             return (
                 "datasource 'type' must be one of: postgres, duckdb, sqlite, sqlalchemy"
             )
+        case "value_error":
+            # Our own validators' messages, without pydantic's "Value error, ".
+            return str(err["ctx"]["error"])
         case _:
             return f"{setting}: {err['msg']}"
 
@@ -162,13 +219,16 @@ class _Defaults:
     datasource: str | None = None
     owner: str | None = None
     tags: tuple[str, ...] = ()
+    # None: not set here, inherit. (): set to nobody (`notify: []`).
+    notify: tuple[str, ...] | None = None
 
     def overlaid_with(self, nearer: _Defaults) -> _Defaults:
-        """`nearer` wins for single values; tags accumulate down the tree."""
+        """`nearer` wins for single values and `notify`; tags accumulate."""
         return _Defaults(
             datasource=nearer.datasource or self.datasource,
             owner=nearer.owner or self.owner,
             tags=_union(self.tags, nearer.tags),
+            notify=self.notify if nearer.notify is None else nearer.notify,
         )
 
 
@@ -251,6 +311,7 @@ class _ChecksLoader:
             datasource=self._string(source, node, "datasource"),
             owner=self._string(source, node, "owner"),
             tags=self._tags(source, node),
+            notify=self._notify(source, node),
         )
 
     # -- datasets --
@@ -298,6 +359,8 @@ class _ChecksLoader:
             owner=self._string(source, node, "owner") or defaults.owner,
             tags=_union(defaults.tags, self._tags(source, node)),
         )
+        own_notify = self._notify(source, node)
+        dataset.notify = own_notify if own_notify is not None else defaults.notify or ()
 
         checks = node.get("checks")
         if checks is None:
@@ -515,6 +578,7 @@ class _ChecksLoader:
             )
             return None
         where = self._string(source, options_node, "where")
+        own_notify = self._notify(source, options_node)
         check_id = check_id or derive_check_id(
             dataset.path,
             dataset.name,
@@ -549,6 +613,7 @@ class _ChecksLoader:
             fail=fail,
             where=where,
             options=options,
+            notify=dataset.notify if own_notify is None else own_notify,
         )
 
     def _check_arguments(
@@ -656,6 +721,49 @@ class _ChecksLoader:
             )
         )
         return ()
+
+    def _notify(self, source: YAMLSource, node: CommentedMap) -> tuple[str, ...] | None:
+        """`notify:` as notifier names; None when it is not set (or invalid).
+
+        A name or a list of names, each defined in `tablewatch.yml`; `[]`
+        turns notifications off below this level. The shorthand stands for
+        the mapping form's `to:` list, which routing (I-11) adds.
+        """
+        if "notify" not in node:
+            return None
+        value = node["notify"]
+        if isinstance(value, str) and value.strip():
+            items: list[tuple[str, SourceLocation]] = [
+                (str(value), source.of_value(node, "notify"))
+            ]
+        elif isinstance(value, CommentedSeq) and all(
+            isinstance(v, str) and v.strip() for v in value
+        ):
+            items = [(str(v), source.of_item(value, i)) for i, v in enumerate(value)]
+        else:
+            self.diagnostics.append(
+                error(
+                    "`notify:` must be a notifier name or a list of names",
+                    source.of_value(node, "notify"),
+                )
+            )
+            return None
+        defined = self.project.config.notifiers
+        names: list[str] = []
+        for name, at in items:
+            if name not in defined:
+                known = (
+                    f"defined in {PROJECT_FILE}: {', '.join(sorted(defined))}"
+                    if defined
+                    else f"no notifiers are defined in {PROJECT_FILE}"
+                )
+                shown = name if NOTIFIER_NAME.fullmatch(name) else "…"
+                self.diagnostics.append(
+                    error(f"unknown notifier '{shown}' ({known})", at)
+                )
+            elif name not in names:
+                names.append(name)
+        return tuple(names)
 
     def _value_list(
         self, source: YAMLSource, node: CommentedMap, key: str, metric: Metric

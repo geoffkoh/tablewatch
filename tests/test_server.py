@@ -25,6 +25,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import tablewatch as tw
+from tablewatch.jsonvalues import utc
 from tablewatch.output.json_report import as_dict
 from tablewatch.results.store import ResultStore, StoreError, open_store
 from tablewatch.server import schemas
@@ -750,7 +751,7 @@ def test_timestamps_are_always_utc() -> None:  # T1
     aware = datetime(2026, 9, 26, 14, 56, 12, 385676, tzinfo=ZoneInfo("Asia/Singapore"))
     naive = datetime(2026, 9, 26, 6, 56, 12, 385676)
     for moment in (aware, naive):
-        assert schemas.utc(moment).isoformat() == "2026-09-26T06:56:12.385676+00:00"
+        assert utc(moment).isoformat() == "2026-09-26T06:56:12.385676+00:00"
 
 
 # --- runs ---------------------------------------------------------------------------

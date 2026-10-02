@@ -107,9 +107,9 @@ load YAML tree ─► parse DSL ─► resolve ─► plan ─► execute ─►
    as NULL-typed and cannot be rendered.
 5. **Every user mistake is a `Diagnostic` at `file:line:col`**, and loading
    reports all of them in one pass. Never raise from a check file.
-6. **Secrets are `${env:NAME}` references**, resolved only in
-   `create_engine_for`. `validate`, `list`, and `compile` must keep working
-   with no credentials.
+6. **Secrets are `${env:NAME}` references**, resolved only at the moment
+   of use (`create_engine_for`, a notifier's `send`) through `resolve_env`.
+   `validate`, `list`, and `compile` must keep working with no credentials.
 7. **One dataset never ends a run.** Failures become `error` outcomes on
    the checks they affect. `error` means tablewatch could not evaluate;
    `fail` means the data is bad. The exit codes (0/1/2/3, documented in

@@ -8,6 +8,15 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- Notifications: define a `notifiers:` webhook in `tablewatch.yml` and point
+  checks at it with `notify:` (inherited through `_defaults.yml`, overridable
+  per dataset or check). After a recorded run, each notifier that owns a
+  check whose state changed gets one `POST` with those events — a check
+  starting to fail, starting to error, or recovering. A check that keeps
+  failing, or is only `warn`, stays silent, so a webhook pages once per
+  incident, not once per run. Turn it off for one run with `--no-notify`
+  (`tablewatch.run(notify=False)` in Python). See "Notifications" in
+  `docs/check-language.md`.
 - A check explorer in the web UI at `/checks`: your `checks/` folders as a
   tree, with fail, warn and pass counts on every folder and file, a search
   box and a status filter. The filters are kept in the URL, so a view can be

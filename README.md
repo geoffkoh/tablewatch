@@ -137,6 +137,15 @@ In the `--output json` report, the text of each result's `message` and
 `display_value` is for people and not part of the contract: it may change
 between versions, so a program should read `value` and `outcome`.
 
+## Notifications
+
+Name a webhook in `tablewatch.yml` and a `notify:` in a check file or
+`_defaults.yml`. tablewatch then POSTs JSON when a check starts failing,
+recovers, or can no longer be evaluated, and stays quiet while nothing
+changes. The URL is read from the environment (`url: ${env:NAME}`), and a
+notification that cannot be sent never changes the exit code. See
+"Notifications" in [the check language](docs/check-language.md).
+
 ## Serve results over HTTP
 
 `tablewatch serve` publishes one project's checks and recorded results as a
@@ -633,6 +642,10 @@ print(catalogue.exit_code(), catalogue.exit_code("fail"))   # 1 0
   exploratory runs: the store is not opened at all. If recording fails, the
   outcomes are still returned, the reasons are in `result.record_errors`, and
   `exit_code()` is `2` whatever `fail_on` says.
+- **Notifications.** A recorded run tells the project's notifiers about
+  state changes, as `tablewatch run` does. Pass `notify=False` to record
+  without notifying. A run you record but do not notify uses up the change:
+  the next run will not alert on it.
 - **`fail_on="warn"`** makes warnings count as failures in `exit_code()`,
   and in the exit code recorded for the run. Pass `exit_code("fail")` to ask
   the other question.

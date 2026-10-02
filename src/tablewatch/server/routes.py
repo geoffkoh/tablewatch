@@ -21,6 +21,7 @@ from tablewatch.checks.model import Check
 from tablewatch.config.loader import ID_PATTERN, MAX_ID_LENGTH
 from tablewatch.config.loader import Project as LoadedProject
 from tablewatch.engine.compiled import compile_dataset
+from tablewatch.jsonvalues import utc
 from tablewatch.results.store import PageKey, ResultStore
 from tablewatch.server import schemas
 
@@ -213,7 +214,7 @@ def _not_found(what: str) -> ApiError:
 
 
 def _encode_cursor(started_at: datetime, run_id: str) -> str:
-    raw = f"{schemas.utc(started_at).isoformat()}|{run_id}".encode()
+    raw = f"{utc(started_at).isoformat()}|{run_id}".encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
@@ -228,7 +229,7 @@ def _decode_cursor(cursor: str | None) -> PageKey | None:
         started_at = datetime.fromisoformat(when)
         if started_at.tzinfo is None or not RUN_ID.match(run_id):
             raise ValueError("incomplete cursor")
-        return PageKey(started_at=schemas.utc(started_at), run_id=run_id)
+        return PageKey(started_at=utc(started_at), run_id=run_id)
     except (binascii.Error, UnicodeDecodeError, ValueError, OverflowError):
         raise _bad_cursor() from None
 

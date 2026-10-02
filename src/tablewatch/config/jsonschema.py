@@ -34,6 +34,15 @@ _OPTION_SCHEMAS: dict[OptionType, dict[str, Any]] = {
     OptionType.MAPPING: {"type": "object", "additionalProperties": {"type": "string"}},
 }
 
+_NOTIFY: dict[str, Any] = {
+    "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "array", "items": {"type": "string", "minLength": 1}},
+    ],
+    "description": "Notifiers from tablewatch.yml to tell when the state changes; "
+    "[] turns notifications off.",
+}
+
 _COMMON: dict[str, dict[str, Any]] = {
     "name": {"type": "string", "description": "Human-readable name shown in results."},
     "id": {
@@ -51,6 +60,7 @@ _COMMON: dict[str, dict[str, Any]] = {
         "pattern": "^\\s*when\\b",
         "description": "e.g. 'when = 0'",
     },
+    "notify": _NOTIFY,
 }
 assert set(_COMMON) == set(COMMON_CHECK_KEYS)
 
@@ -106,6 +116,7 @@ def check_file_schema() -> dict[str, Any]:
                     {"type": "array", "items": {"type": "string"}},
                 ]
             },
+            "notify": _NOTIFY,
             "checks": {
                 "type": "array",
                 "items": {

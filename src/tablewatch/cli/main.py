@@ -320,6 +320,11 @@ def compile(ctx: click.Context, /, **selectors: tuple[str, ...]) -> None:  # noq
     "--no-store", is_flag=True, help="Do not record this run in the results store."
 )
 @click.option(
+    "--no-notify",
+    is_flag=True,
+    help="Record the run but tell no notifiers about state changes.",
+)
+@click.option(
     "--concurrency",
     type=click.IntRange(1, MAX_CONCURRENCY),
     default=4,
@@ -333,6 +338,7 @@ def run(
     output: str,
     output_file: Path | None,
     no_store: bool,
+    no_notify: bool,
     concurrency: int,
     **selectors: tuple[str, ...],
 ) -> None:
@@ -343,7 +349,7 @@ def run(
         result = execute(
             project,
             Selection(**selectors),
-            sinks=default_sinks(project, record=not no_store),
+            sinks=default_sinks(project, record=not no_store, notify=not no_notify),
             fail_on=cast(FailOn, fail_on),
             concurrency=concurrency,
             trigger="cli",

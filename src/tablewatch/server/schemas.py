@@ -12,12 +12,11 @@ exception is `Run.selection`, which holds only the selectors a run was given.
 
 from __future__ import annotations
 
-import math
 from dataclasses import fields
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated, Literal, assert_never
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, WithJsonSchema
+from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema
 
 from tablewatch import dsl
 from tablewatch._version import __version__
@@ -25,34 +24,12 @@ from tablewatch.checks.model import Check, DatasourceState
 from tablewatch.diagnostics import Diagnostic as DiagnosticModel
 from tablewatch.diagnostics import SourceLocation
 from tablewatch.engine.compiled import CompiledDataset, QueryUse, ScanUse
+from tablewatch.jsonvalues import JsonFloat, Timestamp
 from tablewatch.metrics.registry import get_metric
 from tablewatch.results.models import CheckResultRow, RunRow
 from tablewatch.results.state import Evaluated
 from tablewatch.results.store import Latest
 from tablewatch.selection import Selection
-
-
-def utc(moment: datetime) -> datetime:
-    # SQLite hands stored times back naive (they were written in UTC);
-    # Postgres hands them back in the session's time zone.
-    if moment.tzinfo is None:
-        return moment.replace(tzinfo=UTC)
-    return moment.astimezone(UTC)
-
-
-def _finite(value: float | None) -> float | None:
-    # JSON has no NaN or infinity.
-    return value if value is not None and math.isfinite(value) else None
-
-
-Timestamp = Annotated[
-    datetime,
-    PlainSerializer(
-        lambda d: utc(d).isoformat(timespec="microseconds"), return_type=str
-    ),
-    WithJsonSchema({"type": "string", "format": "date-time"}),
-]
-JsonFloat = Annotated[float | None, PlainSerializer(_finite, return_type=float | None)]
 
 Outcome = Literal["pass", "warn", "fail", "error", "skipped"]
 EvaluatedOutcome = Literal["pass", "warn", "fail"]
