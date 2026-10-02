@@ -990,9 +990,10 @@ The overview links here: "Browse all checks" sits beside the heading
   Every change rewrites the current entry with `history.replaceState` (no
   new entry) and keeps the `#fragment`, so reloading, sharing the address,
   or Back from a check's page restores the view. On load the page reads
-  `location.search`: unknown statuses are dropped, `q` and every filter
-  value are cut to 200 code points (`cutQuery`), repeated values are kept
-  once (F12), and the URL is rewritten to that normal form. `q` is shown
+  `location.search`: unknown statuses are dropped, `q` is cut to 200 code
+  points (`cutQuery`) and each filter value read from the URL to 1,000
+  (the data's own values are never cut), repeated values are kept once
+  (F12), a blank tag in the data counts as no tag, and the URL is rewritten to that normal form. `q` is shown
   only as the box's value and filter values only as label text; neither is
   ever put in an `href` (§9).
 - **No match**: "No checks match." and a link "Clear search and filters" to

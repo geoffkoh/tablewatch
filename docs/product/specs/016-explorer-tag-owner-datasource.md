@@ -68,3 +68,6 @@ A check's tags are its dataset's (`CheckSummary.tags`; checks have none of their
 3. **Keep hiding a one-value filter** (F1, F9); the data-steward judges it in VERIFY.
 4. **`not_a_name` goes under "No datasource".** It is served as `datasource: ""`, like `none`, so both
    share `datasource=`; the check page says which (spec 014).
+5. **VERIFY (qa-engineer, blocking):** cutting the data's own values to 200 code points made a longer
+   real value match nothing. Now only URL input is cut, to 1,000 code points (F12 amended), and a blank
+   tag in the data (`tags: [sales, ""]`) counts as no tag.

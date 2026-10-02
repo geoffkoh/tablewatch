@@ -12,6 +12,9 @@ All notable changes to tablewatch. The format follows
   tree, with fail, warn and pass counts on every folder and file, a search
   box and a status filter. The filters are kept in the URL, so a view can be
   shared and Back returns to it.
+- The check explorer filters by tag, owner and datasource as well as
+  status, and its search also finds tags, owners and datasources. Ticking
+  two tags shows checks with either, as `tw run --tag a --tag b` does.
 - Run checks from Python: `tablewatch.run()` runs a project's checks in
   your own process — a pipeline task, a notebook, a test — and returns
   typed results instead of text to parse. `tablewatch.load()` reads a

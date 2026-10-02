@@ -6,6 +6,31 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 16 — Check explorer 2: filters by tag, owner and datasource (I-04 part 2), 2026-10-02
+
+- **Owner instruction (2026-10-02, during this iteration):** "carry on until iteration 30".
+  The backlog freeze still holds.
+- **Spec:** [016-explorer-tag-owner-datasource](specs/016-explorer-tag-owner-datasource.md).
+  **Branch:** `iter/016`. Light track; `/api/v1/checks` already serves tags, owner and
+  datasource. Builder: ui-engineer. No items added (freeze).
+- **Decisions (tech lead):** an empty URL value means "none". Unknown values stay ticked at 0.
+  A filter with one value is hidden. `not_a_name` and `none` share "No datasource".
+- **Shipped:** Tag, Owner and Datasource filters after Status: OR within a filter, AND across
+  filters, and each count is taken against every other filter. The search also matches tags,
+  owner and datasource. A long filter shows its top 10 and "Show all". UI spec §4B.3, README.
+  Suite: Python **1339 passed, 1 xfailed**; vitest **842 passed**; ruff, mypy and the fresh
+  bundle are clean.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — fail, then fixed; 25 tests added.* Blocking: the data's own values were cut
+    to 200 code points, so a longer real tag or owner matched nothing once ticked. Now only URL
+    input is cut, to 1,000 (decision 5, F12 amended). Also fixed: a blank tag in the data
+    (`tags: [sales, ""]`) no longer counts as "No tags". Not fixed: F16 asserts a portable
+    600 ms ceiling, not 200 ms (as E18).
+  - *data-steward — accept.* Decisions 3 and 4 are accepted. Fixed: the README says "No
+    datasource" also holds a datasource that is not a name.
+- **Not added (backlog freeze):** none.
+- **Next:** I-21 (overview wording and counts), then I-06.
+
 ## Iteration 15 — Check explorer 1: the `checks/` tree with search and a status filter (I-04 part 1), 2026-10-02
 
 - **Owner instruction (2026-10-02):** "run 3 iterations": 15, 16 and 17, then the

@@ -75,14 +75,25 @@ export function compareValues(a: string, b: string): number {
   return byName(a, b);
 }
 
-/** Filter values cut to 200 code points, deduplicated, in the URL's normal order (F12). */
+/** Filter values deduplicated, in the URL's normal order (F12). */
 export function orderValues(values: Iterable<string>): string[] {
-  return [...new Set(Array.from(values, cutQuery))].sort(compareValues);
+  return [...new Set(values)].sort(compareValues);
+}
+
+/**
+ * The longest filter value read from the URL, in code points. Only URL input
+ * is cut, never the data's own values: a real tag or owner longer than this
+ * must still match its checks (decision 5).
+ */
+export const MAX_VALUE_LENGTH = 1000;
+
+function urlValues(values: readonly string[]): string[] {
+  return orderValues(values.map((v) => Array.from(v).slice(0, MAX_VALUE_LENGTH).join("")));
 }
 
 /**
  * The query from `location.search`. Unknown statuses are ignored; `q` and
- * every filter value are cut to 200 code points (E12, F12). Unknown filter
+ * filter values to 1,000 code points (E12, F12, decision 5). Unknown filter
  * values are kept: a stale link explains itself (F11, decision 2).
  */
 export function parseExplorerQuery(search: string): ExplorerQuery {
@@ -90,9 +101,9 @@ export function parseExplorerQuery(search: string): ExplorerQuery {
   return {
     q: cutQuery(params.get("q") ?? ""),
     statuses: orderStatuses(params.getAll("status").filter(isStatus)),
-    tag: orderValues(params.getAll("tag")),
-    owner: orderValues(params.getAll("owner")),
-    datasource: orderValues(params.getAll("datasource")),
+    tag: urlValues(params.getAll("tag")),
+    owner: urlValues(params.getAll("owner")),
+    datasource: urlValues(params.getAll("datasource")),
   };
 }
 
@@ -123,7 +134,11 @@ export function isFiltering(query: ExplorerQuery): boolean {
 export function valuesOf(check: CheckSummary, key: FacetKey): readonly string[] {
   switch (key) {
     case "tag":
-      return check.tags.length === 0 ? [""] : check.tags;
+    {
+      // A blank tag is no tag: `tags: [sales, ""]` is tagged `sales` only.
+      const tags = check.tags.filter((t) => t !== "");
+      return tags.length === 0 ? [""] : tags;
+    }
     case "owner":
       return [check.owner ?? ""];
     case "datasource":

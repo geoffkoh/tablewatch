@@ -321,12 +321,12 @@ describe("F11: a value no loaded check has", () => {
 });
 
 describe("F12: hostile and malformed values", () => {
-  it("cuts a 1,000-character tag to 200 code points", async () => {
-    await open(recorded, `?tag=${"t".repeat(1000)}`);
-    expect(new URLSearchParams(window.location.search).get("tag")).toHaveLength(200);
-    expect(box("Tag", `${"t".repeat(200)} 0`).checked).toBe(true);
-    const emoji = parseExplorerQuery(`?owner=${"a".repeat(199)}${encodeURIComponent("😀")}x`).owner[0] ?? "";
-    expect(Array.from(emoji)).toHaveLength(200);
+  it("cuts a 2,000-character tag from the URL to 1,000 code points (decision 5)", async () => {
+    await open(recorded, `?tag=${"t".repeat(2000)}`);
+    expect(new URLSearchParams(window.location.search).get("tag")).toHaveLength(1000);
+    expect(box("Tag", `${"t".repeat(1000)} 0`).checked).toBe(true);
+    const emoji = parseExplorerQuery(`?owner=${"a".repeat(999)}${encodeURIComponent("😀")}x`).owner[0] ?? "";
+    expect(Array.from(emoji)).toHaveLength(1000);
     expect(emoji.endsWith("😀")).toBe(true);
   });
 

@@ -238,7 +238,9 @@ folders and files you write, select with (`tw run checks/sales`) and inherit
   tick (none ticked shows all). Ticking two tags shows checks with either,
   as `tw run --tag a --tag b` does; different filters and the search narrow
   together. Each value shows how many checks ticking it would show. "No
-  owner", "No tags" and "No datasource" find what is missing; a filter with
+  owner", "No tags" and "No datasource" find what is missing ("No
+  datasource" also holds a `datasource:` that is not a name; the check's
+  page says which); a filter with
   only one value is hidden, and a long one shows its 10 biggest values and
   "Show all".
 - **The address keeps the view**, for example
