@@ -164,7 +164,7 @@ export const BROKEN_SQL: CheckSql = {
   dialect: null,
   statements: [],
   schema_lookup: false,
-  error: "this dataset's datasource is not defined; run tablewatch validate",
+  error: "this dataset has no datasource; add datasource: to its check file or a _defaults.yml; run tablewatch validate",
 };
 
 /** S10: a check that uses the scan and sends its own query. */

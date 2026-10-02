@@ -138,7 +138,10 @@ function Scan({ scan, sql }: { scan: ScanStatement; sql: CheckSql }): ReactEleme
       <p>
         When tablewatch checks <Where sql={sql} />, it reads the table once with this statement. That one read
         computes {count(scan.measures, "value", "values")},{" "}
-        {scan.shared_by === 0 ? "for this check only" : `for this check and ${count(scan.shared_by, "other", "others")}`}.
+        {scan.shared_by === 0
+          ? "used by this check only"
+          : `used by this check and ${count(scan.shared_by, "other", "others")}`}
+        .
         {scan.uses.length > 0 && " This check uses:"}
       </p>
       {scan.uses.length > 0 && (

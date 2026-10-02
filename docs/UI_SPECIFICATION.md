@@ -359,6 +359,13 @@ full id, monospace). The whole `file:line:col` is a link to `#source`
 whenever the Source section (§4A.10) is on the page, which is whenever this
 panel is; it is plain text otherwise (spec 006, P11).
 
+The **Datasource** row follows the check's `datasource_state` (spec 014):
+`defined` shows the name; `not_defined` shows the name as written followed
+by a quiet "(not defined)"; `none` shows a quiet "none set" (a gap, unlike
+Owner's valid "none"); `not_a_name` shows a quiet "not a datasource name" and
+never the `datasource` string, whatever the server sent. Names are shown with
+invisible characters marked.
+
 ### 4A.3 Rule (D3, D4)
 
 Heading "Rule". One line per condition, from `rule`:
@@ -678,13 +685,14 @@ result", "ran", "executed" (a vitest guard runs on every fixture). It says
 **A scan** (`kind: "scan"`):
 
 > When tablewatch checks `sales.customers` on `lake` (duckdb), it reads the
-> table once with this statement. That one read computes 4 values, for this
-> check and 3 others. This check uses:
+> table once with this statement. That one read computes 4 values, used by
+> this check and 3 others. This check uses:
 >
 > - `m0` `count(*)`, also used by 1 other check
 > - `m1` `sum(CASE WHEN … END)`
 
-"N others" is the scan's `shared_by` ("for this check only" at 0); "also
+"N others" is the scan's `shared_by` ("used by this check only" at 0; spec 014: the check shares the read, it
+does not compute values for the others); "also
 used by N other check(s)" is the column's, shown only above 0. Counts are
 pluralised. Then the statement in a code block, then **Copy the scan**.
 

@@ -169,6 +169,11 @@ export interface components {
             dataset: string;
             /** Datasource */
             datasource: string;
+            /**
+             * Datasource State
+             * @enum {string}
+             */
+            datasource_state: "defined" | "not_defined" | "not_a_name" | "none";
             /** Expression */
             expression: string;
             /** Id */
@@ -255,6 +260,11 @@ export interface components {
             dataset: string;
             /** Datasource */
             datasource: string;
+            /**
+             * Datasource State
+             * @enum {string}
+             */
+            datasource_state: "defined" | "not_defined" | "not_a_name" | "none";
             /** Expression */
             expression: string;
             /** Id */

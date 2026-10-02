@@ -3,6 +3,28 @@ import type { CheckDetail } from "../../api/types";
 import { Marked } from "../Marked";
 
 /**
+ * The Datasource row (spec 014). A name that is not defined is shown as
+ * written with a quiet marker; a missing one reads as a gap, not as a valid
+ * "none"; a value that is not a name is never echoed, whatever the server sent.
+ */
+function datasourceText(check: CheckDetail): ReactElement {
+  switch (check.datasource_state) {
+    case "not_defined":
+      return (
+        <>
+          <Marked text={check.datasource} /> <span className="quiet">(not defined)</span>
+        </>
+      );
+    case "none":
+      return <span className="quiet">none set</span>;
+    case "not_a_name":
+      return <span className="quiet">not a datasource name</span>;
+    case "defined":
+      return <Marked text={check.datasource} />;
+  }
+}
+
+/**
  * What the check is: its name, expression, dataset, owner, tags, file and id.
  * The file's `file:line:col` links to the Source section whenever that section
  * is on the page (spec 006, P11).
@@ -24,7 +46,7 @@ export function Identity({ check, sourceLinked }: { check: CheckDetail; sourceLi
           <dt>Dataset</dt> <dd>{check.dataset}</dd>
         </div>
         <div>
-          <dt>Datasource</dt> <dd>{check.datasource}</dd>
+          <dt>Datasource</dt> <dd>{datasourceText(check)}</dd>
         </div>
         <div>
           <dt>Owner</dt> <dd>{check.owner ?? <span className="quiet">none</span>}</dd>
