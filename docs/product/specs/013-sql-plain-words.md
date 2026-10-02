@@ -43,8 +43,14 @@ The last two rows break design rule 7: `_run_datasource` in
 `engine/runner.py` catches only `DatasourceError` and
 `MissingEnvironmentVariableError`, so the exception leaves the worker and
 `future.result()` ends the whole run with a traceback (the per-dataset net
-does not cover engine creation). This spec fixes them with the messages:
-same bug family, same function.
+does not cover engine creation). The crash exits **1**, the "checks
+failed" code, so an orchestrator reads a tablewatch crash as bad data.
+`tw test-connection` crashes the same way on both rows (it catches only
+`DatasourceError`, `MissingEnvironmentVariableError` and `SQLAlchemyError`),
+also exit 1. `mssql+pyodbc://` (no `pyodbc`) and `oracle://` (no `oracledb`)
+crash identically to the `mysql` row. This spec fixes them with the
+messages: same bug family, same function. (Rows re-measured on a scratch
+project in REFINE, 2026-10-02, SQLAlchemy 2.1.0.)
 
 Neither the compile nor the run message names the datasource or
 `tablewatch.yml`; the compile path is shown under a dataset header, the run
@@ -90,59 +96,101 @@ exits 0 (unchanged exit), and `GET /api/v1/checks/{id}/sql` returns
 "Test-connection" means `tw test-connection` prints
 `FAILED  warehouse: <reason>` and exits 2.
 
-**S1. Dialect not installed, known database.** URL
+**S1 (must). Dialect not installed, known database.** URL
 `snowflake://u:p@acct/db`, no `snowflake-sqlalchemy` installed. Compile,
 run and test-connection all give reason:
-`the snowflake driver is not installed; pip install snowflake-sqlalchemy`.
-The text `Can't load plugin` appears nowhere.
+`the snowflake driver is not installed: pip install snowflake-sqlalchemy`.
+The text `Can't load plugin` appears nowhere. (Colon, not semicolon: the
+same shape as today's `the postgres datasource needs an optional
+dependency: pip install 'tablewatch[postgres]'`, so the two install hints
+read alike.)
 
-**S2. The known-driver table.** Same as S1 for each row (scheme →
+**S2 (must). The known-driver table.** Same as S1 for each row (scheme →
 package): `snowflake` → `snowflake-sqlalchemy`; `bigquery` →
 `sqlalchemy-bigquery`; `redshift` and `redshift+redshift_connector` →
 `sqlalchemy-redshift`; `databricks` → `databricks-sqlalchemy`; `trino` →
-`trino`. The name in "the X driver" is the part of the scheme before `+`.
-(Tech lead: confirm each package name on PyPI before merging; a wrong one
-is worse than none.)
+`trino`. The name in "the X driver" is the part of the scheme before `+`;
+the table is keyed on that part, so `redshift+psycopg2` also maps to
+`sqlalchemy-redshift`. Verified on PyPI in REFINE (2026-10-02): each
+package exists and its wheel's `sqlalchemy.dialects` entry points register
+exactly that name (`snowflake-sqlalchemy` 1.11.1 `snowflake`;
+`sqlalchemy-bigquery` 1.17.2 `bigquery`; `sqlalchemy-redshift` 1.0.0
+`redshift`, `redshift.psycopg2`, `redshift.redshift_connector`;
+`databricks-sqlalchemy` 2.0.10 `databricks`; `trino` 0.340.0 `trino`).
+Once the dialect is installed, a missing DBAPI (`redshift_connector`,
+`psycopg2`) is S4, not S2.
 
-**S3. Dialect not installed, unknown database.** URL `foodb://h/db`.
-Reason: `no installed package provides the SQLAlchemy dialect 'foodb'; install the SQLAlchemy dialect for this database`.
+**S2b (should). `postgres://`.** SQLAlchemy 1.4 dropped the `postgres`
+alias, and `postgres://...` is the form many hosting providers hand out.
+URL `postgres://u:p@h/db`. Reason:
+`SQLAlchemy does not accept the scheme 'postgres'; write postgresql:// instead`.
+Without this row Dana is told to install a package for a database whose
+driver is already installed.
 
-**S4. Dialect installed, DBAPI module missing (run only).** URL
+**S2c (should). Lookup is exact.** SQLAlchemy's dialect names are
+case-sensitive (`Snowflake://` fails to load even with
+`snowflake-sqlalchemy` installed). URL `Snowflake://u@acct/db` gets S3's
+reason, never S1's: an install hint that cannot fix the problem is worse
+than none.
+
+**S3 (must). Dialect not installed, unknown scheme.** URL `foodb://h/db`.
+Reason:
+`no SQLAlchemy dialect named 'foodb' is installed; check the spelling of the url scheme, or install the dialect package for this database`.
+(A misspelt scheme, `postgresq://`, `snowflak://`, is the commonest cause,
+so spelling comes first; the old wording only told Dana to install
+something.)
+
+**S4 (must). Dialect installed, DBAPI module missing (run only).** URL
 `mysql://u@h/db` with no `mysqlclient`. Compile succeeds (dialect `mysql`,
 as today). Run and test-connection give reason:
 `the mysql driver needs the Python module 'MySQLdb', which is not installed`.
-The run completes; it does not raise `ModuleNotFoundError`.
+The run completes and exits 2; test-connection exits 2; neither raises
+`ModuleNotFoundError`. The module name is `ModuleNotFoundError.name`, not
+the URL. (It is the import name, not always the pip name - `MySQLdb` comes
+from `mysqlclient` - so the reason says "Python module", never "pip
+install". No module→package table: not added.)
 
-**S5. Malformed URL, no `://`.** URL `user:secret@host/db`. Compile, run
+**S4b (should). DBAPI present but fails to import.** An `ImportError` that
+is not a missing module (a broken native library) must not claim "not
+installed". Reason: `the mysql driver could not be imported: <first line of
+the ImportError>`, run completes, exit 2.
+
+**S5 (must). Malformed URL, no `://`.** URL `user:secret@host/db`. Compile, run
 and test-connection give reason:
-`url is not a SQLAlchemy URL (expected scheme://...)`.
+`url is not a SQLAlchemy URL: it must start with dialect:// or dialect+driver://`.
+("url" lowercase throughout: it is the YAML key Dana searches for.)
 Neither `secret`, `user`, nor `host` appears in any output, recorded
 result, API response or log line (security R1, spec 005).
 
-**S6. Two drivers.** URL `a+b+c://x`. Same reason as S5, on compile, run
-and test-connection; the run completes (today it ends with an uncaught
-`ValueError`). Exit 2.
+**S6 (must). Two drivers.** URL `a+b+c://x`. Compile, run and
+test-connection give reason:
+`url scheme 'a+b+c' is not dialect or dialect+driver`.
+S5's reason would be wrong here: the URL does start with `scheme://`. The
+scheme is echoed only because it matches `URL_SCHEME` (no credential can
+be in it). The run completes (today it ends with an uncaught `ValueError`,
+exit 1). Run and test-connection exit 2.
 
-**S7. `${env:}` in the scheme.** URL `${env:WAREHOUSE_URL}`. Compile
+**S7 (must). `${env:}` in the scheme.** URL `${env:WAREHOUSE_URL}`. Compile
 reason: `cannot tell the dialect of a url whose scheme is an ${env:} reference`
-(today's text, now with `P`). Run with `WAREHOUSE_URL` set to
-`user:secret@host/db`: S5's reason; `secret` appears nowhere.
+(today's text with `URL` lowercased to match S5, now with `P`). Run with
+`WAREHOUSE_URL` set to `user:secret@host/db`: S5's reason; `secret`,
+`user` and `host` appear nowhere.
 
-**S8. One bad datasource does not end the run.** Add a second datasource
+**S8 (must). One bad datasource does not end the run.** Add a second datasource
 `local: {type: duckdb, path: shop.duckdb}` with a passing
 `checks/local.yml`. With `warehouse` as in S4, S5 or S6: `tw run` records
 `error` on `warehouse`'s checks and `pass` on `local`'s; exit 2.
 
-**S9. Other datasource-level errors share the prefix on a run.** An unset
+**S9 (must). Other datasource-level errors share the prefix on a run.** An unset
 `${env:WH_PASSWORD}` and an unknown `timezone:` keep their reason text
 but are recorded as `P<reason>` instead of today's
 `datasource warehouse: <reason>`. Results already in the store keep their
 text.
 
-**S10. The check page.** The SQL section shows `error` as today (it renders
+**S10 (must). The check page.** The SQL section shows `error` as today (it renders
 the string); `frontend` fixtures for "cannot compile"
-(`frontend/src/test/fixtures/sql.ts`, `sql.test.tsx` P3) are updated to S1's
-string. No layout change.
+(`frontend/src/test/fixtures/sql.ts` line 156, `sql.test.tsx` P3) are
+updated to S1's string with `P`. No layout change.
 
 ## Non-goals
 
@@ -168,7 +216,10 @@ string. No layout change.
 
 - Rule 7: the fix for S4/S6 is in `create_engine_for` (turn `ValueError`
   and `ImportError` from `create_engine` into `DatasourceError`), not only
-  a wider catch in the runner. Tech lead: should `_run_datasource` also
+  a wider catch in the runner. Catch `ModuleNotFoundError` (S4) before
+  `ImportError` (S4b). `dialect_for` should catch `ImportError` too: a
+  third-party dialect whose module imports a missing package at load time
+  would otherwise crash `compile` and `/sql`. Tech lead: should `_run_datasource` also
   catch any exception from `factory(name)` as `internal error: ...`, like
   the per-dataset net? (Recommended; it is the gap that let S4/S6 crash.)
 - Rule 6: compile still never resolves `${env:}`; S7 is today's guard.
@@ -203,3 +254,17 @@ string. No layout change.
 
 S. One module's messages, one helper, two caught exception types, fixture
 strings. Part 2 (name as written) is the rest of I-35.
+
+## REFINE decisions (tech lead, 2026-10-02)
+
+Reviewers: architect (approve with follow-ups), security-reviewer (approve; R1–R4 blocking-for-ready, all taken), data-steward (wording above; package names verified on PyPI). Where security and the architect differed, security wins.
+
+- **R1 (security, must): no SQLAlchemy or driver exception text ever reaches a message.** Every reason is fixed text. The only inputs: a scheme that passed `URL_SCHEME.fullmatch` (from the resolved URL on the run path), capped at 64 characters; and for `ModuleNotFoundError`, `exc.name` only if it matches `[A-Za-z_][A-Za-z0-9_.]*`, otherwise "a required Python module". Never `str(exc)`; keep `from None`. Any `ArgumentError`/`ValueError` from `create_engine` gives S5's reason.
+  - Live leaks this closes (measured on main, SQLAlchemy 2.1.0): `sqlite://u:secret@h/x?foo=secret` echoed user, host and query; `postgresql+psycopg://admin@db.prod:Pa55w0rd/x` echoed the password typed into the port slot.
+  - **S4b is reworded to fit R1**: `the <dialect> driver could not be imported`, with no exception text.
+- **R2 (security, must): the run-path backstop.** `_run_datasource` wraps `timezone_of(config)` and the engine factory in one `except Exception` after the typed catch, recording `datasource '<name>' in tablewatch.yml: internal error creating the engine (<ExceptionTypeName>)` — not `_short_error`, not `log.exception`. It logs only the type name at warning (traceback at debug at most). `create_engine_for` also turns a bad port into a plain reason that never quotes the value (`port: ${env:PG_PASSWORD}` would otherwise put the secret in a `ValueError`).
+- **R3 (security, must):** `tablewatch test-connection` gets the same messages through `create_engine_for` and never prints a traceback for these cases.
+- **R4 (security, must): leak tests** for both cases above, the `port: ${env:…}` case, S5 and S7: the secret, user, host and query value are absent from CLI stdout and stderr, the stored result, `/checks/{id}/sql`, the run-results API and `caplog` at DEBUG.
+- **Architect, design:** one private helper (`_url_problem`) shared by `dialect_for` and `create_engine_for`, so compile and run cannot drift; the driver table is a private dict keyed on the dialect name (the part before `+`); a public `datasource_problem(name, reason)` builds the prefix, called by `compile_dataset` and `_run_datasource` only (not the CLI: compile prints `compiled.error`; test-connection keeps `FAILED  <name>: <reason>`). `UNDEFINED_DATASOURCE` stays unprefixed (part 2). `dialect_for` also catches `ImportError` (`ModuleNotFoundError` first).
+- **Security, non-blocking, taken:** the datasource name is rendered with control characters escaped in the prefix.
+- **Not added (backlog freeze):** test-connection's `SQLAlchemyError` branch prints the driver's connect-time text, which names host and user (pre-existing); a module-to-package table for DBAPI drivers.
