@@ -6,6 +6,33 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 19 — Notifications 1, part 2: `type: slack` (I-06 part 2, completes I-06), 2026-10-02
+
+- **Spec:** [019-notifications-slack](specs/019-notifications-slack.md). **Branch:** `iter/019`.
+  Full track. No items added (freeze).
+- **REFINE.** security R1–R7 → D2–D6: `mrkdwn` with `verbatim: true`, one `escape()` helper, no
+  `link_names`/`parse`, no host allowlist; control and bidi characters become spaces; the header
+  stays ≤ 150 characters. data-steward settled the "Could not evaluate" label and line wording
+  (S23–S25): no path or datasource in the message.
+- **Shipped:** `notify/slack.py`, rendering through spec 018's `build_payload`/`render_payload`;
+  `NOTIFIER_TYPES` widened to `("webhook", "slack")`. BUILD amended S23 so a failing comparison
+  carries `expected > 0`; the steward kept it. Suite: Python **1616 passed, 1 xfailed**.
+- **Reviewer findings and resolution:**
+  - *architect — approve.* Fixed: `NOTIFIER_TYPES` derived from the config union, named Slack
+    groups, one cleaning path. Deferred to I-11: type the factory registry per config class so
+    email (no `url`) fits; extract one URL poster when Teams adds a third copy.
+  - *qa-engineer — pass; 26/26 must; 21 tests in `tests/test_notify_slack_qa.py`.* Fixed: U+2028/
+    2029 and the LRM/RLM/ALM marks are now stripped, and the header cuts the project, never the
+    totals, within 150 UTF-16 units.
+  - *data-steward — accept*, after a live retail run: 6 failing, then silence, then 1 recovered,
+    error lines carrying no database text.
+- **Not added (backlog freeze):** a single event whose escaped line exceeds 3,000 characters shows
+  only "…and 1 more failing"; one unreproduced timing flake in `tests/test_notify_qa.py`
+  `[timeout-json]` (passed 3 of 3 on rerun); the doc prose about checks with no message is
+  optimistic, since failing comparisons always carry one.
+- **I-06 is done** (parts 1 and 2: webhook and Slack notifiers, state-change events).
+- **Next:** I-16, selection honesty (rank 8, 3.2).
+
 ## Iteration 18 — Notifications 1, part 1: webhook, `notify:`, state-change events (I-06 part 1), 2026-10-02
 
 - **Spec:** [018-notifications-webhook](specs/018-notifications-webhook.md). **Branch:** `iter/018`.
