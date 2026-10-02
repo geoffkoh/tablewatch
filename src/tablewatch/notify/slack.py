@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, NamedTuple
 
 from tablewatch.config.project import NotifierConfig, resolve_env
 from tablewatch.jsonvalues import utc
@@ -29,11 +29,18 @@ MAX_MESSAGE = 300
 MAX_SECTION = 3000  # Slack's limit on a section's text
 MAX_HEADER = 150  # Slack's limit on a header's text
 
-# Order, label, the header's word, and the "…and N more" noun (singular, plural).
-_GROUPS: tuple[tuple[str, str, str, tuple[str, str]], ...] = (
-    ("failing", "Failing", "failing", ("failing", "failing")),
-    ("erroring", "Could not evaluate", "could not evaluate", ("error", "errors")),
-    ("recovered", "Recovered", "recovered", ("recovered", "recovered")),
+
+class _Group(NamedTuple):
+    event: str
+    label: str  # the section's heading
+    word: str  # in the header's counts
+    more: tuple[str, str]  # "…and N more <noun>": singular, plural
+
+
+_GROUPS = (
+    _Group("failing", "Failing", "failing", ("failing", "failing")),
+    _Group("erroring", "Could not evaluate", "could not evaluate", ("error", "errors")),
+    _Group("recovered", "Recovered", "recovered", ("recovered", "recovered")),
 )
 
 # C0 and C1 controls (newline and tab included) and the bidi controls.
@@ -42,7 +49,10 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
 
 def clean(text: str, limit: int = MAX_STRING) -> str:
     """`text` on one line, with no bidi controls, cut to `limit` with `…`."""
-    text = _CONTROL.sub(" ", text)
+    return _cut(_CONTROL.sub(" ", text), limit)
+
+
+def _cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
@@ -69,8 +79,9 @@ def _line(event: PayloadEvent) -> str:
     return line
 
 
-def _section(label: str, noun: tuple[str, str], events: list[PayloadEvent]) -> str:
-    text = f"*{label} ({len(events)})*"
+def _section(group: _Group, events: list[PayloadEvent]) -> str:
+    noun = group.more
+    text = f"*{group.label} ({len(events)})*"
     for shown, event in enumerate(events):
         line = _line(event)
         left = len(events) - shown - 1
@@ -98,29 +109,26 @@ def render(notification: Notification) -> dict[str, Any]:
 def render_payload(payload: Payload) -> dict[str, Any]:
     """The Slack message body for one webhook payload."""
     groups = [
-        (label, word, noun, [e for e in payload.events if e.event == event])
-        for event, label, word, noun in _GROUPS
+        (group, events)
+        for group in _GROUPS
+        if (events := [e for e in payload.events if e.event == group.event])
     ]
-    groups = [g for g in groups if g[3]]
-    counts = ", ".join(f"{len(events)} {word}" for _, word, _, events in groups)
+    counts = ", ".join(f"{len(events)} {group.word}" for group, events in groups)
     project = clean(payload.project)
     started = utc(payload.run.started_at).strftime("%Y-%m-%d %H:%M")
-    context = (
-        f"run {escape(clean(payload.run.id[:8]))} · "
-        f"{escape(clean(payload.run.trigger))} · {started} UTC"
-    )
+    context = f"run {_user(payload.run.id[:8])} · {_user(payload.run.trigger)} · {started} UTC"
     blocks: list[dict[str, Any]] = [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": clean(f"{project}: {counts}", MAX_HEADER - 1),
+                "text": _cut(f"{project}: {counts}", MAX_HEADER - 1),
                 "emoji": False,
             },
         },
         *(
-            {"type": "section", "text": _mrkdwn(_section(label, noun, events))}
-            for label, _, noun, events in groups
+            {"type": "section", "text": _mrkdwn(_section(group, events))}
+            for group, events in groups
         ),
         {"type": "context", "elements": [_mrkdwn(context)]},
     ]
