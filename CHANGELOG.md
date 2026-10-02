@@ -8,6 +8,11 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- `tablewatch report [--run ID] [--output-file PATH]`: a recorded run as one static HTML page —
+  a header with the outcome, counts and what was selected, and every check result, failing first,
+  with its value, message, owner, tags and how long it has been failing. It opens offline in a
+  browser or an email attachment: no JavaScript, no external link, and no datasource credentials
+  needed. See "A report to send" in the README.
 - Notifications: a `type: slack` notifier posts to a Slack incoming webhook
   with a readable message — a header with the totals and a section per
   group (Failing, Could not evaluate, Recovered), grouping and ordering the
