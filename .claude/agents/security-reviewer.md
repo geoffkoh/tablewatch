@@ -44,3 +44,10 @@ FINDINGS:
 
 Block only for a concrete, reachable problem. Name the scenario; a generic
 worry is a non-blocking note, not a block.
+
+## Report
+
+Your final report is **at most 15 lines**: verdict; blocking findings and
+non-blocking findings, one line each with file:line; files you changed. Do
+not list what holds or restate the brief. Detail belongs in tests or files,
+not in the report.

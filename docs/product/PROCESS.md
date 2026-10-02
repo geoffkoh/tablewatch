@@ -26,21 +26,77 @@ Builders never judge their own work.
 ## One iteration
 
 One iteration is one **PR-sized vertical slice**: usable end to end,
-reviewable in one sitting.
+reviewable in one sitting. Small items with the same reviewers may be
+**batched** into one iteration (one spec, one PR) as long as the batch stays
+S: the cost of an iteration is mostly fixed, so three wording fixes should
+not pay it three times.
+
+### Two tracks
+
+Pick the track in PLAN; the spec states it.
+
+**Full track** — when the change touches any **risk trigger**: security
+(the security-reviewer triggers below), a public API or wire contract, check
+identity, stored data or results semantics, the exit-code contract, a new
+dependency, or a new seam.
 
 | Step | Who | Does | Produces |
 | --- | --- | --- | --- |
-| 1 PLAN | product-manager | Picks the top-scoring `proposed` or `ready` item whose dependencies are met, and writes its spec — which makes it ready | `docs/product/specs/NNN-slug.md` |
-| 2 REFINE | data-steward (+ ui-engineer for UI; + architect when the spec adds a seam or public API) | Adds concrete acceptance scenarios; finds semantic traps; the PM settles disagreements | Updated spec |
-| 3 BUILD | tech lead, ui-engineer, platform-engineer | Implements on branch `iter/NNN-slug`; acceptance scenarios become tests first | Commits |
-| 4 VERIFY | tech lead, qa-engineer, architect (if `src/` changed), security-reviewer (if flagged), data-steward | Gates and the example; adversarial review; design review; security review; acceptance | Verdicts; blocking findings fixed |
-| 5 REVIEW | product-manager | On the iteration branch, before merge: logs the iteration, writes the CHANGELOG entry, re-ranks, names the next item | `ITERATIONS.md`, `CHANGELOG.md`, `BACKLOG.md` |
-| 6 SHIP | tech lead | PR linking the spec with evidence; merges under the policy below | Merged PR |
+| 1 PLAN | product-manager | Picks the item(s); writes the spec (≤ 150 lines) | `docs/product/specs/NNN-slug.md` |
+| 2 REFINE | only the reviewers the spec's open questions name (architect for a seam/API, security for a trigger, data-steward for semantics, ui-engineer for UI) — run in parallel | Answer the open questions; the data-steward may edit the spec, others report | Answers |
+|  | tech lead | Records the decisions in the spec's "Decisions" section (no separate settle session); resolves disagreements, security wins on security | Ready spec |
+| 3 BUILD | tech lead, ui-engineer, platform-engineer | Scenarios become tests first | Commits |
+| 4 VERIFY | qa-engineer, data-steward, plus architect/security **if they did not review in REFINE or the build departs from REFINE** | Adversarial review, acceptance, design/security check | Verdicts; blocking findings fixed |
+| 5 REVIEW | product-manager (`model: sonnet`) | Log, CHANGELOG, backlog, next item | Docs on the branch |
+| 6 SHIP | tech lead | PR, merge under the policy below | Merged PR |
+
+**Light track** — everything else: wording, UI polish, small fixes, docs,
+hardening that changes no contract.
+
+| Step | Who | Does |
+| --- | --- | --- |
+| 1 PLAN | product-manager | Spec ≤ 80 lines: problem, scenarios table, non-goals |
+| 2 BUILD | builder | Scenarios become tests |
+| 3 VERIFY | qa-engineer + **one** domain reviewer (data-steward for language/messages, ui-engineer's work judged by the data-steward for UI) | Verdicts; blocking findings fixed |
+| 4 REVIEW + SHIP | tech lead writes the ITERATIONS entry and CHANGELOG line itself (no PM session); PR; merge | Merged PR |
+
+No REFINE on the light track: open questions are answered by the tech lead
+in the spec, or the item moves to the full track.
 
 REVIEW comes **before** SHIP so that each PR carries its own log entry,
 CHANGELOG and backlog update, and merging is the last act of the iteration.
 
 Each iteration starts from an up-to-date `main`. Branches are never stacked.
+
+### Keeping the loop cheap
+
+These rules exist because a cold-started agent re-reads its brief, the spec
+and the code every time; the cost is per session, not per line changed.
+
+- **Specs are short.** Full track ≤ 150 lines, light ≤ 80. Scenarios are a
+  table (given → expected, exact strings) rather than prose. No "today we
+  measured" narrative beyond one line per scenario; no restated rationale;
+  research is one line with links.
+- **One review per role per iteration.** A reviewer who settled the design
+  in REFINE does not re-review the build unless the build departs from it.
+- **Reports are ≤ 15 lines:** verdict, blocking findings, non-blocking
+  findings (each one line, with file:line), files changed. No list of what
+  holds. Every brief says so.
+- **Briefs point at files.** Hand-offs go through files (the spec's
+  Decisions section, a short notes file), not long pasted prompts.
+- **A fresh session per iteration** (or `/compact` between iterations). All
+  state is in `ITERATIONS.md`, `BACKLOG.md` and the specs; the main session
+  should not carry earlier iterations.
+- **Hand browser checks** (several engines, sizes, schemes) only when the
+  change alters copy, selection, layout or rendering; otherwise vitest.
+- **Gates run once per step**, one pytest process at a time (two concurrent
+  runs deadlock on the example's DuckDB file). Agents use targeted test
+  files; the tech lead runs the full suite before commit and before the PR.
+- **Model per role.** Opus for qa-engineer, security-reviewer, architect,
+  builders and PLAN; Sonnet for the data-steward and for REVIEW (the tech
+  lead passes `model: sonnet` when launching the product-manager for REVIEW).
+- **Stalls.** A stalled agent is resumed once with "continue from the files
+  you wrote"; a second stall means the tech lead finishes that step itself.
 
 ## Scoring (RICE)
 
@@ -57,22 +113,26 @@ Each iteration starts from an up-to-date `main`. Branches are never stacked.
 
 ## Definition of ready
 
-A spec is ready when it has: a persona and a problem; Given/When/Then
-acceptance scenarios with real YAML, each marked `must` or `should`;
-non-goals; met dependencies; a size; and its required reviewers.
+A spec is ready when it has: its track; a persona and a problem; acceptance
+scenarios (a table of given → expected, with real YAML where it matters),
+each marked `must` or `should`; non-goals; met dependencies; a size; its
+required reviewers; and, on the full track, a Decisions section once REFINE
+is done. It stays within the length cap above.
 
 **security-reviewer is required** when the change adds a dependency or
 touches secrets or credentials, authentication or authorisation, how
 user-written SQL is executed or what can reach SQL, network calls (inbound
 or outbound), writing files to a new place, or storing or exposing row data.
 Writing to the existing results store or to a user-named `--output-file` does
-not by itself trigger a review. qa-engineer and data-steward are always
-required.
+not by itself trigger a review. qa-engineer is always required; the
+data-steward on the full track, or as the light track's one domain reviewer.
 
-**architect is required** when the change touches `src/`. It reviews design
-against the rules in `CLAUDE.md`, the module boundaries and the extension
-seams; the tech lead builds the core, so it must not judge that design
-itself. It also reviews in REFINE when a spec adds a seam or public API.
+**architect is required** on the full track when the change touches `src/`.
+It reviews design against the rules in `CLAUDE.md`, the module boundaries
+and the extension seams; the tech lead builds the core, so it must not judge
+that design itself. It reviews **once**: in REFINE when a spec adds a seam
+or public API, otherwise in VERIFY. A light-track change to `src/` that adds
+no seam and changes no contract does not need it.
 
 ## Definition of done
 
@@ -82,8 +142,8 @@ itself. It also reviews in REFINE when a spec adds a seam or public API.
 - No open **blocking** finding from any required reviewer.
 - User docs updated **where the change affects them** (`docs/check-language.md`,
   README, `docs/ROADMAP.md`).
-- The REVIEW step is done on the branch: `ITERATIONS.md` entry, `CHANGELOG.md`
-  entry under `Unreleased`, backlog updated.
+- The REVIEW step is done on the branch: `ITERATIONS.md` entry (≤ 30
+  lines), `CHANGELOG.md` entry under `Unreleased`, backlog updated.
 - The PR is open and CI is green.
 
 A failing supply-chain step in CI (`npm audit`, `npm audit signatures`) is
@@ -128,3 +188,7 @@ written as a proposal in `ITERATIONS.md`, and the loop stops for the user.
 
 **The iteration count is the brake.** "Run 3 iterations" runs three. With no
 number, the tech lead runs one iteration and stops.
+
+**The backlog freeze** (owner, 2026-09-28) holds until the owner lifts it:
+no new backlog items; a review follow-up is folded into an existing item or
+listed in the iteration entry under "Not added (backlog freeze)".
