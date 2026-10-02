@@ -84,5 +84,6 @@ export function errorsLastFailing(checks: readonly CheckSummary[]): number {
 export function notLoadedFromRun(run: Run | null, checks: readonly CheckSummary[]): number {
   if (run === null) return 0;
   const inRun = checks.filter((c) => c.latest !== null && c.latest.run_id === run.id).length;
-  return Math.max(0, run.counts.total - inRun);
+  const k = run.counts.total - inRun;
+  return Number.isFinite(k) ? Math.max(0, k) : 0;
 }

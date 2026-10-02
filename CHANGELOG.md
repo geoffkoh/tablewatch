@@ -146,6 +146,10 @@ All notable changes to tablewatch. The format follows
 
 ### Changed
 
+- The overview says when a check started failing as a date ("Failing since
+  Sep 19", "since 10:05 today"), not "since 7 days ago". "Incomplete" is
+  on the summary caption only, and the overview says how many checks the
+  latest run counted that are not loaded now.
 - A check whose `datasource:` names a datasource that isn't defined, or
   isn't a datasource name at all, now shows that name as written — in
   `/checks`, `/checks/{id}`, `/checks/{id}/sql`, and in the Datasource

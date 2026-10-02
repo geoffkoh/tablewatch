@@ -6,6 +6,29 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 17 — Overview wording: "since" is a date, "incomplete" once, checks not loaded now (I-21), 2026-10-02
+
+- **Spec:** [017-overview-wording-counts](specs/017-overview-wording-counts.md). **Branch:**
+  `iter/017`. Light track; frontend only. Builder: ui-engineer. No items added (freeze).
+- **Decisions:** the tech lead accepted P1–P3 from PLAN as written.
+- **Shipped:** only the summary caption says "incomplete" (P1). A streak reads as a point in
+  time: "Failing since Sep 19", "since 10:05 today", "since Dec 31, 2025" (P2). The banner
+  and the Latest run panel say how many checks the latest run counted that are not loaded
+  now (P3). Suite: Python **1339 passed, 1 xfailed**; vitest **883 passed**; ruff, mypy and
+  the fresh bundle are clean.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — pass; 18 tests added* (day boundaries in SGT, New York DST, +14/−11 zones,
+    k edge cases). Fixed: a missing `counts.total` gave `NaN`, now 0. Not fixed: the suite
+    depends on the host locale (`LANG=de_DE` fails 15 tests, some from before this
+    iteration). "today" stays English while month names follow the browser locale.
+    `parseTimestamp` accepts loose strings (`"1"`); the API always sends ISO.
+  - *data-steward — accept.* Checked k live against a broken copy of the retail example
+    (19 − 10 = 9). Not fixed (pre-existing): with 0 checks loaded, the caption reads "each of
+    the 0 checks loaded (incomplete)" above "No checks are loaded".
+- **Not added (backlog freeze):** the three "not fixed" items above (locale-dependent tests
+  and mixed-language dates, loose timestamp parsing, the 0-check caption).
+- **Next:** I-06 (notifications), the first Phase 2b item after the UI chain.
+
 ## Iteration 16 — Check explorer 2: filters by tag, owner and datasource (I-04 part 2), 2026-10-02
 
 - **Owner instruction (2026-10-02, during this iteration):** "carry on until iteration 30".
