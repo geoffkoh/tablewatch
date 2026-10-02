@@ -6,6 +6,8 @@ describe("parseRoute", () => {
   it.each([
     ["/", { page: "overview" }],
     ["/index.html", { page: "overview" }],
+    ["/checks", { page: "explorer" }],
+    ["/checks/", { page: "explorer" }],
     ["/checks/b1ceb8262d8b5441", { page: "check", id: "b1ceb8262d8b5441" }],
     ["/checks/b1ceb8262d8b5441/", { page: "check", id: "b1ceb8262d8b5441" }],
     ["/checks/customer-email-completeness", { page: "check", id: "customer-email-completeness" }],
@@ -17,9 +19,9 @@ describe("parseRoute", () => {
   });
 
   it.each([
-    "/checks/",
-    "/checks",
     "/checks//",
+    "/checks.html",
+    "/checks/?q=x",
     "/checks/a/b",
     "/checks/..",
     "/checks/%2e%2e",

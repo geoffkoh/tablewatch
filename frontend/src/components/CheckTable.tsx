@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import type { CheckSummary } from "../api/types";
-import { checkHref } from "../lib/route";
+import { checkHref, EXPLORER_HREF } from "../lib/route";
 import { sortProblemsFirst, statusOf } from "../lib/status";
 import { Result, When } from "./LatestResult";
 import { StatusBadge } from "./StatusIcon";
@@ -43,9 +43,14 @@ export function CheckTable({ checks, newestRunId, now }: CheckTableProps): React
   const rows = sortProblemsFirst(checks);
   return (
     <section className="panel checks" aria-labelledby="checks-heading">
-      <h2 id="checks-heading" className="panel__title">
-        Checks, problems first
-      </h2>
+      <div className="panel__head">
+        <h2 id="checks-heading" className="panel__title">
+          Checks, problems first
+        </h2>
+        <a className="panel__link" href={EXPLORER_HREF}>
+          Browse all checks
+        </a>
+      </div>
       {rows.length === 0 ? (
         <p className="empty">No checks are loaded.</p>
       ) : (

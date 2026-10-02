@@ -101,7 +101,7 @@ describe("D1: every check has a link, and the link survives a reload", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("missing_percent(email) < 5%");
   });
 
-  it.each(["/checks/", "/checks/a/b", "/checks/..", "/checks/%2e%2e", "/checks/a%2Fb", "/checks/a%3Fb", "/checks/%", `/checks/${"a".repeat(65)}`])(
+  it.each(["/checks//", "/checks/a/b", "/checks/..", "/checks/%2e%2e", "/checks/a%2Fb", "/checks/a%3Fb", "/checks/%", `/checks/${"a".repeat(65)}`])(
     "%s is page not found, with no request made",
     (path) => {
       const fetchMock = vi.fn(() => Promise.reject(new Error("no request expected")));

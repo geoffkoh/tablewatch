@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { parseRoute } from "./lib/route";
 import { CheckPage } from "./pages/CheckPage";
+import { Explorer } from "./pages/Explorer";
 import { NotFound } from "./pages/NotFound";
 import { Overview } from "./pages/Overview";
 
@@ -9,11 +10,13 @@ import { Overview } from "./pages/Overview";
  * parses the path, and links are plain `<a href>` with full page loads. Every
  * client path is answered with index.html by the server (spec 003, W3).
  */
-export function App({ path }: { path: string }): ReactElement {
+export function App({ path, search = "" }: { path: string; search?: string }): ReactElement {
   const route = parseRoute(path);
   switch (route.page) {
     case "overview":
       return <Overview />;
+    case "explorer":
+      return <Explorer path={path} search={search} />;
     case "check":
       return <CheckPage id={route.id} />;
     case "not-found":

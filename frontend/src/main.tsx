@@ -8,7 +8,7 @@ const root = document.getElementById("root");
 if (root !== null) {
   createRoot(root).render(
     <StrictMode>
-      <App path={window.location.pathname} />
+      <App path={window.location.pathname} search={window.location.search} />
     </StrictMode>,
   );
 }
