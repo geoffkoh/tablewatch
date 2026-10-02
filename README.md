@@ -620,7 +620,7 @@ project has mistakes (all of them are on `exc.diagnostics`), and
 
 ```python
 project = tw.load("examples/retail")      # reads YAML; connects to nothing
-print(project.ok, len(project.checks))    # True 18
+print(project.ok, len(project.checks))    # True 19
 
 sales = tw.run(project, paths=["checks/sales"], record=False)
 print(sales.exit_code())                  # 1
