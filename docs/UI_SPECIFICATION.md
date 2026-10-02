@@ -12,6 +12,7 @@ the UI does it: wording, layout, colour, and the rules behind them.
 | I-26 | `specs/005-check-detail-sql-source.md` | The check page's SQL section: `CodeBlock`, `CopyButton`, `lib/clipboard.ts`, invisible-character marking |
 | I-29 | `specs/006-check-detail-source.md` | The check page's Source section: the check's own YAML lines (`SourceBlock`), the file's `filter:` in words, `#source` |
 | I-04 (part 1) | `specs/015-check-explorer-tree.md` | The check explorer (`/checks`): the `checks/` tree with counts, search and a status filter kept in the URL; "Browse all checks" on the overview |
+| I-04 (part 2) | `specs/016-explorer-tag-owner-datasource.md` | The explorer's Tag, Owner and Datasource filters (`FacetFilter`), OR within a filter and AND across, counts per value, kept in the URL; search over tags, owner and datasource |
 
 ## 1. Who it is for
 
@@ -101,7 +102,8 @@ frontend/src/
   api/api.ts               the ONE client: getProject, listChecks, listRuns, getCheck,
                            getHistory, getCheckSql, getCheckSource; failureOf, isNotFound
   lib/route.ts             parseRoute(path), checkHref(id), EXPLORER_HREF, the id pattern
-  lib/explorer.ts          the explorer's query (parse, to URL), search and status filter,
+  lib/explorer.ts          the explorer's query (parse, to URL), search, the status, tag,
+                           owner and datasource filters and their counts (facetOptions),
                            commonFolder, buildTree, counts wording (countsText)
   lib/clipboard.ts         canCopy, copyText, selectContents: the only clipboard code
   lib/invisible.ts         which code points are marked, and the text split into segments
@@ -118,7 +120,8 @@ frontend/src/
                            StatusIcon/StatusBadge, shapes (status shapes), Time (Ago),
                            LoadError (useId heading id; `level` 2|3; `scope` page|section),
                            CodeBlock, SourceBlock (numbered, never wraps), CopyButton,
-                           Marked (invisible characters), ExplorerTree (the `checks/` tree)
+                           Marked (invisible characters), ExplorerTree (the `checks/` tree),
+                           FacetFilter (one Tag, Owner or Datasource filter)
   components/check/        the check page's sections: Identity, RuleSection, LatestSection,
                            NotFoundPanel, HistorySection, SqlSection, SourceSection;
                            useOlderHistory
@@ -157,7 +160,7 @@ frontend/src/
   | Path | Page |
   | --- | --- |
   | `/`, `/index.html` | the overview |
-  | `/checks`, `/checks/` | the check explorer (§4B); `?q=` and `?status=` are read by the page |
+  | `/checks`, `/checks/` | the check explorer (§4B); `?q=`, `?status=`, `?tag=`, `?owner=` and `?datasource=` are read by the page |
   | `/checks/<id>`, `/checks/<id>/` | the check page, when `<id>` is one non-empty segment that decodes (once, inside try/catch) to a string matching `^[A-Za-z0-9][A-Za-z0-9_.:-]*$` of at most 64 characters (the loader's `ID_PATTERN` and the store's column width) |
   | anything else | "Page not found", and **no request is made**: `/checks//`, `/checks/a/b`, `/checks/..`, `/checks/%2e%2e`, `/checks/a%2Fb`, `/checks/a%3Fb`, a malformed `%`, 65 characters |
 
@@ -875,10 +878,10 @@ nobody knows.
 
 ## 4B. The check explorer (`/checks`)
 
-Spec 015 (I-04, part 1). It reads `GET /api/v1/project` and
+Specs 015 and 016 (I-04). It reads `GET /api/v1/project` and
 `GET /api/v1/checks` through the shared hook, as two slots, and nothing
-else: search and the status filter run in memory over the loaded list, so
-typing never fetches (E18). Refresh reloads both. The document title is
+else: the search and the status, tag, owner and datasource filters run in
+memory over the loaded list, so typing never fetches (E18). Refresh reloads both. The document title is
 "Checks · tablewatch".
 
 ### 4B.1 Layout
@@ -929,40 +932,77 @@ The overview links here: "Browse all checks" sits beside the heading
 - Nested `<ul>` lists carry the hierarchy; there is no `role="tree"` and no
   roving focus (spec non-goal).
 
-### 4B.3 Search and status (E7–E12)
+### 4B.3 Search and filters (spec 015 E7–E12, spec 016 F1–F16)
 
 - **Search box**: `<input type="search">` labelled "Search checks", with
-  the hint "Name, expression, dataset, file or id", inside
-  `<form role="search">` (Enter does nothing; there is no submit). A check
-  matches when its name, expression, dataset, `location.file` or id
-  contains the text, ignoring case, after trimming leading and trailing
-  spaces. Owner and tags are not searched (part 2). Filtering runs on every
+  the hint "Name, expression, dataset, file, id, tag, owner or datasource",
+  inside `<form role="search">` (Enter does nothing; there is no submit). A
+  check matches when its name, expression, dataset, `location.file`, id,
+  one of its tags, its owner or its datasource contains the text, ignoring
+  case, after trimming leading and trailing spaces (F13). Filtering runs on every
   keystroke (decision 2); the tree follows a `useDeferredValue` copy of the
   query so typing stays responsive. At most 200 characters (`maxLength`).
 - **Status** is a `<fieldset>` with the legend "Status" and one checkbox per
   status present among the loaded checks (or selected in the URL), in the
   overview's order. Each is labelled with the §5 label and a count, for
-  example "Fail 6"; the count is of the checks the search matches, so it
-  says what ticking it shows. None ticked means all.
-- **Both** apply together (AND). The line above the tree reads "Showing
-  *n* of *N* checks." while filtering and "Showing all *N* checks."
-  otherwise (`aria-live="polite"`).
-- **The URL.** The query is `?q=<text>&status=<s>&status=<s>`, statuses in
-  the overview's order (`fail`, `error`, `warn`, `none`, `skipped`, `pass`),
-  `q` omitted when blank, and nothing at all when nothing is filtered. Every
-  change rewrites the current entry with `history.replaceState` (no new
-  entry), so reloading, sharing the address, or Back from a check's page
-  restores the view. On load the page reads `location.search`: unknown
-  statuses are dropped, `q` is cut to 200 characters (code points), and the URL is
-  rewritten to that normal form. `q` is shown only as the box's value and is
-  never put in an `href` (§9).
+  example "Fail 6". None ticked means all.
+- **Tag, Owner, Datasource** (spec 016) follow Status, in that order, each
+  a `<fieldset>` built like Status (legend, one labelled checkbox per value,
+  `FacetFilter`): the label is the value as written, then its count, for
+  example "tier-1 14". Values are text only, never markup or an `href`.
+  A check's tags are its dataset's (`CheckSummary.tags`).
+  - **Values**: every value some loaded check has, plus every value the URL
+    selects. Sorted by name, case-insensitive then exact; the "none" value
+    last (F2).
+  - **None**: "No tags" (a check with `tags: []`), "No owner"
+    (`owner: null`), "No datasource" (`datasource: ""`, which covers
+    `datasource_state` `none` and `not_a_name`, decision 4). Each appears
+    only when some check has it (F7). Italic, like other "absent" text.
+  - **Not defined**: a datasource whose `datasource_state` is
+    `not_defined` reads "staging (not defined) 5" (F8); the note is muted.
+  - **Hidden when there is no choice**: a filter with a single value and
+    nothing ticked is not shown (F1, F9, decision 3; the data-steward judges
+    it in VERIFY). Status is always shown, as in spec 015.
+  - **Long filters** (F15): over 10 values, the filter shows the 10 with the
+    highest counts (ties by name), every ticked value, all in name order,
+    and a button "Show all *N*" (`aria-expanded`), which becomes "Show
+    fewer".
+  - **Unknown values** from the URL (a tag no loaded check has) are kept
+    and shown ticked with a count of 0, so a stale link explains itself and
+    can be unticked (F11, decision 2). Status still drops unknown values: it
+    has a closed set.
+- **Combining.** Values within one filter combine with OR, as
+  `tw run --tag a --tag b`; filters combine with AND, with each other and
+  with the search (F4, F5).
+- **Counts** (F6). Every checkbox's count is of the checks that match the
+  search and every **other** filter and have that value, so it says what
+  ticking it adds. A value at 0 stays listed. A check with two tags counts
+  toward both.
+- **The "Showing" line** above the tree reads "Showing *n* of *N*
+  checks." while any search or filter is active and "Showing all *N*
+  checks." otherwise (`aria-live="polite"`).
+- **The URL.** The query is
+  `?q=<text>&status=<s>…&tag=<t>…&owner=<o>…&datasource=<d>…`, parameters in
+  that order (F10); statuses in the overview's order (`fail`, `error`,
+  `warn`, `none`, `skipped`, `pass`); filter values in the list's order,
+  with the "none" value written as the empty value (`owner=`, decision 1);
+  `q` omitted when blank, and nothing at all when nothing is filtered.
+  Every change rewrites the current entry with `history.replaceState` (no
+  new entry) and keeps the `#fragment`, so reloading, sharing the address,
+  or Back from a check's page restores the view. On load the page reads
+  `location.search`: unknown statuses are dropped, `q` and every filter
+  value are cut to 200 code points (`cutQuery`), repeated values are kept
+  once (F12), and the URL is rewritten to that normal form. `q` is shown
+  only as the box's value and filter values only as label text; neither is
+  ever put in an `href` (§9).
 - **No match**: "No checks match." and a link "Clear search and filters" to
-  `/checks` (a full page load).
+  `/checks` (a full page load), which clears the search and every filter
+  (F14).
 
 ### 4B.4 Empty and failed loads (E14, E15)
 
 - No checks loaded: the panel reads "No checks are loaded." with no search
-  box and no status filter.
+  box and no filters.
 - `/checks` fails: `LoadError` ("Could not load the checks", the message,
   HTTP status and code, **Try again**), and no controls or tree. `/project`
   failing gets its own panel, as on the overview. Refresh and Try again
@@ -1167,7 +1207,9 @@ tooltip draws `attr(data-full)` on `:focus-visible`.
   and the history table as the chart's full text alternative.
 - The check explorer (§4B): one `<h1>` ("Checks"), a labelled section, a
   `role="search"` form with a labelled search box, a `<fieldset>` of
-  labelled checkboxes, and nested lists of native `<details>`/`<summary>`.
+  labelled checkboxes per filter (Status, Tag, Owner, Datasource), a
+  "Show all" button with `aria-expanded`, and nested lists of native
+  `<details>`/`<summary>`.
 
 **How this was checked:** component tests query by role and accessible name
 (landmarks, headings, table, column headers, buttons, links, icon names);
@@ -1278,7 +1320,10 @@ answers `/source` by the same rule as `/sql`.
   data-steward's VERIFY run, light and dark. E18 measured about 140 ms for a
   first render of 500 rows in jsdom on macOS; if CI runs slower, render
   closed folders' contents lazily before raising the budget.
-- Tag, owner and datasource filters are I-04 part 2.
+- **The explorer's filters (spec 016).** F16 measured about 60 ms for the
+  filters and a 500-check tree (40 tags, 20 owners) in jsdom on macOS; the
+  test asserts E18's portable ceiling. Whether one-value filters should stay
+  hidden (decision 3) is for the data-steward's VERIFY run.
 
 - **Cross-platform bundle identity (spec 003 Q7).** Two local builds on
   macOS/Node 24.13.0 are byte-identical. Linux/CI identity is proven only

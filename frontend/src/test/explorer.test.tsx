@@ -11,6 +11,7 @@ import {
   buildTree,
   commonFolder,
   countsText,
+  EMPTY_QUERY,
   explorerSearch,
   filterChecks,
   parseExplorerQuery,
@@ -306,8 +307,9 @@ describe("E8: what the search reads", () => {
     expect(shownIds()).toEqual(expected);
   });
 
-  it("does not search the owner or tags (part 2)", () => {
-    expect(filterChecks(recorded.checks.items, { q: "sales-data@example.com", statuses: [] })).toEqual([]);
+  // Spec 016 F13 widened the search to tags, owner and datasource (tested there).
+  it("matches nothing for text in no field", () => {
+    expect(filterChecks(recorded.checks.items, { ...EMPTY_QUERY, q: "nowhere@example.com" })).toEqual([]);
   });
 });
 
@@ -388,7 +390,7 @@ describe("E12: hostile and malformed queries", () => {
     expect(searchBox().value).toHaveLength(200);
     expect(new URLSearchParams(window.location.search).get("q")).toHaveLength(200);
     expect(searchBox().maxLength).toBe(200);
-    expect(explorerSearch({ q: "b".repeat(300), statuses: [] })).toBe(`?q=${"b".repeat(200)}`);
+    expect(explorerSearch({ ...EMPTY_QUERY, q: "b".repeat(300) })).toBe(`?q=${"b".repeat(200)}`);
   });
 
   it("treats markup in q as text, never in an href", async () => {

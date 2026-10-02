@@ -233,14 +233,18 @@ folders and files you write, select with (`tw run checks/sales`) and inherit
   to the check's page), the expression when the check has a `name:`, and the
   latest value.
 - **Search** finds a check by any part of its name, expression, dataset, file
-  path or id, ignoring case. **Status** shows only the statuses you tick
-  (none ticked shows all). Both together narrow by both, every folder left
-  opens, and the counts become those of the checks that match.
+  path, id, tags, owner or datasource, ignoring case.
+- **Filters by Status, Tag, Owner and Datasource** show only the values you
+  tick (none ticked shows all). Ticking two tags shows checks with either,
+  as `tw run --tag a --tag b` does; different filters and the search narrow
+  together. Each value shows how many checks ticking it would show. "No
+  owner", "No tags" and "No datasource" find what is missing; a filter with
+  only one value is hidden, and a long one shows its 10 biggest values and
+  "Show all".
 - **The address keeps the view**, for example
-  `/checks?q=orders&status=fail`. Send it to a colleague, or reload it; Back
-  from a check's page returns to the same view.
-
-Filters by tag, owner and datasource come later.
+  `/checks?q=orders&status=fail&tag=tier-1&owner=sales-data%40example.com`.
+  Send it to a colleague, or reload it; Back from a check's page returns to
+  the same view.
 
 ### A check's page
 
