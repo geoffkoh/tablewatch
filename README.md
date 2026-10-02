@@ -143,7 +143,8 @@ Name a webhook in `tablewatch.yml` and a `notify:` in a check file or
 `_defaults.yml`. tablewatch then POSTs JSON when a check starts failing,
 recovers, or can no longer be evaluated, and stays quiet while nothing
 changes. The URL is read from the environment (`url: ${env:NAME}`), and a
-notification that cannot be sent never changes the exit code. See
+notification that cannot be sent never changes the exit code. Use
+`type: slack` to post to a Slack incoming webhook instead. See
 "Notifications" in [the check language](docs/check-language.md).
 
 ## Serve results over HTTP

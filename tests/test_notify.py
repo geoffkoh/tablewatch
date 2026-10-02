@@ -431,11 +431,11 @@ def test_an_unknown_notifier_type(project: Path) -> None:  # non-goal: slack wai
     _write(
         project,
         "tablewatch.yml",
-        TABLEWATCH_YML.replace("type: webhook", "type: slack"),
+        TABLEWATCH_YML.replace("type: webhook", "type: teams"),
     )
     code, out, err = invoke(project, "validate")
     assert code == 3
-    assert "notifier 'type' must be one of: webhook" in out + err
+    assert "notifier 'type' must be one of: webhook, slack" in out + err
 
 
 def test_owner_is_a_reserved_notifier_name(project: Path) -> None:  # D3

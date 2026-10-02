@@ -8,6 +8,14 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- Notifications: a `type: slack` notifier posts to a Slack incoming webhook
+  with a readable message — a header with the totals and a section per
+  group (Failing, Could not evaluate, Recovered), grouping and ordering the
+  same state changes a `type: webhook` notifier already sends. Check names,
+  datasets, owners and messages are escaped so nothing can mention
+  `@channel`/`@here`, link a channel, or inject formatting; long lists are
+  cut with a true count ("…and 12 more failing"). See "Notifications" in
+  `docs/check-language.md`.
 - Notifications: define a `notifiers:` webhook in `tablewatch.yml` and point
   checks at it with `notify:` (inherited through `_defaults.yml`, overridable
   per dataset or check). After a recorded run, each notifier that owns a

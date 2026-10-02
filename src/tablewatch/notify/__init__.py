@@ -14,6 +14,7 @@ import logging
 from tablewatch.config.loader import Project
 from tablewatch.config.project import MissingEnvironmentVariableError
 from tablewatch.engine.runner import ResultSink, RunResult
+from tablewatch.notify import slack as _slack  # noqa: F401 - registers `slack`
 from tablewatch.notify import webhook as _webhook  # noqa: F401 - registers `webhook`
 from tablewatch.notify.base import Event, Notification, NotifyError, notifier_for
 from tablewatch.results.state import transition

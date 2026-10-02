@@ -285,6 +285,31 @@ nothing, because events come from history. `run --no-notify` and
    "value": 3.0, "display_value": "3 rows", "message": "…"}]}
 ```
 
+**Slack.** `type: slack` posts to a Slack
+[incoming webhook](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks),
+with the same `url: ${env:NAME}` rule and the same events:
+
+```yaml
+notifiers:
+  sales-slack:
+    type: slack
+    url: ${env:TW_SALES_SLACK_URL}
+```
+
+The message has a header such as `retail-example: 2 failing, 1 could not
+evaluate, 1 recovered`. Below it are the groups **Failing**, **Could not
+evaluate** and **Recovered**, one line per check: `orders · row_count > 0:
+0 rows — expected > 0 (owner: sales-data@example.com)`. A context line gives
+the run id, its trigger and the time in UTC. Channel, name and icon come from
+the webhook's own settings in Slack.
+
+- Names, datasets, owners and messages can never ping a channel or become a
+  link. `<`, `>` and `&` are escaped, `@here` stays plain text, line breaks
+  and direction controls become spaces, and link previews are off.
+- Each string is cut at 200 characters (a message at 300). A long group ends
+  `…and 12 more failing`. The header always gives the true totals.
+- The message holds no file path, datasource, URL or link.
+
 An `erroring` event's `message` is always `could not evaluate`. The
 database's own error text can quote your data, so it stays in the run's
 results (`tablewatch history`, the web UI). Adding a field keeps
