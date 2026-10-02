@@ -81,10 +81,7 @@ Datasource = Annotated[
 ]
 
 
-class WebhookNotifier(_Strict):
-    """POSTs each run's state changes as JSON (`tablewatch.notify.payload`)."""
-
-    type: Literal["webhook"]
+class _URLNotifier(_Strict):
     # A webhook URL is a bearer secret, so it may only come from the
     # environment: a literal in YAML would end up in git.
     url: str
@@ -99,8 +96,20 @@ class WebhookNotifier(_Strict):
         return value
 
 
-NotifierConfig = Annotated[WebhookNotifier, Field(discriminator="type")]
-NOTIFIER_TYPES = ("webhook",)
+class WebhookNotifier(_URLNotifier):
+    """POSTs each run's state changes as JSON (`tablewatch.notify.payload`)."""
+
+    type: Literal["webhook"]
+
+
+class SlackNotifier(_URLNotifier):
+    """Posts each run's state changes to a Slack incoming webhook."""
+
+    type: Literal["slack"]
+
+
+NotifierConfig = Annotated[WebhookNotifier | SlackNotifier, Field(discriminator="type")]
+NOTIFIER_TYPES = ("webhook", "slack")
 
 
 class ResultsConfig(_Strict):

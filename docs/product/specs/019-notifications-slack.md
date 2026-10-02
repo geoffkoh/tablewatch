@@ -111,7 +111,7 @@ spec 018's project P with `type: slack`, url `${env:TW_SLACK}` set to the local 
 | S20 | should | the JSON Schema for editors | Knows `type: slack` (`config/jsonschema.py`) |
 | S21 | must | docs | `docs/check-language.md` "Notifications" gains `type: slack`, the layout, the escaping and size rules; README one line |
 | S22 | should | an owner like `sales-data@example.com` or a message holding `example.com` | Sent with `verbatim: true`, so Slack does not auto-link it (Q2 confirms) |
-| S23 | must | a plain comparison (e.g. `row_count > 0`) fails, with no `message` and no `owner` | Its line reads exactly `• <dataset> · row_count > 0: 0 rows` — no trailing separator, no empty parentheses |
+| S23 | must | an event with no `message` and no `owner` | Its line reads exactly `• <dataset> · <name>: <value>` — no trailing separator, no empty parentheses (BUILD: a failing comparison does carry `expected > 0`) |
 | S24 | should | a group needs truncation and exactly one check is left over | Closing line reads `…and 1 more failing`, or for the error group `…and 1 more error` (singular, not `errors`) |
 | S26 | must | a check `name: "@here @channel #general"` fails | The name arrives as written; the body has no `link_names` and no `parse` (D2) |
 | S27 | must | a check name holding `\n*Recovered (9)*` and U+202E | One line; the newline and U+202E arrive as spaces (D3) |
