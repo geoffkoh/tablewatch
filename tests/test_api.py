@@ -229,7 +229,8 @@ def test_bad_data_and_unevaluable_checks_are_outcomes(
     [only] = result.results
     assert only.outcome is tw.Outcome.ERROR
     assert only.message == (
-        "datasource wh: environment variable TW_TEST_PG_PASSWORD is not set"
+        "datasource 'wh' in tablewatch.yml: environment variable "
+        "TW_TEST_PG_PASSWORD is not set"
     )
     assert result.exit_code() == 2
 

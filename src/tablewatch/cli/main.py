@@ -497,6 +497,14 @@ def test_connection(ctx: click.Context, names: tuple[str, ...]) -> None:
         except SQLAlchemyError as exc:
             failed += 1
             click.echo(f"FAILED  {name}: {error_message(exc)}")
+        except Exception as exc:
+            # As the runner's backstop: the type only, never the text, which
+            # can quote a resolved URL or secret.
+            failed += 1
+            click.echo(
+                f"FAILED  {name}: internal error creating the engine "
+                f"({type(exc).__name__})"
+            )
     sys.exit(EXIT_CHECK_ERROR if failed else EXIT_OK)
 
 

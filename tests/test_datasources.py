@@ -51,7 +51,7 @@ def test_dialects_need_no_credentials() -> None:
 def test_url_dialect_errors() -> None:
     with pytest.raises(DatasourceError, match="scheme is an"):
         dialect_for(URLDatasource(type="sqlalchemy", url="${env:DB_URL}"))
-    with pytest.raises(DatasourceError, match="unsupported SQLAlchemy URL scheme"):
+    with pytest.raises(DatasourceError, match="no SQLAlchemy dialect named 'nosuchdb'"):
         dialect_for(URLDatasource(type="sqlalchemy", url="nosuchdb://h/db"))
 
 

@@ -72,7 +72,7 @@ def test_an_underscored_scheme_with_no_dialect_is_unsupported_not_malformed() ->
             )
         )
     assert str(caught.value).startswith(
-        "unsupported SQLAlchemy URL scheme 'mssql+python_tds'"
+        "SQLAlchemy has no driver 'python_tds' for the mssql dialect"
     )
     for secret in SECRETS:
         assert secret not in str(caught.value)
@@ -373,7 +373,9 @@ def test_an_unknown_timezone_is_an_error_not_a_500(retail: Path) -> None:
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["statements"] == []
-    assert body["error"] == "unknown timezone 'Mars/Olympus_Mons'"
+    assert body["error"] == (
+        "datasource 'far' in tablewatch.yml: unknown timezone 'Mars/Olympus_Mons'"
+    )
     assert near["error"] is None
 
 

@@ -153,7 +153,7 @@ export const REMOTE_EVENTS_SQL: CheckSql = {
   dialect: null,
   statements: [],
   schema_lookup: false,
-  error: "unsupported SQLAlchemy URL scheme 'snowflake': Can't load plugin: sqlalchemy.dialects:snowflake",
+  error: "datasource 'wh' in tablewatch.yml: the snowflake driver is not installed: pip install snowflake-sqlalchemy",
 };
 
 /** `broken`, `8e3148f570b166f3`: its datasource is not defined (S12). */

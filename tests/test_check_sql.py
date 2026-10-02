@@ -22,7 +22,15 @@ from tests.test_server import assert_error, get, served
 GOLDEN = Path(__file__).parent / "golden"
 SRC = Path(__file__).parents[1] / "src" / "tablewatch"
 SECRETS = ("hunter2", "dana", "acct")
-MALFORMED = "the url is not a SQLAlchemy URL (expected scheme://...)"
+MALFORMED = (
+    "url is not a SQLAlchemy URL: it must start with dialect:// or dialect+driver://"
+)
+SNOWFLAKE = "the snowflake driver is not installed: pip install snowflake-sqlalchemy"
+
+
+def prefixed(datasource: str, reason: str) -> str:
+    return f"datasource '{datasource}' in tablewatch.yml: {reason}"
+
 
 PERCENT = "b1ceb8262d8b5441"
 ROW_COUNT_CUSTOMERS = "32c8f939b90f6367"
@@ -195,17 +203,19 @@ def test_a_malformed_url_is_never_echoed(
     assert code == 0
     for secret in SECRETS:
         assert secret not in out + err
-    assert out.count(f"-- cannot compile: {MALFORMED}") == 2
-    assert (
-        out.count("-- cannot compile: unsupported SQLAlchemy URL scheme 'snowflake'")
-        == 2
-    )
+    for datasource, reason in (
+        ("bare", MALFORMED),
+        ("colon", MALFORMED),
+        ("wh", SNOWFLAKE),
+        ("query", SNOWFLAKE),
+    ):
+        assert f"-- cannot compile: {prefixed(datasource, reason)}" in out
     with served(remote) as client:
         for dataset, expected in (
-            ("bare", MALFORMED),
-            ("colon", MALFORMED),
-            ("events", "unsupported SQLAlchemy URL scheme 'snowflake'"),
-            ("query", "unsupported SQLAlchemy URL scheme 'snowflake'"),
+            ("bare", prefixed("bare", MALFORMED)),
+            ("colon", prefixed("colon", MALFORMED)),
+            ("events", prefixed("wh", SNOWFLAKE)),
+            ("query", prefixed("query", SNOWFLAKE)),
         ):
             response = client.get(
                 f"/api/v1/checks/{_id_on(remote, dataset, 'row_count > 0')}/sql"
@@ -213,12 +223,7 @@ def test_a_malformed_url_is_never_echoed(
             assert response.status_code == 200
             for secret in SECRETS:
                 assert secret not in response.text
-            error = response.json()["error"]
-            assert (
-                error == expected
-                if expected == MALFORMED
-                else error.startswith(expected)
-            )
+            assert response.json()["error"] == expected
 
 
 @pytest.mark.parametrize(
@@ -239,7 +244,13 @@ def test_dialect_for_echoes_only_a_well_formed_scheme(url: str) -> None:  # C3
 
     with pytest.raises(DatasourceError) as caught:
         dialect_for(URLDatasource(type="sqlalchemy", url=url))
-    assert str(caught.value) == MALFORMED
+    scheme = url.partition("://")[0]
+    assert str(caught.value) in {
+        MALFORMED,
+        f"url scheme '{scheme}' is not dialect or dialect+driver",
+    }
+    for secret in SECRETS:
+        assert secret not in str(caught.value)
 
 
 # --- SQL -------------------------------------------------------------------------
@@ -378,7 +389,7 @@ def test_cannot_compile_and_nothing_leaks(remote: Path) -> None:  # S6
     assert events.status_code == 200
     assert body["statements"] == []
     assert body["dialect"] is None
-    assert body["error"].startswith("unsupported SQLAlchemy URL scheme 'snowflake'")
+    assert body["error"] == prefixed("wh", SNOWFLAKE)
     for secret in SECRETS:
         assert secret not in events.text
     assert pg["statements"]

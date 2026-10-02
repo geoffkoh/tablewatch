@@ -24,7 +24,12 @@ from tablewatch._version import __version__
 from tablewatch.checks.model import Check, Dataset, Outcome, worst
 from tablewatch.config.loader import Project
 from tablewatch.config.project import MissingEnvironmentVariableError
-from tablewatch.datasources import DatasourceError, create_engine_for, timezone_of
+from tablewatch.datasources import (
+    DatasourceError,
+    create_engine_for,
+    datasource_problem,
+    timezone_of,
+)
 from tablewatch.engine.evaluate import evaluate, format_value
 from tablewatch.engine.executor import error_message, execute_plan
 from tablewatch.engine.planner import plan_dataset
@@ -203,7 +208,19 @@ def _run_datasource(
         timezone = timezone_of(config)
         engine = factory(name)
     except (DatasourceError, MissingEnvironmentVariableError) as exc:
-        message = f"datasource {name}: {exc}"
+        message = datasource_problem(name, exc)
+        return [
+            CheckResult(check, Outcome.ERROR, None, message)
+            for checks in datasets.values()
+            for check in checks
+        ]
+    except Exception as exc:
+        # The backstop (rule 7). Only the type: an unexpected exception from
+        # building an engine can quote a resolved URL or secret (security).
+        log.warning("%s: could not create an engine (%s)", name, type(exc).__name__)
+        message = datasource_problem(
+            name, f"internal error creating the engine ({type(exc).__name__})"
+        )
         return [
             CheckResult(check, Outcome.ERROR, None, message)
             for checks in datasets.values()
