@@ -217,7 +217,7 @@ def _run_datasource(
     except Exception as exc:
         # The backstop (rule 7). Only the type: an unexpected exception from
         # building an engine can quote a resolved URL or secret (security).
-        log.warning("%s: could not create an engine (%s)", name, type(exc).__name__)
+        log.warning("%r: could not create an engine (%s)", name, type(exc).__name__)
         message = datasource_problem(
             name, f"internal error creating the engine ({type(exc).__name__})"
         )

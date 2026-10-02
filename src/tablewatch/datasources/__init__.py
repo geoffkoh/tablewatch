@@ -39,6 +39,10 @@ DatasourceConfig = (
 MALFORMED_URL = (
     "url is not a SQLAlchemy URL: it must start with dialect:// or dialect+driver://"
 )
+UNREADABLE_URL = (
+    "url could not be read after the scheme: check the user, password, host, "
+    "port, database and query parts"
+)
 # SQLAlchemy's scheme grammar: driver names use "_" (`oracle+cx_oracle`).
 URL_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9_+.\-]*")
 MODULE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
@@ -54,7 +58,7 @@ _DIALECT_PACKAGES = {
 }
 
 
-def datasource_problem(name: str, reason: object) -> str:
+def datasource_problem(name: str, reason: str | Exception) -> str:
     """A datasource-level reason, prefixed with where to fix it."""
     shown = f"'{name}'" if name.isprintable() else repr(name)
     return f"datasource {shown} in {PROJECT_FILE}: {reason}"
@@ -116,15 +120,15 @@ def create_engine_for(config: DatasourceConfig, project_root: Path) -> Engine:
             url = resolve_env(config.url)
             scheme = _scheme_of(url)
             _load_dialect(scheme)
-            dialect = scheme.split("+")[0]
+            dialect = _dialect_name(scheme)
     try:
         return create_engine(url, connect_args=connect_args)
-    except ModuleNotFoundError as exc:
-        raise DatasourceError(_module_missing(dialect, exc)) from None
-    except ImportError:
-        raise DatasourceError(f"the {dialect} driver could not be imported") from None
-    except (ArgumentError, NoSuchModuleError, ValueError):
-        raise DatasourceError(MALFORMED_URL) from None
+    except ImportError as exc:
+        raise _import_failure(dialect, exc) from None
+    except (ArgumentError, NoSuchModuleError, ValueError, TypeError):
+        # The scheme was fine; the rest of the url (user, password, host,
+        # port, database, query) was not. Its text is never echoed.
+        raise DatasourceError(UNREADABLE_URL) from None
 
 
 def _scheme_of(url: str) -> str:
@@ -142,14 +146,12 @@ def _scheme_of(url: str) -> str:
 
 def _load_dialect(scheme: str) -> type[Dialect]:
     """The dialect class for a well-formed scheme, or a plain-words reason."""
-    name = scheme.split("+")[0]
+    name = _dialect_name(scheme)
     try:
         dialect: type[Dialect] = make_url(f"{scheme}://").get_dialect()
         return dialect
-    except ModuleNotFoundError as exc:
-        raise DatasourceError(_module_missing(name, exc)) from None
-    except ImportError:
-        raise DatasourceError(f"the {name} driver could not be imported") from None
+    except ImportError as exc:
+        raise _import_failure(name, exc) from None
     except (ArgumentError, NoSuchModuleError):
         if name == "postgres":
             raise DatasourceError(
@@ -157,7 +159,7 @@ def _load_dialect(scheme: str) -> type[Dialect]:
                 "write postgresql:// instead"
             ) from None
         driver = scheme.partition("+")[2]
-        if driver and _loads(name):
+        if driver and _dialect_installed(name):
             raise DatasourceError(
                 f"SQLAlchemy has no driver '{driver}' for the {name} dialect; "
                 "check the spelling after '+'"
@@ -175,14 +177,33 @@ def _load_dialect(scheme: str) -> type[Dialect]:
         raise DatasourceError(
             f"url scheme '{scheme}' is not dialect or dialect+driver"
         ) from None
+    except Exception as exc:
+        # A third-party dialect can raise anything while it loads; compile and
+        # the check page must not crash (rule 7), and its text is not echoed.
+        raise DatasourceError(
+            f"the {name} dialect could not be loaded ({type(exc).__name__})"
+        ) from None
 
 
-def _loads(name: str) -> bool:
+def _dialect_installed(name: str) -> bool:
+    """Whether a dialect loads at all: tells a misspelt driver after '+' from a
+    missing dialect. A probe, so any failure just means "no"."""
     try:
         make_url(f"{name}://").get_dialect()
     except Exception:
         return False
     return True
+
+
+def _dialect_name(scheme: str) -> str:
+    return scheme.split("+")[0]
+
+
+def _import_failure(dialect: str, exc: ImportError) -> DatasourceError:
+    """A driver or dialect that could not be imported, in fixed words."""
+    if isinstance(exc, ModuleNotFoundError):
+        return DatasourceError(_module_missing(dialect, exc))
+    return DatasourceError(f"the {dialect} driver could not be imported")
 
 
 def _module_missing(dialect: str, exc: ModuleNotFoundError) -> str:

@@ -250,3 +250,31 @@ def test_the_prefix_escapes_control_characters() -> None:  # security, non-block
     assert datasource_problem("ware\nhouse", "x").startswith(
         "datasource 'ware\\nhouse'"
     )
+
+
+UNREADABLE = (
+    "url could not be read after the scheme: check the user, password, host, "
+    "port, database and query parts"
+)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql+psycopg://admin@db.prod:Pa55w0rd/x",
+        "sqlite://u:secret@h/x?foo=secret",
+        "sqlite:///x.db?timeout=1&timeout=secret",
+    ],
+)
+def test_a_good_scheme_with_an_unreadable_rest(url: str) -> None:  # VERIFY
+    reason = _reason(url, run=True)
+    assert reason == UNREADABLE
+    for secret in SECRETS:
+        assert secret not in reason
+
+
+def test_an_installed_dialect_with_an_unknown_driver() -> None:  # VERIFY
+    assert _reason("postgresql+psycopgx://u@h/db", run=False) == (
+        "SQLAlchemy has no driver 'psycopgx' for the postgresql dialect; "
+        "check the spelling after '+'"
+    )
