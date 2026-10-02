@@ -625,12 +625,18 @@ def report(ctx: click.Context, run_id: str | None, output_file: Path | None) -> 
     from datetime import UTC, datetime
 
     from tablewatch.output.html_report import render, view_from_rows
-    from tablewatch.results.store import PageKey, StoreError
+    from tablewatch.results.store import NoStoreError, PageKey, StoreError, open_store
 
     project = _project(ctx, require_valid=False)
     name = project.config.name
+    no_runs = f'no runs recorded for project {name} — run "tw run" first'
+    if run_id is not None and not run_id.strip():
+        _fail("--run needs the first characters of a run id")
     try:
-        with ResultStore.open(project.config.results.url, project.root) as store:
+        # open_store: the one place that keeps the store's URL out of errors.
+        with open_store(
+            project.config.results.url, project.root, create=False
+        ) as store:
             if run_id is not None:
                 ids = store.matching_run_ids(name, run_id)
                 if not ids:
@@ -641,7 +647,7 @@ def report(ctx: click.Context, run_id: str | None, output_file: Path | None) -> 
             else:
                 newest = store.runs_page(name, limit=1)
                 if not newest:
-                    _fail(f'no runs recorded for project {name} — run "tw run" first')
+                    _fail(no_runs)
                 chosen = newest[0].id
             row = store.run(name, chosen)
             if row is None:
@@ -650,6 +656,8 @@ def report(ctx: click.Context, run_id: str | None, output_file: Path | None) -> 
             view = view_from_rows(
                 row, {k: v.state for k, v in states.items()}, datetime.now(UTC)
             )
+    except NoStoreError:
+        _fail(no_runs)
     except (StoreError, SQLAlchemyError, OSError, ValueError) as exc:
         reason = str(exc) if isinstance(exc, StoreError) else error_message(exc)
         reason = reason.removeprefix("results store: ")

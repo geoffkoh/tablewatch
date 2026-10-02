@@ -44,9 +44,10 @@ _SELECTION_LABELS = (
     ("excludes", "excludes"),
     ("check_ids", "check ids"),
 )
-# C0/C1 controls except LF, line and paragraph separators, bidi controls.
+# C0/C1 controls except LF, line and paragraph separators, bidi controls
+# and marks, and invisible joiners and format characters.
 _CONTROL = re.compile(
-    r"[\x00-\x09\x0b-\x1f\x7f-\x9f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]"
+    r"[\x00-\x09\x0b-\x1f\x7f-\x9f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c\u2060-\u2064\ufeff]"
 )
 
 

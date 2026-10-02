@@ -72,7 +72,7 @@ Fixture: `examples/retail` after `tw run` (measured on `7bc8efe`: 19 checks, 6 f
 | R10 | must | run B, where a check failed in A and B, and another failed in A and passed in B | since = run A's started time; a check that recovered in B shows blank since |
 | R11 | must | `tw report --run <A>` after run B | since is as of run A (A's own start for a first failure), never derived from B |
 | R12 | must | `PGPASSWORD` unset, a datasource with `password: ${env:PGPASSWORD}` | exit 0 (no credentials needed) |
-| R13 | must | `results.url: sqlite:///nodir/x.db` (directory missing), or a file that is not SQLite | one line `tablewatch: could not read the results store: <reason>`, exit 2, no traceback |
+| R13 | must | a store file that is not SQLite (VERIFY: a missing SQLite file or directory is R7, exit 3, and `report` creates nothing) | one line `tablewatch: could not read the results store: <reason>`, exit 2, no traceback |
 | R14 | must | `--output-file` in a missing directory | `tablewatch: could not write out/r.html: <reason>`, exit 2, no traceback |
 | R15 | must | the store shared with project `other` whose run is newer | reports this project's newest run only |
 | R16 | should | a run with 2,000 results | written in under 2 s; file under 2 MB |
@@ -117,4 +117,5 @@ is in the file, and the run's exit code was given when it ran (Q4).
   `cli/main.py` docstring.
 - **D6 (Q5).** `ResultStore.matching_run_ids(project, prefix, limit=10)` is project-scoped and
   lowercases the prefix. `store.run` reads the single match, and `runs_page(limit=1)` gives the newest.
+- **D8 (VERIFY, QA).** `report` only reads: it never creates a store or its directory. A missing SQLite store is "no runs recorded" (R7), and `--run ""` is a usage error (exit 3). R18's docs are the README section.
 - **D7 (Q6, Q7).** The data-steward's wording above, as written.

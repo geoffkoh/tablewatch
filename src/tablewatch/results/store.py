@@ -44,15 +44,22 @@ MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 _MIGRATION_LOCK = threading.Lock()
 
 
-def resolve_store_url(url: str, project_root: Path) -> URL:
-    """Relative SQLite paths resolve against the project root, not the cwd."""
+def resolve_store_url(url: str, project_root: Path, *, create: bool = True) -> URL:
+    """Relative SQLite paths resolve against the project root, not the cwd.
+
+    With `create` off, a SQLite store that does not exist yet raises
+    `NoStoreError` rather than being created — for commands that only read.
+    """
     parsed = make_url(url)
     database = parsed.database
     if parsed.get_backend_name() == "sqlite" and database and database != ":memory:":
         path = Path(database).expanduser()
         if not path.is_absolute():
             path = project_root / path
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if create:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        elif not path.is_file():
+            raise NoStoreError("results store: no store has been recorded yet")
         parsed = parsed.set(database=str(path))
     return parsed
 
@@ -62,6 +69,10 @@ class StoreError(Exception):
 
     The message names the store but never its URL, which may hold a password.
     """
+
+
+class NoStoreError(StoreError):
+    """A command that only reads found no store, and did not create one."""
 
 
 class RecordError(StoreError):
@@ -104,8 +115,8 @@ class ResultStore:
             raise
 
     @classmethod
-    def open(cls, url: str, project_root: Path) -> ResultStore:
-        return cls(create_engine(resolve_store_url(url, project_root)))
+    def open(cls, url: str, project_root: Path, *, create: bool = True) -> ResultStore:
+        return cls(create_engine(resolve_store_url(url, project_root, create=create)))
 
     def close(self) -> None:
         self.engine.dispose()
@@ -391,10 +402,13 @@ def is_persistent(url: str) -> bool:
     )
 
 
-def open_store(url: str, project_root: Path) -> ResultStore:
-    """Open and migrate the store, or raise `StoreError` without the URL."""
+def open_store(url: str, project_root: Path, *, create: bool = True) -> ResultStore:
+    """Open and migrate the store, or raise `StoreError` without the URL.
+
+    `create=False` raises `NoStoreError` for a SQLite store not yet on disk.
+    """
     try:
-        return ResultStore.open(url, project_root)
+        return ResultStore.open(url, project_root, create=create)
     except (SQLAlchemyError, OSError, ValueError) as exc:
         raise StoreError(f"results store: {error_message(exc)}") from exc
 
