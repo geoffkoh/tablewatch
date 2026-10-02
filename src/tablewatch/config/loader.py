@@ -332,6 +332,10 @@ class _ChecksLoader:
         """
         configured = self.project.config.datasources
         explicit = self._string(source, node, "datasource")
+        if "datasource" in node and not isinstance(node["datasource"], str):
+            # Written but not a string (diagnosed above): never fall back to
+            # a default or the only datasource, and never show the value.
+            return "", "not_a_name"
         name = explicit or defaults.datasource
         where = (
             source.of_value(node, "datasource")
