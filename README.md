@@ -105,6 +105,7 @@ The full language — every metric, option and rule — is in
 | `tablewatch test-connection` | Connect to each datasource. |
 | `tablewatch runs` | Show recent runs. |
 | `tablewatch history ID` | Show one check's outcomes over time. |
+| `tablewatch report` | Write a recorded run as one static HTML page ([below](#a-report-to-send)). |
 | `tablewatch schema` | Print the JSON Schema for check files. |
 | `tablewatch serve` | Serve checks and results as a web page and a read-only JSON API ([below](#serve-results-over-http)). |
 
@@ -150,6 +151,22 @@ changes. The URL is read from the environment (`url: ${env:NAME}`), and a
 notification that cannot be sent never changes the exit code. Use
 `type: slack` to post to a Slack incoming webhook instead. See
 "Notifications" in [the check language](docs/check-language.md).
+
+## A report to send
+
+`tablewatch report --output-file run.html` writes this project's newest
+recorded run as one HTML file. Use `--run ID` (or the first characters of
+the id) for an older run. Open it in a browser or attach it to an email: it
+has no script, fetches nothing, and needs no tablewatch install or
+credentials to read. It shows the run's outcome, counts, time, host and
+selection. Below that is every check, failures first, with its value,
+message, owner, tags, source line and "Failing since" as of that run.
+
+A check that could not be evaluated reads `could not evaluate`. The
+database's own error text can quote your data, so it stays in the results
+store (`tablewatch history`, `tablewatch serve`). A new file is readable
+by its owner only. `report` exits 0 when written, 2 when the store or the
+file could not be read or written, and 3 when there is no such run.
 
 ## Serve results over HTTP
 

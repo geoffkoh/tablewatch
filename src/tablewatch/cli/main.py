@@ -11,6 +11,10 @@ Built to run unattended: no prompts, logs on stderr (stdout stays clean for
     3  the project is invalid, a selector matched nothing, or the command
        line is wrong — nothing ran
 
+`report` writes a recorded run as HTML: 0 when written, 2 when the results
+store or the file could not be read or written, 3 when there is no such run
+(or the id is ambiguous). It never exits 1: the run's outcome is in the file.
+
 `serve` is a long-running command: it exits 0 when stopped by SIGINT or
 SIGTERM, and 3 when it could not start. It never exits 1 or 2 itself.
 """
@@ -604,6 +608,91 @@ def history(ctx: click.Context, check_id: str, limit: int) -> None:
             for r, run in entries
         ],
     )
+
+
+@cli.command()
+@click.option(
+    "--run", "run_id", help="The run whose id starts with this. Default: the newest."
+)
+@click.option(
+    "--output-file",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Write the report here instead of stdout.",
+)
+@click.pass_context
+def report(ctx: click.Context, run_id: str | None, output_file: Path | None) -> None:
+    """Write a recorded run as one static HTML page."""
+    from datetime import UTC, datetime
+
+    from tablewatch.output.html_report import render, view_from_rows
+    from tablewatch.results.store import NoStoreError, PageKey, StoreError, open_store
+
+    project = _project(ctx, require_valid=False)
+    name = project.config.name
+    no_runs = f'no runs recorded for project {name} — run "tw run" first'
+    if run_id is not None and not run_id.strip():
+        _fail("--run needs the first characters of a run id")
+    try:
+        # open_store: the one place that keeps the store's URL out of errors.
+        with open_store(
+            project.config.results.url, project.root, create=False
+        ) as store:
+            if run_id is not None:
+                ids = store.matching_run_ids(name, run_id)
+                if not ids:
+                    _fail(f"no recorded run of project {name} starts with {run_id}")
+                if len(ids) > 1:
+                    _fail(f"{run_id} is ambiguous: {', '.join(i[:12] for i in ids)}")
+                chosen = ids[0]
+            else:
+                newest = store.runs_page(name, limit=1)
+                if not newest:
+                    _fail(no_runs)
+                chosen = newest[0].id
+            row = store.run(name, chosen)
+            if row is None:
+                _fail(f"no recorded run of project {name} starts with {chosen}")
+            states = store.latest_results(name, as_of=PageKey(row.started_at, row.id))
+            view = view_from_rows(
+                row, {k: v.state for k, v in states.items()}, datetime.now(UTC)
+            )
+    except NoStoreError:
+        _fail(no_runs)
+    except (StoreError, SQLAlchemyError, OSError, ValueError) as exc:
+        reason = str(exc) if isinstance(exc, StoreError) else error_message(exc)
+        reason = reason.removeprefix("results store: ")
+        _fail(f"could not read the results store: {reason}", EXIT_CHECK_ERROR)
+    document = render(view)
+    if output_file is None:
+        click.echo(document, nl=False)
+        return
+    try:
+        _write_atomically(output_file, document)
+    except OSError as exc:
+        _fail(
+            f"could not write {output_file}: {exc.strerror or type(exc).__name__}",
+            EXIT_CHECK_ERROR,
+        )
+    click.echo(f"wrote {output_file} (run {view.run_id[:12]})")
+
+
+def _write_atomically(path: Path, text: str) -> None:
+    """Write `path` by renaming a private temp file over it.
+
+    A symlink at `path` is replaced, not written through, a reader never
+    sees half a file, and a new file is readable by its owner only.
+    """
+    import os
+    import tempfile
+
+    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        Path(temp).replace(path)
+    except BaseException:
+        Path(temp).unlink(missing_ok=True)
+        raise
 
 
 @cli.command()

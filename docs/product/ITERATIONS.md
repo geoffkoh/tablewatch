@@ -6,6 +6,39 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 21 — `tablewatch report`: a recorded run as one static HTML page (I-10), 2026-10-02
+
+- **Spec:** [021-static-html-report](specs/021-static-html-report.md). **Branch:** `iter/021`.
+  Full track. No items added (freeze).
+- **REFINE.** security → D1–D4: an `error` row always shows the fixed "could not evaluate"; the
+  header shows the host, never the username; every user string escaped, the outcome's CSS class
+  from an allowlist, control and bidi characters stripped; a strict CSP; the file written
+  atomically at 0600, replacing rather than following a symlink. architect → D5–D6:
+  `output/html_report.py` holds a frozen view model and `render`; `latest_results(as_of=)` answers
+  "since as of this run"; `matching_run_ids` is project-scoped; `report` exits 0/2/3, never 1.
+  data-steward → D7: column order, the per-outcome "since" wording, every check listed (not a
+  count), absolute UTC timestamps.
+- **Shipped:** `tablewatch report [--run ID] [--output-file PATH]` writes one offline HTML
+  document — header, counts, selection, one row per check result (failing first) — with no
+  datasource credentials and no JavaScript. Suite: Python **1759 passed, 1 xfailed**.
+- **Reviewer findings and resolution:**
+  - *security — approve*; fixed: the report now opens the store through `open_store`, and more
+    invisible/bidi characters are stripped before escaping.
+  - *qa-engineer — fail, one blocker*: `report` created an empty store in a missing directory just
+    by opening it. Fixed as **D8**: `report` only reads and creates nothing; a missing store reads
+    "no runs recorded" (exit 3, not 2); `--run ""` is a usage error. R13 amended to match. QA added
+    24 tests (`tests/test_report_qa.py`) plus 2 more for D8.
+  - *data-steward — accept*, 24/24 scenarios live; one review session stalled and was resumed once.
+- **Not fixed (backlog freeze):** `--output-file -` writes a file literally named `-` (as `run`
+  does); `run --output-file` still uses a plain write (follows a symlink, umask perms, a traceback
+  on `OSError`); `history`/`runs` are not project-scoped (I-17, I-19).
+- **Lesson:** QA's blocker caught a write-on-read side effect none of the spec's own scenarios
+  exercised, since they all assumed the store already existed — "no credentials, no checks run"
+  needed its sibling rule spelled out too: a report command should not create state either.
+- **I-10 is done.**
+- **Next:** I-17 (rest), rank 9, score 2.0 — CLI errors without tracebacks in `runs`, `history` and
+  `run --output-file`, a malformed `results.url`, one root discovery.
+
 ## Iteration 20 — Selection honesty and usage errors (I-16 whole, I-17 part 1), 2026-10-02
 
 - **Spec:** [020-selection-honesty](specs/020-selection-honesty.md). **Branch:** `iter/020`.
