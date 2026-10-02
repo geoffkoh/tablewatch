@@ -952,6 +952,45 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+/* Tag, owner and datasource (spec 016): built like Status, without a status
+   colour; ticked reads from the native checkbox and a link-coloured border. */
+.facet-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0.625rem 0.125rem 0.375rem;
+  border: 1px solid var(--tw-border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.facet-toggle:has(input:checked) {
+  background: var(--tw-surface);
+  border-color: var(--tw-link);
+}
+
+.facet-toggle__label {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.facet-toggle--none .facet-toggle__label,
+.facet-toggle__note {
+  font-style: italic;
+}
+
+.facet-toggle__note {
+  color: var(--tw-text-muted);
+  white-space: nowrap;
+}
+
+.facet-filter__more {
+  align-self: center;
+}
+
 .explorer__showing {
   margin: 0 0 0.5rem;
   color: var(--tw-text-muted);

@@ -2,11 +2,11 @@
  * QA attacks on the check explorer (spec 015): odd file paths, URL handling,
  * history, counts after filtering, and the open/closed state across filters.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CheckSummary } from "../api/types";
 import { App } from "../App";
-import { buildTree, commonFolder, filterChecks, parseExplorerQuery, type FolderNode, type TreeNode } from "../lib/explorer";
+import { buildTree, commonFolder, EMPTY_QUERY, filterChecks, parseExplorerQuery, type FolderNode, type TreeNode } from "../lib/explorer";
 import { parseRoute } from "../lib/route";
 import { mapLatest } from "./fixtures/derived";
 import { recorded, type OverviewResponses } from "./fixtures/states";
@@ -201,7 +201,9 @@ describe("counts after filtering", () => {
   it("counts toggles over the search's matches, and the tree over both filters", async () => {
     await open(recorded);
     type("customers");
-    const labels = screen.getAllByRole("checkbox").map((c) => text(c.closest("label") ?? c));
+    // Scoped to Status: spec 016 added the Tag and Owner filters beside it.
+    const status = screen.getByRole("group", { name: "Status" });
+    const labels = within(status).getAllByRole("checkbox").map((c) => text(c.closest("label") ?? c));
     expect(labels).toEqual(["Fail 2", "Warn 0", "Pass 3"]);
     fireEvent.click(screen.getByRole("checkbox", { name: "Pass 3" }));
     expect(text(document.querySelector(".explorer__showing") ?? document.body)).toBe("Showing 3 of 18 checks.");
@@ -210,7 +212,7 @@ describe("counts after filtering", () => {
   });
 
   it("a filtered tree's counts equal the filtered checks", () => {
-    const filtered = filterChecks(recorded.checks.items, { q: "sales", statuses: ["fail", "pass"] });
+    const filtered = filterChecks(recorded.checks.items, { ...EMPTY_QUERY, q: "sales", statuses: ["fail", "pass"] });
     const tree: FolderNode = buildTree(filtered, ["checks"]);
     expect(tree.counts.total).toBe(filtered.length);
     expect(tree.counts.warn).toBe(0);

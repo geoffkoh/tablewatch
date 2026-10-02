@@ -1,10 +1,12 @@
 /**
- * The check explorer, `/checks` (spec 015): the `checks/` tree with problem
- * counts on every folder and file, a text search and a status filter. Loads
+ * The check explorer, `/checks` (specs 015, 016): the `checks/` tree with
+ * problem counts on every folder and file, a text search, and filters by
+ * status, tag, owner and datasource. Loads
  * `/project` and `/checks` through the shared hook; filtering runs in memory
  * and never fetches (E18).
  *
- * The search and the statuses live in the URL (`?q=…&status=…`). Each change
+ * The search and the filters live in the URL
+ * (`?q=…&status=…&tag=…&owner=…&datasource=…`). Each change
  * rewrites the current history entry with `replaceState` (decision 1): no
  * entry is added and nothing navigates, so spec 004 D7 still holds, and Back
  * from a check's page returns to the same view.
@@ -13,6 +15,7 @@ import { useDeferredValue, useEffect, useId, useMemo, useState, type ReactElemen
 import { getProject, listChecks } from "../api/api";
 import type { CheckList, CheckSummary, Project } from "../api/types";
 import { ExplorerTree } from "../components/ExplorerTree";
+import { FacetFilter } from "../components/FacetFilter";
 import { Header } from "../components/Header";
 import { LoadError } from "../components/LoadError";
 import { ProjectProblems } from "../components/ProjectProblems";
@@ -20,12 +23,15 @@ import {
   buildTree,
   commonFolder,
   explorerSearch,
+  FACET_KEYS,
+  facetOptions,
   filterChecks,
   isFiltering,
-  matchesText,
   MAX_QUERY_LENGTH,
   orderStatuses,
+  orderValues,
   parseExplorerQuery,
+  showFacet,
   type ExplorerQuery,
 } from "../lib/explorer";
 import { EXPLORER_HREF } from "../lib/route";
@@ -42,7 +48,10 @@ const REQUESTS: Requests<ExplorerSlots> = {
   checks: () => listChecks(),
 };
 
-/** One toggle per status present, or selected, with its count among the checks the search matches (E9). */
+/**
+ * One toggle per status present, or selected, with its count among the checks
+ * the search and the other filters match (E9, F6).
+ */
 function StatusFilter({
   checks,
   query,
@@ -53,7 +62,7 @@ function StatusFilter({
   onChange: (statuses: Status[]) => void;
 }): ReactElement {
   const present = new Set(checks.map((c) => (c.latest === null ? "none" : c.latest.outcome)));
-  const counts = countStatuses(checks.filter((c) => matchesText(c, query.q)));
+  const counts = countStatuses(filterChecks(checks, query, "status"));
   const selected = new Set(query.statuses);
   const shown = STATUS_ORDER.filter((s) => present.has(s) || selected.has(s));
   return (
@@ -163,7 +172,7 @@ export function Explorer({ path, search }: { path: string; search: string }): Re
                   }}
                 />
                 <span id={hintId} className="quiet explorer__hint">
-                  Name, expression, dataset, file or id
+                  Name, expression, dataset, file, id, tag, owner or datasource
                 </span>
               </div>
               <StatusFilter
@@ -173,6 +182,20 @@ export function Explorer({ path, search }: { path: string; search: string }): Re
                   setQuery((prev) => ({ ...prev, statuses }));
                 }}
               />
+              {FACET_KEYS.map((facet) => {
+                const options = facetOptions(items, query, facet);
+                if (!showFacet(options)) return null;
+                return (
+                  <FacetFilter
+                    key={facet}
+                    facet={facet}
+                    options={options}
+                    onChange={(values) => {
+                      setQuery((prev) => ({ ...prev, [facet]: orderValues(values) }));
+                    }}
+                  />
+                );
+              })}
             </form>
             <p className="explorer__showing" aria-live="polite">
               {filtering
