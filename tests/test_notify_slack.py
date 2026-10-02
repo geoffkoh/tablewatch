@@ -402,11 +402,13 @@ def test_the_retail_example(tmp_path: Path, hook: Hook) -> None:  # noqa: F811  
     before = defaults.read_text(encoding="utf-8") if defaults.exists() else ""
     defaults.write_text(before + "notify: sales-slack\n", encoding="utf-8")
     first = tw.run(root)
-    problems = [r for r in first.results if r.outcome.value == "fail"]
+    # The example's database may not be built (CI): then checks are errors.
+    failed = sum(r.outcome.value == "fail" for r in first.results)
+    errored = sum(r.outcome.value == "error" for r in first.results)
+    assert failed + errored
     assert len(hook.bodies) == 1
-    failing = sections(hook.bodies[0])[0]
-    assert failing.startswith(f"*Failing ({len(problems)})*")
-    assert failing.count("\n• ") == len(problems)
+    lines = sum(s.count("\n• ") for s in sections(hook.bodies[0]))
+    assert lines == failed + errored
     tw.run(root)
     assert len(hook.bodies) == 1
 
