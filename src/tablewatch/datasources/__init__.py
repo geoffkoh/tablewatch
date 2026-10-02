@@ -18,6 +18,7 @@ from sqlalchemy.exc import ArgumentError, NoSuchModuleError
 
 from tablewatch.config.project import (
     ENV_REFERENCE,
+    PROJECT_FILE,
     DuckDBDatasource,
     PostgresDatasource,
     SQLiteDatasource,
@@ -30,9 +31,37 @@ DatasourceConfig = (
 )
 
 
-MALFORMED_URL = "the url is not a SQLAlchemy URL (expected scheme://...)"
+# Every reason below is fixed text: SQLAlchemy and driver exceptions can
+# quote a URL's user, host, query or a password typed into the port slot,
+# so their text never reaches a message (security R1). The only values
+# echoed are a scheme that passed URL_SCHEME and a module name that passed
+# MODULE_NAME.
+MALFORMED_URL = (
+    "url is not a SQLAlchemy URL: it must start with dialect:// or dialect+driver://"
+)
+UNREADABLE_URL = (
+    "url could not be read after the scheme: check the user, password, host, "
+    "port, database and query parts"
+)
 # SQLAlchemy's scheme grammar: driver names use "_" (`oracle+cx_oracle`).
 URL_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9_+.\-]*")
+MODULE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
+MAX_SCHEME = 64
+# Dialects that are not part of SQLAlchemy: the package that provides each,
+# keyed on the dialect name (the scheme before "+"). Checked on PyPI.
+_DIALECT_PACKAGES = {
+    "snowflake": "snowflake-sqlalchemy",
+    "bigquery": "sqlalchemy-bigquery",
+    "redshift": "sqlalchemy-redshift",
+    "databricks": "databricks-sqlalchemy",
+    "trino": "trino",
+}
+
+
+def datasource_problem(name: str, reason: str | Exception) -> str:
+    """A datasource-level reason, prefixed with where to fix it."""
+    shown = f"'{name}'" if name.isprintable() else repr(name)
+    return f"datasource {shown} in {PROJECT_FILE}: {reason}"
 
 
 class DatasourceError(Exception):
@@ -56,51 +85,132 @@ def dialect_for(config: DatasourceConfig) -> Dialect:
         case DuckDBDatasource():
             return _duckdb_dialect()
         case URLDatasource(url=url):
-            scheme, separator, _ = url.partition("://")
-            if ENV_REFERENCE.search(scheme):
-                raise DatasourceError(
-                    "cannot tell the dialect of a URL whose scheme is an ${env:} reference"
-                )
-            # Only a well-formed scheme is echoed: without "://" the "scheme"
-            # is the whole URL, password included.
-            if not separator or not URL_SCHEME.fullmatch(scheme):
-                raise DatasourceError(MALFORMED_URL)
-            try:
-                return make_url(f"{scheme}://").get_dialect()()
-            except (ArgumentError, NoSuchModuleError) as exc:
-                raise DatasourceError(
-                    f"unsupported SQLAlchemy URL scheme '{scheme}': {exc}"
-                ) from None
-            except ValueError:  # e.g. "a+b+c": more than one driver
-                raise DatasourceError(MALFORMED_URL) from None
+            return _load_dialect(_scheme_of(url))()
 
 
 def create_engine_for(config: DatasourceConfig, project_root: Path) -> Engine:
+    """An engine for a datasource; `${env:}` references are resolved only here."""
     connect_args: dict[str, Any] = {}
     match config:
         case PostgresDatasource():
+            dialect = "postgresql"
+            try:
+                port = int(resolve_env(str(config.port)))
+            except ValueError:  # the text would quote the value, maybe a secret
+                raise DatasourceError("port must be a whole number") from None
             url: URL | str = URL.create(
                 "postgresql+psycopg",
                 username=_env(config.user),
                 password=_env(config.password),
                 host=resolve_env(config.host),
-                port=int(resolve_env(str(config.port))),
+                port=port,
                 database=resolve_env(config.database),
                 query={k: resolve_env(v) for k, v in config.options.items()},
             )
             _require("psycopg", "postgres")
         case DuckDBDatasource():
+            dialect = "duckdb"
             _require("duckdb_engine", "duckdb")
             url = f"duckdb:///{_local_path(resolve_env(config.path), project_root)}"
             connect_args["read_only"] = config.read_only
         case SQLiteDatasource():
+            dialect = "sqlite"
             url = f"sqlite:///{_local_path(resolve_env(config.path), project_root)}"
         case URLDatasource():
             url = resolve_env(config.url)
+            scheme = _scheme_of(url)
+            _load_dialect(scheme)
+            dialect = _dialect_name(scheme)
     try:
         return create_engine(url, connect_args=connect_args)
-    except (ArgumentError, NoSuchModuleError) as exc:
-        raise DatasourceError(str(exc)) from None
+    except ImportError as exc:
+        raise _import_failure(dialect, exc) from None
+    except (ArgumentError, NoSuchModuleError, ValueError, TypeError):
+        # The scheme was fine; the rest of the url (user, password, host,
+        # port, database, query) was not. Its text is never echoed.
+        raise DatasourceError(UNREADABLE_URL) from None
+
+
+def _scheme_of(url: str) -> str:
+    """The URL's scheme, if it is one; never echoes anything else of the URL."""
+    scheme, separator, _ = url.partition("://")
+    if ENV_REFERENCE.search(scheme):
+        raise DatasourceError(
+            "cannot tell the dialect of a url whose scheme is an ${env:} reference"
+        )
+    # Without "://" the "scheme" is the whole URL, password included.
+    if not separator or len(scheme) > MAX_SCHEME or not URL_SCHEME.fullmatch(scheme):
+        raise DatasourceError(MALFORMED_URL)
+    return scheme
+
+
+def _load_dialect(scheme: str) -> type[Dialect]:
+    """The dialect class for a well-formed scheme, or a plain-words reason."""
+    name = _dialect_name(scheme)
+    try:
+        dialect: type[Dialect] = make_url(f"{scheme}://").get_dialect()
+        return dialect
+    except ImportError as exc:
+        raise _import_failure(name, exc) from None
+    except (ArgumentError, NoSuchModuleError):
+        if name == "postgres":
+            raise DatasourceError(
+                "SQLAlchemy does not accept the scheme 'postgres'; "
+                "write postgresql:// instead"
+            ) from None
+        driver = scheme.partition("+")[2]
+        if driver and _dialect_installed(name):
+            raise DatasourceError(
+                f"SQLAlchemy has no driver '{driver}' for the {name} dialect; "
+                "check the spelling after '+'"
+            ) from None
+        if name in _DIALECT_PACKAGES:
+            raise DatasourceError(
+                f"the {name} driver is not installed: "
+                f"pip install {_DIALECT_PACKAGES[name]}"
+            ) from None
+        raise DatasourceError(
+            f"no SQLAlchemy dialect named '{name}' is installed; check the spelling "
+            "of the url scheme, or install the dialect package for this database"
+        ) from None
+    except ValueError:  # e.g. "a+b+c": more than one driver
+        raise DatasourceError(
+            f"url scheme '{scheme}' is not dialect or dialect+driver"
+        ) from None
+    except Exception as exc:
+        # A third-party dialect can raise anything while it loads; compile and
+        # the check page must not crash (rule 7), and its text is not echoed.
+        raise DatasourceError(
+            f"the {name} dialect could not be loaded ({type(exc).__name__})"
+        ) from None
+
+
+def _dialect_installed(name: str) -> bool:
+    """Whether a dialect loads at all: tells a misspelt driver after '+' from a
+    missing dialect. A probe, so any failure just means "no"."""
+    try:
+        make_url(f"{name}://").get_dialect()
+    except Exception:
+        return False
+    return True
+
+
+def _dialect_name(scheme: str) -> str:
+    return scheme.split("+")[0]
+
+
+def _import_failure(dialect: str, exc: ImportError) -> DatasourceError:
+    """A driver or dialect that could not be imported, in fixed words."""
+    if isinstance(exc, ModuleNotFoundError):
+        return DatasourceError(_module_missing(dialect, exc))
+    return DatasourceError(f"the {dialect} driver could not be imported")
+
+
+def _module_missing(dialect: str, exc: ModuleNotFoundError) -> str:
+    module = exc.name if exc.name and MODULE_NAME.fullmatch(exc.name) else None
+    if module is None:
+        return f"the {dialect} driver needs a Python module that is not installed"
+    return f"the {dialect} driver needs the Python module '{module}', which is not installed"
 
 
 def _env(value: str | None) -> str | None:

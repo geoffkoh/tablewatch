@@ -17,6 +17,7 @@ from tablewatch.checks.model import Check, Dataset
 from tablewatch.datasources import (
     DatasourceConfig,
     DatasourceError,
+    datasource_problem,
     dialect_for,
     timezone_of,
 )
@@ -151,7 +152,7 @@ def compile_dataset(
             list(checks) if checks is not None else None,
         )
     except DatasourceError as exc:
-        return _failed(str(exc))
+        return _failed(datasource_problem(dataset.datasource, exc))
     scan = plan.scan()
     labels = plan.labels()
     return CompiledDataset(
