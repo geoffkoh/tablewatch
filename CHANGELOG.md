@@ -346,6 +346,15 @@ All notable changes to tablewatch. The format follows
   datasource on a run now start `datasource '<name>' in tablewatch.yml:`
   instead of `datasource <name>:`; results recorded before the upgrade
   keep their text.
+- `tablewatch runs` and `tablewatch history`, and an unwritable
+  `--output-file` on `tablewatch run`, now exit **2** ("tablewatch could
+  not evaluate") instead of 1 ("the data failed a check") when the
+  results store or the output file cannot be read or written. Orchestrators
+  that treat exit 1 as a data failure and 2 as "did not complete" will see
+  these cases move from the first bucket to the second.
+- `--project-dir` (and `TABLEWATCH_PROJECT_DIR`) now also accepts a path
+  to a `tablewatch.yml` file directly, not only its containing directory,
+  matching what `tablewatch.load()` already accepted.
 
 ### Fixed
 
@@ -467,6 +476,26 @@ All notable changes to tablewatch. The format follows
   result, instead of being treated as an unmatched selector.
 - `tablewatch list` and `tablewatch compile` now exit 3, like `run`,
   when their selectors each match something but together match nothing.
+- `tablewatch runs`, `tablewatch history`, `tablewatch report` and
+  `tablewatch run --output-file` no longer crash with a Python traceback
+  on a bad results store or an unwritable output path. Each prints one
+  line on stderr and exits 2: a mistyped `results.url`, a missing driver,
+  a results file that is not a database, a store a newer tablewatch has
+  migrated, a directory where the store file should be, a full disk, a
+  missing parent directory under `--output-file`, or a read-only
+  destination. `tablewatch runs`/`history` no longer create an empty
+  store just by being run when there is none yet.
+- `tablewatch runs` and `tablewatch history` now show only the current
+  project's runs and results. Before, a results store shared by several
+  projects mixed another project's runs and check history into the
+  output.
+- `tablewatch run --output-file -` and `tablewatch report --output-file -`
+  now write to stdout, like piping without `--output-file`, instead of
+  creating a file literally named `-`.
+- A store error never shows a credential or a local filesystem path: a
+  bad `results.url` reports "not a valid database URL"; a filesystem
+  problem reports its reason (for example "Permission denied") without
+  the path.
 
 ## 0.1.0 — not yet published
 

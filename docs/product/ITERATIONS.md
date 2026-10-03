@@ -6,6 +6,36 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 22 — Store and file errors without tracebacks; `runs` and `history` per project (I-17 rest, I-19), 2026-10-03
+
+- **Spec:** [022-cli-store-errors](specs/022-cli-store-errors.md). **Branch:** `iter/022`. Full track.
+  No items added (freeze). REVIEW was finished by the tech lead after the PM session stalled twice.
+- **REFINE.**
+  - Architect: delete the unscoped store reads; add a scoped `matching_check_ids`; one
+    `_reading_store` helper; one `config.find_project`; a store that cannot be read exits 2.
+  - Security R1–R4: an existing output file keeps its mode. Driver text is shown only for a SQLite
+    store; any other backend, and any URL parse failure, gets a fixed reason. Security found an
+    existing leak of part of a password with `@`, and closed it.
+  - Data-steward: exit 2; `--output-file -` means stdout; the summary prints even when the write fails.
+- **Shipped.** `runs`, `history`, `report` and `run --output-file` give one line instead of a
+  traceback, with exit 2 (it was 1), and never create a store. `runs` and `history` show this
+  project only. `--output-file` is written atomically for `run` too. `--project-dir` accepts a
+  `tablewatch.yml`. `store_sink` and the notify sink open through `open_store`, the one place a store
+  error becomes text. Suite: Python **1827 passed, 1 xfailed**; ruff and mypy clean.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — fail, then fixed; 38 tests (`tests/test_cli_store_errors_qa.py`).* Blocking:
+    a store migrated by a newer tablewatch crashed `runs`, `history`, `report` and `serve`; it now
+    reads "upgrade tablewatch". Blocking as filed: `-v` shows driver text. Ruled acceptable under
+    D6, as security accepted in REFINE; the tests now pin the default level. Also fixed: a directory
+    at the store path exits 2, and the record error drops its prefix.
+  - *data-steward — reject, then accept.* E7 printed the full local path; it now gives
+    `Permission denied` only. E8 wording fixed. The tech lead shortened the fixed reason to
+    `could not connect — run with -v for details`.
+- **Not added (backlog freeze):** `--project-dir` with a file not named `tablewatch.yml` reads as a
+  missing project; a symlinked `tablewatch.yml` takes the link's folder as the root; `serve` still
+  exits 3 on a store it cannot open (I-20).
+- **Backlog:** I-17 and I-19 done.
+
 ## Iteration 21 — `tablewatch report`: a recorded run as one static HTML page (I-10), 2026-10-02
 
 - **Spec:** [021-static-html-report](specs/021-static-html-report.md). **Branch:** `iter/021`.
