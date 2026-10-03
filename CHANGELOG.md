@@ -169,6 +169,15 @@ All notable changes to tablewatch. The format follows
   `tablewatch.yml`), `"not_a_name"` (the value isn't a datasource name at
   all, for example a URL), or `"none"` (no `datasource:` is set anywhere
   for this check).
+- `change(<metric call>)` compares a count or number against the last recorded run of the same
+  check: `change(row_count) > -20%` fails when today's count dropped by more than a fifth since
+  the last time this check ran. The change is signed (a drop is negative) and written as
+  relative (with a `%` in the rule) or absolute (in the metric's own units), e.g. `-60.00%` or
+  `+50 rows`. The first run has nothing to compare with and is `skipped`, as is a `%` rule when
+  the previous value was 0 (use an absolute rule instead). `--no-store` still compares against
+  the store's history, it just never writes to it. The JSON report gains `measured`, `unit` and
+  `previous` (the prior value and when it was recorded) for every result. See "Change over time"
+  in `docs/check-language.md`.
 
 ### Changed (breaking)
 
@@ -386,6 +395,9 @@ All notable changes to tablewatch. The format follows
   a trustworthy origin, is now sent only when the request's `Host` is
   loopback — no more Chromium console warning when `serve` is opened
   from another machine over plain `http`.
+- The results store migrates a new column pair, `measured` and `unit`, onto `tablewatch_check_results`
+  (Alembic revision `0002`). It applies the first time a run is recorded after upgrading; reading
+  history never migrates, so `--no-store` and an older store stay untouched.
 
 ### Fixed
 
