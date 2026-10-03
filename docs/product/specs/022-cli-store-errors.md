@@ -88,5 +88,9 @@ CLI and `tw.load()` find the project root with one function.
   driver text at INFO. A URL parse failure (`ValueError`, `ArgumentError`) always reads `results.url is
   not a valid database URL`, never `str(exc)`. The same rules apply to `run`'s record error (E8). New
   must scenario E10: `postgresql://u:p@ss@host/db` never shows `ss@host`.
+- **D8 (VERIFY, QA).** A store migrated by a newer tablewatch is one line, exit 2 (`serve`: 3). A directory
+  at the store's path is exit 2, not "no store". E7 reads `… results store: Permission denied`:
+  a filesystem error gives its reason, never the path (data-steward). The record error drops its `results store:` prefix on the CLI (E8 as written). `-v` may
+  show driver text (D6, as security accepted).
 - **D7 (Q4).** `--output-file -` is stdout for `run` and `report`. On O1 the summary is still printed
   and the exit is 2. Wording is as above (E1/E9 carry R7's suffix); R1's text replaces both old texts.

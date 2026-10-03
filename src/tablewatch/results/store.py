@@ -17,6 +17,7 @@ from typing import NamedTuple
 
 from alembic import command
 from alembic.config import Config
+from alembic.util.exc import CommandError as AlembicCommandError
 from sqlalchemy import (
     URL,
     ColumnElement,
@@ -75,6 +76,9 @@ def store_problem(url: str, exc: BaseException) -> str:
         backend = make_url(url).get_backend_name()
     except (SQLAlchemyError, ValueError):
         return INVALID_URL
+    if isinstance(exc, OSError):
+        # Its text names the local path; the reason alone is enough.
+        return exc.strerror or type(exc).__name__
     if isinstance(exc, ImportError | NoSuchModuleError):
         from tablewatch.datasources import dialect_problem
 
@@ -99,7 +103,9 @@ def resolve_store_url(url: str, project_root: Path, *, create: bool = True) -> U
             path = project_root / path
         if create:
             path.parent.mkdir(parents=True, exist_ok=True)
-        elif not path.is_file():
+        elif path.exists() and not path.is_file():
+            raise StoreError("results store: its path is not a file")
+        elif not path.exists():
             raise NoStoreError("results store: no store has been recorded yet")
         parsed = parsed.set(database=str(path))
     return parsed
@@ -444,7 +450,13 @@ def open_store(url: str, project_root: Path, *, create: bool = True) -> ResultSt
         return ResultStore.open(url, project_root, create=create)
     except StoreError:
         raise
-    except (SQLAlchemyError, OSError, ValueError, ImportError) as exc:
+    except AlembicCommandError as exc:
+        # A revision this version does not know: a newer tablewatch migrated it.
+        raise StoreError(
+            "results store: it was upgraded by a newer tablewatch — "
+            "upgrade tablewatch to read it"
+        ) from exc
+    except Exception as exc:
         raise StoreError(f"results store: {store_problem(url, exc)}") from exc
 
 

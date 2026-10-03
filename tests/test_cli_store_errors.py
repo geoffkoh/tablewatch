@@ -95,7 +95,8 @@ def test_an_unreadable_store(retail: Path, command: tuple[str, ...]) -> None:  #
     finally:
         folder.chmod(0o755)
     assert code == 2
-    assert err.startswith("tablewatch: could not read the results store: ")
+    assert err == "tablewatch: could not read the results store: Permission denied\n"
+    assert str(retail) not in err
     _no_trace(err)
 
 
@@ -105,8 +106,7 @@ def test_run_cannot_record(retail: Path) -> None:  # E8
     assert code == 2
     assert len(json.loads(out)["results"]) == 19
     assert (
-        "tablewatch: could not record the run: results store: "
-        "results.url is not a valid database URL"
+        "tablewatch: could not record the run: results.url is not a valid database URL"
     ) in err
     _no_trace(err)
 

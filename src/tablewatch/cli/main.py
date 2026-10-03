@@ -477,7 +477,8 @@ def run(
     # The checks ran and their outcome stands, but a gap in history is
     # tablewatch failing at part of its job: exit 2 (see RunResult.exit_code).
     for reason in result.record_errors:
-        click.echo(f"tablewatch: could not record the run: {reason}", err=True)
+        shown = reason.removeprefix("results store: ")
+        click.echo(f"tablewatch: could not record the run: {shown}", err=True)
     code = result.exit_code()
 
     to_stdout = output_file is None or str(output_file) == "-"
