@@ -556,7 +556,8 @@
               "not_found",
               "method_not_allowed",
               "internal_error",
-              "store_unavailable"
+              "store_unavailable",
+              "unavailable"
             ],
             "title": "Code",
             "type": "string"

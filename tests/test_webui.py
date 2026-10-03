@@ -516,9 +516,17 @@ def test_every_response_carries_the_csp(recorded: Recorded) -> None:  # X2
         ]
     for response in responses:
         assert response.headers["content-security-policy"] == CSP, response.url
-        assert response.headers["cross-origin-opener-policy"] == "same-origin"
+        hashed_asset = response.url.path == "/assets/app-abc123.js"
+        foreign_host = response.request.headers["host"] == "evil.example"
         for name, value in SECURITY_HEADERS.items():
-            assert response.headers[name] == value
+            if name == "cache-control" and hashed_asset:
+                # Spec 025 S7: a hashed asset never goes stale.
+                assert response.headers[name] == "public, max-age=31536000, immutable"
+            elif name == "cross-origin-opener-policy" and foreign_host:
+                # Spec 025 D5: COOP only for loopback hosts.
+                assert name not in response.headers
+            else:
+                assert response.headers[name] == value, (response.url, name)
         assert not any(h.startswith("access-control-allow") for h in response.headers)
 
 

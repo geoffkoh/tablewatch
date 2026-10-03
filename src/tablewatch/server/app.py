@@ -19,9 +19,10 @@ from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from tablewatch._version import __version__
+from tablewatch.paths import root_forms
 from tablewatch.results.store import StoreError
 from tablewatch.server import schemas
-from tablewatch.server.hosts import host_allowed
+from tablewatch.server.hosts import host_allowed, is_loopback
 from tablewatch.server.routes import STATUS_CODES, ApiError, ServerContext, router
 from tablewatch.server.ui import Bundle, is_api_path
 
@@ -45,8 +46,18 @@ SECURITY_HEADERS = [
     (b"referrer-policy", b"no-referrer"),
     (b"x-frame-options", b"DENY"),
     (b"content-security-policy", CSP.encode()),
-    (b"cross-origin-opener-policy", b"same-origin"),
 ]
+# Browsers ignore COOP on an untrustworthy origin (plain http to a non-loopback
+# host) and warn about it, so it is sent only to loopback hosts. It comes back
+# for every host with TLS or a proxy (Phase 4).
+COOP = (b"cross-origin-opener-policy", b"same-origin")
+# Hashed asset names change with their content, so they never go stale.
+IMMUTABLE = b"public, max-age=31536000, immutable"
+
+# Requests in flight beyond this get the JSON 503; uvicorn's own limit
+# (serve.py) is the backstop for idle sockets, which never reach the app.
+MAX_IN_FLIGHT = 64
+BUSY = "the server is busy — try again shortly"
 
 INTERNAL_ERROR = "internal error — see the server log"
 FORBIDDEN_HOST = (
@@ -84,6 +95,7 @@ def create_app(
         debug=False,
     )
     app.state.context = context
+    schemas.SERVED_ROOTS = tuple(root_forms(context.project.root))
     app.include_router(router)
 
     @app.get(OPENAPI_URL, include_in_schema=False)
@@ -164,36 +176,58 @@ class _Guard:
     def __init__(self, app: FastAPI, allowed_hosts: Collection[str]) -> None:
         self.app = app
         self.allowed_hosts = frozenset(h.lower() for h in allowed_hosts)
+        # The event loop runs one coroutine at a time: no lock needed.
+        self.in_flight = 0
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
         started = False
+        hosts = [value for name, value in scope["headers"] if name == b"host"]
+        host = hosts[0].decode("latin-1") if len(hosts) == 1 else None
+        extra = [COOP] if host is not None and _is_loopback_host(host) else []
+        asset = str(scope.get("path", "")).startswith("/assets/")
 
         async def send_secured(message: Message) -> None:
             nonlocal started
             if message["type"] == "http.response.start":
                 started = True
-                present = {name for name, _ in message.get("headers", [])}
+                headers = list(message.get("headers", []))
+                if asset and message.get("status") == 200:
+                    headers.append((b"cache-control", IMMUTABLE))
+                present = {name for name, _ in headers}
                 message["headers"] = [
-                    *message.get("headers", []),
-                    *(h for h in SECURITY_HEADERS if h[0] not in present),
+                    *headers,
+                    *(h for h in (*SECURITY_HEADERS, *extra) if h[0] not in present),
                 ]
             await send(message)
 
-        hosts = [value for name, value in scope["headers"] if name == b"host"]
-        host = hosts[0].decode("latin-1") if len(hosts) == 1 else None
         if not host_allowed(host, self.allowed_hosts):
             log.warning("refused a request for host %r", (host or "")[:100])
             await _send_error(send_secured, 403, "forbidden_host", FORBIDDEN_HOST)
             return
+        if self.in_flight >= MAX_IN_FLIGHT:
+            await _send_error(send_secured, 503, "unavailable", BUSY)
+            return
+        self.in_flight += 1
         try:
             await self.app(scope, receive, send_secured)
         except Exception:
             log.exception("unexpected error serving %s", scope.get("path", "?"))
             if not started:
                 await _send_error(send_secured, 500, "internal_error", INTERNAL_ERROR)
+        finally:
+            self.in_flight -= 1
+
+
+def _is_loopback_host(header: str) -> bool:
+    host = header.strip().lower()
+    if host.startswith("["):
+        host = host[1 : host.find("]")] if "]" in host else host
+    else:
+        host = host.partition(":")[0]
+    return is_loopback(host)
 
 
 async def _send_error(send: Send, status: int, code: str, message: str) -> None:

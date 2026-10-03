@@ -26,6 +26,7 @@ from tablewatch.diagnostics import SourceLocation
 from tablewatch.engine.compiled import CompiledDataset, QueryUse, ScanUse
 from tablewatch.jsonvalues import JsonFloat, Timestamp
 from tablewatch.metrics.registry import get_metric
+from tablewatch.paths import scrub_paths
 from tablewatch.results.models import CheckResultRow, RunRow
 from tablewatch.results.state import Evaluated
 from tablewatch.results.store import Latest
@@ -58,6 +59,7 @@ ErrorCode = Literal[
     "method_not_allowed",
     "internal_error",
     "store_unavailable",
+    "unavailable",
 ]
 
 
@@ -86,7 +88,7 @@ class Diagnostic(_Model):
     def of(cls, diagnostic: DiagnosticModel) -> Diagnostic:
         return cls(
             severity=diagnostic.severity.value,
-            message=diagnostic.message,
+            message=served_text(diagnostic.message),
             location=Location.of(diagnostic.location) if diagnostic.location else None,
         )
 
@@ -583,7 +585,19 @@ def _evaluated(value: str) -> EvaluatedOutcome:
     raise ValueError(f"not an evaluated outcome: {value!r}")
 
 
+# The project root's spellings, set once by `create_app`: one project per
+# server process. Every served message passes through `served_text`.
+SERVED_ROOTS: tuple[str, ...] = ()
+
+
+def served_text(text: str) -> str:
+    """`text` without a directory of this machine (spec 025): see `paths`."""
+    return scrub_paths(text, SERVED_ROOTS)
+
+
 def _message(outcome: str, message: str | None) -> str | None:
+    if message is not None:
+        message = served_text(message)
     if outcome == _outcome(outcome):
         return message
     note = f"recorded outcome {outcome!r} is unknown to tablewatch {__version__}"

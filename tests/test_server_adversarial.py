@@ -211,8 +211,9 @@ def test_a_locked_store_is_503_not_500(recorded: Recorded) -> None:
 
 @pytest.mark.xfail(
     strict=True,
-    reason="uvicorn answers past limit_concurrency itself, before the app: a known "
-    "limitation, documented in the README (backlog)",
+    reason="spec 025 D4: idle sockets never reach the app, so uvicorn's backstop "
+    "(256) answers them in plain text; requests in flight get the envelope "
+    "(tests/test_serve_polish.py). Phase 4 note on I-20",
 )
 def test_connection_limit_answers_with_the_error_envelope(recorded: Recorded) -> None:
     # limit_concurrency=64: past it, uvicorn answers 503 itself, bypassing the
@@ -346,7 +347,10 @@ def test_all_interfaces_bind_warns_and_still_guards_hosts(recorded: Recorded) ->
             f"{base}/api/v1/project", headers={"Host": f"192.168.1.10:{port}"}
         )
     assert lines[0].startswith("tablewatch: warning: serving on 0.0.0.0 ")
-    assert lines[1].startswith(f"tablewatch serve: http://0.0.0.0:{port}/ ")
+    # Spec 025 S1: a URL a browser can open, and which family is listening.
+    assert lines[1].startswith(
+        f"tablewatch serve: http://127.0.0.1:{port}/ (listening on all IPv4 addresses; "
+    )
     assert evil.status_code == 403
     assert by_ip.status_code == 200
 
@@ -969,6 +973,7 @@ def test_openapi_enums(recorded: Recorded) -> None:
         "method_not_allowed",
         "internal_error",
         "store_unavailable",
+        "unavailable",
     }
     counts = _schema(document, "Counts")
     assert set(counts["properties"]) == {

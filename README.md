@@ -583,7 +583,9 @@ ssh -L 8765:127.0.0.1:8765 dq-host      # then open http://127.0.0.1:8765/
 ```
 
 `--host 0.0.0.0` (or any address that is not loopback) serves the network and
-prints a warning:
+prints a warning. The startup line then shows a URL you can open on this
+machine and says what is listening:
+`tablewatch serve: http://127.0.0.1:8765/ (listening on all IPv4 addresses; …)`.
 
 ```text
 tablewatch: warning: serving on 0.0.0.0 with no authentication — anyone who can reach this address can read this project's check files (comments included), the SQL each check runs, and its results: data values, database error messages that can quote row values, and owner emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn it on yet).
@@ -594,8 +596,11 @@ included. Keep credentials in environment variables (`${env:NAME}`), never
 in a check file or a comment.
 
 Results can contain data values, such as a minimum price or a newest
-timestamp, and owners' email addresses. An error message can quote a row's
-value verbatim (`could not convert string to float: 'N/A'`). The SQL shows
+timestamp, and owners' email addresses. Error messages name a column's kind,
+never a value, and paths on the server are cut from what the API serves: a
+path inside the project is shown relative to it, any other as
+`<outside the project>/name`. A database's error about your own SQL can
+still quote a value. The SQL shows
 your table and column names, and the values written in your checks:
 `valid_values`, `missing_values`, `filter:` and `where:`.
 
@@ -610,12 +615,17 @@ tablewatch serve --host 0.0.0.0 --allowed-host dq.internal
 
 `serve` exits `0` when stopped with Ctrl-C or SIGTERM. It exits `3` when it
 could not start: the `server` extra is missing, `tablewatch.yml` is unusable,
-the results store cannot be opened, or the port is in use. Its access log
-goes to stderr, as JSON with `--log-format json`, and `-q` turns it off.
+the results store cannot be opened, or the port is in use. (`runs`,
+`history` and `report` exit `2` on a store they cannot read: they started,
+then could not do their job; `serve` never started.) Every stderr line,
+the startup line and warnings included, is JSON with `--log-format json`.
+`-q` turns the access log off.
 
-`serve` is meant for a handful of readers. It accepts at most 64 connections
-at once; beyond that the web server itself answers `503` in plain text,
-without the API's JSON error body. Anything past a trusted network belongs
+`serve` is meant for a handful of readers. Past 64 requests in flight it
+answers `503 unavailable` with the API's JSON error body. Connections that
+send nothing never reach it; past 256 of those the web server itself
+answers `503` in plain text. Hashed web UI files are cached by browsers;
+everything else, the API included, is `no-store`. Anything past a trusted network belongs
 behind a reverse proxy, which is also where TLS goes.
 
 ## Use from Python

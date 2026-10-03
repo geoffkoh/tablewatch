@@ -46,7 +46,7 @@ from tablewatch.config import Project, find_project, load_project
 from tablewatch.config.jsonschema import check_file_schema, project_schema
 from tablewatch.config.project import PROJECT_FILE, MissingEnvironmentVariableError
 from tablewatch.datasources import DatasourceError, create_engine_for
-from tablewatch.diagnostics import ProjectError, Severity
+from tablewatch.diagnostics import Diagnostic, ProjectError, Severity
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import FAIL_ON_CHOICES, MAX_CONCURRENCY, FailOn
@@ -140,8 +140,13 @@ def cli(
 
 
 def _fail(message: str, code: int = EXIT_INVALID_PROJECT) -> NoReturn:
-    click.echo(f"tablewatch: {message}", err=True)
+    logs.console(f"tablewatch: {message}", logging.ERROR)
     sys.exit(code)
+
+
+def _say_diagnostic(diagnostic: Diagnostic) -> None:
+    level = logging.ERROR if diagnostic.severity is Severity.ERROR else logging.WARNING
+    logs.console(str(diagnostic), level)
 
 
 def _project(ctx: click.Context, require_valid: bool = True) -> Project:
@@ -154,11 +159,11 @@ def _project(ctx: click.Context, require_valid: bool = True) -> Project:
         project = load_project(root)
     except ProjectError as exc:
         for diagnostic in exc.diagnostics:
-            click.echo(str(diagnostic), err=True)
+            _say_diagnostic(diagnostic)
         sys.exit(EXIT_INVALID_PROJECT)
     for diagnostic in project.diagnostics:
         if require_valid or diagnostic.severity is Severity.WARNING:
-            click.echo(str(diagnostic), err=True)
+            _say_diagnostic(diagnostic)
     if require_valid and not project.ok:
         errors = sum(1 for d in project.diagnostics if d.severity is Severity.ERROR)
         _fail(
@@ -321,7 +326,7 @@ def validate(ctx: click.Context) -> None:
     project = _project(ctx, require_valid=False)
     errors = [d for d in project.diagnostics if d.severity is Severity.ERROR]
     for diagnostic in errors:
-        click.echo(str(diagnostic), err=True)
+        _say_diagnostic(diagnostic)
     checks = len(project.checks)
     summary = f"{len(project.datasets)} datasets, {checks} checks"
     if errors:
@@ -478,7 +483,7 @@ def run(
     # tablewatch failing at part of its job: exit 2 (see RunResult.exit_code).
     for reason in result.record_errors:
         shown = reason.removeprefix("results store: ")
-        click.echo(f"tablewatch: could not record the run: {shown}", err=True)
+        logs.console(f"tablewatch: could not record the run: {shown}", logging.ERROR)
     code = result.exit_code()
 
     to_stdout = output_file is None or str(output_file) == "-"
@@ -524,7 +529,7 @@ def serve(
     from datetime import UTC, datetime
 
     from tablewatch.results.store import StoreError, is_persistent, open_store
-    from tablewatch.server.hosts import is_loopback
+    from tablewatch.server.hosts import is_loopback, startup_host
 
     try:
         from tablewatch.server import serve as server
@@ -542,12 +547,12 @@ def serve(
     project = _project(ctx, require_valid=False)
     errors = [d for d in project.diagnostics if d.severity is Severity.ERROR]
     for diagnostic in errors:
-        click.echo(str(diagnostic), err=True)
+        _say_diagnostic(diagnostic)
     if errors:
-        click.echo(
+        logs.console(
             f"tablewatch: {len(errors)} error{'s' if len(errors) != 1 else ''} in the "
             f"project — serving the {len(project.checks)} checks that loaded",
-            err=True,
+            logging.WARNING,
         )
 
     try:
@@ -564,19 +569,19 @@ def serve(
         except OSError as exc:
             _fail(f"could not listen on {host}:{port}: {exc.strerror or exc}")
         if not is_loopback(host):
-            click.echo(
+            logs.console(
                 f"tablewatch: warning: serving on {host} with no authentication — anyone "
                 "who can reach this address can read this project's check files "
                 "(comments included), the SQL each check runs, and its results: data "
                 "values, database error messages that can quote row values, and owner "
                 "emails. Authentication arrives in Phase 4 (tablewatch.yml cannot turn "
                 "it on yet).",
-                err=True,
+                logging.WARNING,
             )
-        shown = f"[{host}]" if ":" in host else host
+        url_host, listening = startup_host(host)
         started = (
-            f"tablewatch serve: http://{shown}:{sock.getsockname()[1]}/ "
-            f"(project {project.config.name}, {len(project.checks)} checks; "
+            f"tablewatch serve: http://{url_host}:{sock.getsockname()[1]}/ "
+            f"({listening}project {project.config.name}, {len(project.checks)} checks; "
             "API at /api/v1)"
         )
         context = ServerContext(
@@ -584,17 +589,17 @@ def serve(
         )
         bundle = load_bundle()
         if bundle is None:
-            click.echo(
+            logs.console(
                 "tablewatch: warning: web UI not found in this installation — "
                 "serving the API only",
-                err=True,
+                logging.WARNING,
             )
         app = create_app(context, allowed_hosts=allowed_hosts, ui=bundle)
         server.run(
             app,
             sock,
             access_log=not settings.quiet,
-            on_ready=lambda: click.echo(started, err=True),
+            on_ready=lambda: logs.console(started),
         )
 
 
