@@ -12,6 +12,13 @@ All notable changes to tablewatch. The format follows
   with no database to load them into first. Files are read in place through DuckDB (1.5 or newer)
   inside a read-only sandbox — only the configured root folder is reachable, and only as a file,
   never a symlink or a folder outside it. See "Files as datasets" in `docs/check-language.md`.
+- A files dataset can now be a pattern, such as `daily/orders_*.csv` or `**/*.parquet`: tablewatch
+  finds every matching file inside the sandboxed root (applying the same no-symlink rule to each
+  one), and checks them as one dataset — so one check file covers every day's drop instead of one
+  per file. Files with differing columns are unified by name; a column missing from one file reads
+  as missing for that file's rows rather than stopping the check. A `schema` check now also works
+  on a files dataset, single file or pattern, checking the column list DuckDB reports without
+  reading any rows beyond what it samples to detect types.
 - `tablewatch report [--run ID] [--output-file PATH]`: a recorded run as one static HTML page —
   a header with the outcome, counts and what was selected, and every check result, failing first,
   with its value, message, owner, tags and how long it has been failing. It opens offline in a
