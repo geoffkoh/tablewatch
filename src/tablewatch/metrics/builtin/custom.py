@@ -56,6 +56,7 @@ class SqlMetric(Metric):
     the query is run exactly as written. The optional argument is a label."""
 
     name = "sql_metric"
+    args_are_columns = False
     unit = Unit.NUMBER
     summary = "The single number returned by your own `query`."
     max_args = 1

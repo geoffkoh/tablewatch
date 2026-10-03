@@ -102,7 +102,7 @@ The full language — every metric, option and rule — is in
 | Command | Does |
 | --- | --- |
 | `tablewatch init [DIR]` | Scaffold a project, with editor schemas for autocompletion. |
-| `tablewatch validate` | Report every mistake at its `file:line:col`. Needs no credentials. |
+| `tablewatch validate` | Report every mistake at its `file:line:col`. Needs no credentials. With `--connect`, also checks that every dataset and column exists ([below](#checking-against-the-database)). |
 | `tablewatch list` | Show checks after inheritance, with their ids. |
 | `tablewatch compile` | Print the SQL each table will run, without running it. |
 | `tablewatch run` | Run checks and record the results. |
@@ -120,6 +120,25 @@ nothing and exits `3`, naming `checks/slaes`, so a typo never passes for a
 checked folder. Paths and excludes resolve from where you run the command,
 and a run records them relative to the project (`checks/sales`), however
 you typed them. `tw` is a short alias for `tablewatch`.
+
+## Checking against the database
+
+`tablewatch validate --connect` connects to each datasource, read-only, and
+checks that every dataset and every column the checks name exists, without
+reading a row: each probe is a `SELECT … WHERE false`, and no `filter:`,
+`where:`, condition or query is sent. A misspelt column is reported at its
+place in the check file, as any other mistake:
+
+```text
+checks/sales/orders.yml:9:19: error: column 'custmer_id' not found in sales.orders (datasource 'lake')
+```
+
+It exits `3` when a file is wrong (a missing table or column included), and
+`2` when the files are fine but a datasource could not be reached (an unset
+`${env:}` variable, a refused connection, a database file that does not
+exist; nothing is ever created). It needs the datasource credentials, so
+**do not run it with secrets on pull requests from untrusted forks**: a
+changed `tablewatch.yml` could point a datasource at someone else's server.
 
 ## On servers
 

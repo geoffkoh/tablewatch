@@ -223,6 +223,9 @@ class Metric(ABC):
     options: ClassVar[Mapping[str, OptionType]] = {}
     # Whether the check may restrict its rows with `where:`.
     scoped: ClassVar[bool] = True
+    # Whether the arguments name columns (`validate --connect` checks they
+    # exist); `sql_metric`'s is a label.
+    args_are_columns: ClassVar[bool] = True
     # (singular, plural) shown after a count value: `0 problems`, `1 problem`.
     count_noun: ClassVar[tuple[str, str] | None] = None
     # Why a null in each value-list option is ignored, in words for people;
