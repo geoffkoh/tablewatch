@@ -72,7 +72,7 @@ def tokenize(text: str) -> list[Token]:
             tokens.append(Token(TokenKind.OP, canonical, i))
             i += len(operator)
             continue
-        if ch.isdigit() or (ch in "-." and i + 1 < n and text[i + 1].isdigit()):
+        if _digit(ch) or (ch in "-." and i + 1 < n and _digit(text[i + 1])):
             tokens.append(_number(text, i))
             i = tokens[-1].offset + len(tokens[-1].text) + len(tokens[-1].suffix)
             continue
@@ -98,13 +98,18 @@ def tokenize(text: str) -> list[Token]:
     return tokens
 
 
+def _digit(ch: str) -> bool:
+    # ASCII only: str.isdigit() accepts '²' and other digits int() rejects.
+    return "0" <= ch <= "9"
+
+
 def _number(text: str, start: int) -> Token:
     i = start
     n = len(text)
     if text[i] == "-":
         i += 1
     seen_dot = False
-    while i < n and (text[i].isdigit() or (text[i] == "." and not seen_dot)):
+    while i < n and (_digit(text[i]) or (text[i] == "." and not seen_dot)):
         seen_dot = seen_dot or text[i] == "."
         i += 1
     digits = text[start:i]
