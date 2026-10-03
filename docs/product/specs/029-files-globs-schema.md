@@ -119,3 +119,10 @@ Fixture: spec 023's `landing-test` project, plus `landing/daily/orders_2026-10-0
   files datasource 'drop'`) and G18 stand. Messages name the pattern and datasource, never a matched
   file, an absolute path, or DuckDB's text: tablewatch cannot attribute a reader failure to one file
   without reopening each, so a message must not claim that precision.
+- **VERIFY amendments.** (1) Under `**` a link to a *file* no longer refuses (QA): only a link to a
+  folder does, found by a metadata-only `stat` of its target. Accepted trade-off (security): that
+  stat may touch a path outside root, revealing only folder-or-not, and can block on an automount;
+  nothing behind a link is entered or read. (2) Hidden names are matched only by a segment that
+  itself starts with `.` (shell rule; `.staging/*.csv`), never by `*`, `?` or `**` — the same
+  confinement as a single-file `.env`. G15 stands. (3) Each folder is scanned once, and each
+  (folder, rest of pattern) walked once, so the entry cap bounds the work.

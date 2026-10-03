@@ -393,3 +393,14 @@ def test_many_double_stars_are_one(tmp_path: Path) -> None:  # security VERIFY
     (root / "d" / "x.csv").write_text("id\n1\n")
     pattern = "/".join(["**"] * 1500) + "/*.csv"
     assert expand(str(root), pattern, "drop") == [str(root / "d" / "x.csv")]
+
+
+def test_many_routes_to_one_folder_are_walked_once(tmp_path: Path) -> None:
+    # security VERIFY: `**/*` repeated reaches a deep folder by combinatorially
+    # many routes; without the memo this ran for millions of visits.
+    root = tmp_path / "r"
+    deep = root.joinpath(*[f"d{i}" for i in range(24)])
+    deep.mkdir(parents=True)
+    (deep / "x.csv").write_text("id\n1\n")
+    pattern = "/".join(["**/*"] * 12) + "/x.csv"
+    assert expand(str(root), pattern, "drop") == [str(deep / "x.csv")]

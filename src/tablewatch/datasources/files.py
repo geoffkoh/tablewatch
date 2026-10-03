@@ -237,6 +237,7 @@ class _Walk:
         self.matches: list[str] = []
         self.entries = 0
         self.scanned: dict[str, list[os.DirEntry[str]]] = {}
+        self.seen: set[tuple[str, tuple[str, ...]]] = set()
 
     def _too_much(self, what: str) -> FilesError:
         return FilesError(
@@ -246,6 +247,12 @@ class _Walk:
     def visit(self, directory: str, parts: tuple[str, ...], depth: int) -> None:
         if depth > MAX_DEPTH:
             raise self._too_much(f"goes deeper than {MAX_DEPTH} folders")
+        # `**/*/**/*` reaches one folder by many routes; each (folder, rest
+        # of the pattern) is walked once, so the work stays bounded by the
+        # entry cap times the pattern's length.
+        if (directory, parts) in self.seen:
+            return
+        self.seen.add((directory, parts))
         head, rest = parts[0], parts[1:]
         entries = self._entries(directory)
         if head == "**":
