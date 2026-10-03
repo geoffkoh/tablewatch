@@ -11,6 +11,7 @@ database's error text is never shown, since it can suggest other tables.
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from tablewatch.checks.model import Check, Dataset
 from tablewatch.checks.sources import FileSource
 from tablewatch.config.loader import Project
 from tablewatch.datasources import connection_problem, open_engine
+from tablewatch.datasources.files import FilesError
 from tablewatch.diagnostics import Diagnostic, SourceLocation, error
 
 # Exit codes, as `cli/main.py` documents them.
@@ -186,8 +188,25 @@ def _failure(conn: Connection, statement: object) -> Exception | None:
 
 
 def _not_found(exc: Exception) -> bool:
-    """Whether a refusal means "no such table or column" (else: permission…)."""
-    state = getattr(getattr(exc, "orig", None), "pgcode", None)
+    """Whether a refusal means "no such table or column".
+
+    Anything else (a corrupt or locked file, a permission) is not a mistake
+    in the files: the datasource was not properly reached. Told apart by the
+    driver's error class or code; its text is read only to classify where a
+    driver has no finer class, never shown.
+    """
+    orig = getattr(exc, "orig", None)
+    state = getattr(orig, "pgcode", None)
     if state is not None:
         return state in _NOT_FOUND_STATES
-    return True
+    if type(orig).__name__ in ("CatalogException", "BinderException"):  # DuckDB
+        return True
+    if isinstance(orig, sqlite3.OperationalError):
+        return str(orig).startswith(("no such table", "no such column"))
+    if isinstance(exc, FilesError):  # already fixed text (spec 023 D7)
+        text = str(exc)
+        return text.startswith("no file matches") or text in (
+            "(BinderException)",
+            "(CatalogException)",
+        )
+    return False
