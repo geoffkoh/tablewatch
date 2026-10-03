@@ -343,7 +343,7 @@ def test_d2_docs() -> None:
     for phrase in (
         "`**`",
         "symlink",
-        "Hidden",
+        "hidden",
         "union",
         "10,000",
         "schema",

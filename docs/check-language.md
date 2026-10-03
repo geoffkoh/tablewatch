@@ -220,8 +220,9 @@ datasources:                           datasource: drop
   itself); braces (`{ }`) are reported by `validate`. One pattern is **one
   dataset and one scan**: every check sees the rows of all matching files
   together. tablewatch expands the pattern itself, at run time, and DuckDB
-  reads exactly that list. Hidden files and folders (a name starting with
-  `.`) are never matched or entered, and only regular files match. The check
+  reads exactly that list. As in a shell, hidden files and folders (a name
+  starting with `.`) are matched only by a segment that starts with `.`
+  (`.staging/*.csv`), never by `*`, `?` or `**`; only regular files match. The check
   id keys on the pattern, so a new day's file keeps the history. A pattern
   matching more than 10,000 files, nothing at all, or a file whose name holds
   `*`, `?`, `[ ]` or `{ }` makes every check on it `error`.

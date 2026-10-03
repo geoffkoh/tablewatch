@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import re
 import stat
+import unicodedata
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -235,6 +236,7 @@ class _Walk:
         self.name = name
         self.matches: list[str] = []
         self.entries = 0
+        self.scanned: dict[str, list[os.DirEntry[str]]] = {}
 
     def _too_much(self, what: str) -> FilesError:
         return FilesError(
@@ -245,15 +247,23 @@ class _Walk:
         if depth > MAX_DEPTH:
             raise self._too_much(f"goes deeper than {MAX_DEPTH} folders")
         head, rest = parts[0], parts[1:]
+        entries = self._entries(directory)
         if head == "**":
             if rest:
                 self.visit(directory, rest, depth)  # `**` matches no folder too
-            for entry in self._entries(directory):
-                if _kind(entry) == stat.S_IFDIR:
+            for entry in entries:
+                if not _hidden(entry.name) and _kind(entry, under_star=True) == (
+                    stat.S_IFDIR
+                ):
                     self.visit(entry.path, parts, depth + 1)
             return
-        for entry in self._entries(directory):
-            if not fnmatchcase(entry.name, head):
+        wanted = unicodedata.normalize("NFC", head)
+        for entry in entries:
+            # As a shell does: a hidden name is matched only by a segment
+            # that starts with "." itself.
+            if _hidden(entry.name) and not head.startswith("."):
+                continue
+            if not fnmatchcase(unicodedata.normalize("NFC", entry.name), wanted):
                 continue
             kind = _kind(entry)
             if rest and kind == stat.S_IFDIR:
@@ -264,30 +274,44 @@ class _Walk:
                     raise self._too_much(f"matches more than {MAX_MATCHES:,} files")
 
     def _entries(self, directory: str) -> list[os.DirEntry[str]]:
-        """A folder's visible (not hidden) entries."""
+        """A folder's entries, scanned and counted once per walk."""
+        if directory in self.scanned:
+            return self.scanned[directory]
         try:
             with os.scandir(directory) as found:
-                entries = [e for e in found if not e.name.startswith(".")]
+                entries = list(found)
         except (FileNotFoundError, NotADirectoryError):
-            return []
+            entries = []
         except OSError:
             raise FilesError(REFUSED) from None
         self.entries += len(entries)
         if self.entries > MAX_ENTRIES:
             raise self._too_much(f"scans more than {MAX_ENTRIES:,} entries")
+        self.scanned[directory] = entries
         return entries
 
 
-def _kind(entry: os.DirEntry[str]) -> int | None:
+def _hidden(name: str) -> bool:
+    return name.startswith(".")
+
+
+def _kind(entry: os.DirEntry[str], *, under_star: bool = False) -> int | None:
     """An entry's file type, never following it; None if it has vanished.
 
-    A symlink refuses the dataset: a link to a folder would be entered, and
-    one to a file read. Any other failure refuses too — the OSError's text
-    holds the absolute path.
+    A symlink the walk would enter or read refuses the dataset. Under `**`
+    every entry is a candidate folder, so there only a link to a folder
+    refuses; a link to a file is refused only if a segment matches it. Any
+    other failure refuses too — the OSError's text holds the absolute path.
     """
     try:
         mode = entry.stat(follow_symlinks=False).st_mode
-    except FileNotFoundError:  # rotated away mid-walk: not a match
+        if stat.S_ISLNK(mode) and under_star:
+            # The target's type only, to tell a folder; nothing is read.
+            target = entry.stat(follow_symlinks=True).st_mode
+            if stat.S_ISDIR(target):
+                raise FilesError(REFUSED)
+            return None
+    except FileNotFoundError:  # rotated away mid-walk, or a dangling link
         return None
     except OSError:
         raise FilesError(REFUSED) from None
