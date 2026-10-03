@@ -219,7 +219,7 @@ def test_danas_check(nulls: Path, ds: str) -> None:  # N1
         "ignored: NULL is always missing, never invalid (check it with "
         "missing_count). To match the text 'NULL', quote it\n"
     )
-    assert out == "1 datasets, 1 checks — no errors, 1 warning\n"
+    assert out == "1 dataset, 1 check — no errors, 1 warning\n"
     code, _, err = _run(nulls)
     assert code == 1
     assert "5:40: warning" in err
@@ -267,7 +267,10 @@ def test_a_list_of_only_nulls(nulls: Path, ds: str, values: str) -> None:  # N4
     _write(nulls, ds, f"  - invalid_count(status) = 0:\n      valid_values: {values}\n")
     code, _, err = invoke(nulls, "validate")
     assert code == 3
-    assert "error: `valid_values:` has no values: null is not a value" in err
+    if values.startswith("\n"):  # spec 030 L6: bare `-` items
+        assert "error: `valid_values:` is empty: each `-` has nothing after it" in err
+    else:
+        assert "error: `valid_values:` has no values: null is not a value" in err
     assert "warning" not in err
     if values == "[null]":
         assert err.startswith("checks/orders.yml:5:21: error:")

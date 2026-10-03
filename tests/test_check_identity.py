@@ -152,7 +152,7 @@ def _checks(root: Path, text: str, name: str = "orders.yml") -> list[str]:
 def test_two_failed_rows_load_and_run(lake: Path) -> None:  # M1
     assert _checks(lake, TWO_FAILED) == ["a37eb03d163d2dac", "3659f64dd11643df"]
     code, out, _ = invoke(lake, "validate")
-    assert (code, out) == (0, "1 datasets, 2 checks — no problems found\n")
+    assert (code, out) == (0, "1 dataset, 2 checks — no problems found\n")
     run = tw.run(lake)
     assert [(r.check.id, r.outcome.value, r.value) for r in run.results] == [
         ("a37eb03d163d2dac", "fail", 1.0),
@@ -252,7 +252,7 @@ def test_the_same_explicit_id_is_a_duplicate(lake: Path) -> None:  # M8
     )
     code, _, err = invoke(lake, "validate")
     assert code == 3
-    assert "duplicate check (also at checks/orders.yml:4:5)" in err
+    assert "the id 'x' is already used at checks/orders.yml:4:5" in err
 
 
 def test_changing_the_meaning_starts_a_new_history(lake: Path) -> None:  # M9

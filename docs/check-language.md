@@ -78,6 +78,11 @@ Units are checked: `missing_count(x) < 1%` is an error, and tablewatch
 suggests `missing_percent`. `freshness(ts) < 6` is an error because it has
 no unit.
 
+A `*_percent` threshold is a percentage from 0 to 100, with or without `%`:
+`missing_percent(email) < 5` means 5%. A bare number between 0 and 1, such
+as `< 0.05`, is read as 0.05% and gets a warning, since it is often a
+fraction meant as 5%; write `0.05%` to say you mean it.
+
 ### Common options
 
 | Option | Meaning |

@@ -6,6 +6,36 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 30 — Loader wording, a percent written as a fraction, console rows told apart (I-28, I-45), 2026-10-04
+
+- **Spec:** [030-loader-wording-console-datasource](specs/030-loader-wording-console-datasource.md).
+  **Branch:** `iter/030`. Light track; REVIEW by the tech lead. No items added (freeze).
+- **Decisions (tech lead):** Q1, the fraction warning sits at the check; Q2, alike console rows
+  are told apart by their source location, the one suffix that separates every collision.
+- **Shipped:** a bare number strictly between 0 and 1 on a `*_percent` metric warns (`0.05 on
+  missing_percent means 0.05%, not 5% …`), in a condition, `between` or a trigger, at `validate`
+  and `run`. Loader wording: "an integer"; a list of only bare `-` items is one "is empty" error; an
+  explicit `id:` used twice says the id is already used; two `schema` checks are told to merge
+  their lists; a bad `where:` no longer adds a phantom "duplicate check". `validate` says "1
+  dataset, 1 check". The console adds a DATASOURCE column only when a run spans more than one,
+  and rows that still read alike get ` (checks/a.yml:5)`. JSON, JUnit, the report, the API, ids
+  and exit codes are unchanged. Suite: **2481 passed, 1 skipped, 16 xfailed**.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — pass-with-followups, no blockers; 24 tests, 3 strict xfails, all fixed
+    (a9a2413).* Names that clip to the same cell now get the location; the warning's two figures
+    agree; a tiny fraction's suggestion is plain decimals that parse (not `1e-06%`). A
+    `--connect` assertion in the builder's tests that could not fail was removed. L11 ids and C6
+    JSON/JUnit pinned against `main`.
+  - *data-steward — stalled twice (watchdog); acceptance finished by the tech lead per PROCESS.md*,
+    running L1, C1–C3 and the one-datasource table through the CLI: messages and table as specified.
+    Deviation accepted: L1 says "for 5 percent", not "five percent" (figures, not words, for any value).
+- **Not added (backlog freeze):** none.
+- **Lesson:** ten older tests pinned the old wording; a wording item is cheap to build but touches
+  every test that quotes a message — grep the tests for each changed string before the first run.
+- **Backlog:** I-28 and I-45 done. **The owner's run ends here** (iterations 15–30); the next
+  candidates (I-07 part 3, I-13 part 2, I-08's `sql_metric`) each need a decision, and I-14 waits
+  on the owner.
+
 ## Iteration 29 — Files as datasets, part 2: glob patterns and `schema` on files (I-08 part 2), 2026-10-03
 
 - **Spec:** [029-files-globs-schema](specs/029-files-globs-schema.md). **Branch:** `iter/029`.

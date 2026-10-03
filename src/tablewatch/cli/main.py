@@ -340,7 +340,7 @@ def validate(ctx: click.Context, connect: bool) -> None:
     for diagnostic in errors:
         _say_diagnostic(diagnostic)
     checks = len(project.checks)
-    summary = f"{len(project.datasets)} datasets, {checks} checks"
+    summary = f"{_count(len(project.datasets), 'dataset')}, {_count(checks, 'check')}"
     if connect:
         _validate_connect(project, summary, errors)
         return
@@ -847,3 +847,7 @@ def _when(moment: object) -> str:
 
 if __name__ == "__main__":  # pragma: no cover
     cli()
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}{'' if n == 1 else 's'}"

@@ -227,6 +227,15 @@ All notable changes to tablewatch. The format follows
 
 ### Changed
 
+- A percent threshold written as a fraction, such as `missing_percent(email) < 0.05`, now gets a
+  warning: it means 0.05%, not 5%. Write `5%` (or `5`) for five percent, or `0.05%` to keep it.
+- When a run covers more than one datasource, the console table shows a DATASOURCE column, and
+  rows that would still read alike (two unnamed `failed_rows` checks, say) show their file and
+  line. JSON, JUnit, the HTML report and the API are unchanged.
+- Clearer loader messages: "must be an integer"; a value list of only empty `-` lines is one
+  error; an explicit `id:` used twice says so; two `schema` checks on one dataset are told to
+  merge; a bad `where:` no longer also reports a duplicate check. `validate` says "1 dataset,
+  1 check".
 - A run's recorded `selection` is now one normalised, project-relative
   form — `checks/inventory`, not `./checks/inventory/` or an absolute
   path — whichever way you passed it, in the CLI or `tablewatch.run()`.
