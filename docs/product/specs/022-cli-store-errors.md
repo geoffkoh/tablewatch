@@ -84,7 +84,7 @@ CLI and `tw.load()` find the project root with one function.
   0o777`, never setuid/setgid/sticky). A new file, or a replaced symlink, gets 0600. One
   `_write_output(path, text)` serves `run` and `report`, and closes the fd if `fdopen` fails.
 - **D6 (Q3, R2–R3).** Driver text is shown only for SQLite stores (a local file, no credentials). Any
-  other backend reads `could not connect to the results store — run with -v for details`, with the
+  other backend reads `could not connect — run with -v for details`, with the
   driver text at INFO. A URL parse failure (`ValueError`, `ArgumentError`) always reads `results.url is
   not a valid database URL`, never `str(exc)`. The same rules apply to `run`'s record error (E8). New
   must scenario E10: `postgresql://u:p@ss@host/db` never shows `ss@host`.

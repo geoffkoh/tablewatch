@@ -49,7 +49,7 @@ _MIGRATION_LOCK = threading.Lock()
 
 
 INVALID_URL = "results.url is not a valid database URL"
-UNREACHABLE = "could not connect to the results store — run with -v for details"
+UNREACHABLE = "could not connect — run with -v for details"
 
 
 def parse_store_url(url: str) -> URL:
