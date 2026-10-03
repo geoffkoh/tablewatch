@@ -12,11 +12,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, table
+from sqlalchemy import select
 from sqlalchemy.engine import Dialect
 from sqlalchemy.exc import CompileError
 from sqlalchemy.sql import ClauseElement, Select
-from sqlalchemy.sql.expression import TableClause
+from sqlalchemy.sql.expression import FromClause
 
 from tablewatch.checks.model import Check, Dataset
 from tablewatch.metrics.base import (
@@ -35,7 +35,7 @@ SCHEMA_KEY = "schema"
 @dataclass
 class DatasetPlan:
     dataset: Dataset
-    table: TableClause
+    table: FromClause
     # measure key -> measure, in first-seen order
     aggregates: dict[str, AggregateMeasure] = field(default_factory=dict)
     queries: dict[str, QueryMeasure] = field(default_factory=dict)
@@ -72,9 +72,9 @@ class DatasetPlan:
         return statement
 
 
-def table_clause(dataset: Dataset) -> TableClause:
-    ref = dataset.table
-    return table(ref.table, schema=ref.schema)
+def table_clause(dataset: Dataset) -> FromClause:
+    """The dataset's one `FROM`: a table, or a file read in place."""
+    return dataset.from_clause()
 
 
 def plan_dataset(

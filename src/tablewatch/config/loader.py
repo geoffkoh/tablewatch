@@ -12,7 +12,7 @@ import logging
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from pydantic import ValidationError
@@ -28,7 +28,13 @@ from tablewatch.checks.model import (
     canonical_text,
     derive_check_id,
 )
-from tablewatch.config.project import NOTIFIER_TYPES, PROJECT_FILE, ProjectConfig
+from tablewatch.checks.sources import FileSource, file_format
+from tablewatch.config.project import (
+    NOTIFIER_TYPES,
+    PROJECT_FILE,
+    FilesDatasource,
+    ProjectConfig,
+)
 from tablewatch.config.spans import check_span, compose, split_lines
 from tablewatch.config.yamlsource import YAMLSource, plain, quote_offset
 from tablewatch.diagnostics import (
@@ -372,8 +378,17 @@ class _ChecksLoader:
             return None
 
         datasource, state = self._resolve_datasource(source, node, defaults)
+        file_source = None
+        if state == "defined" and isinstance(
+            self.project.config.datasources.get(datasource), FilesDatasource
+        ):
+            file_source = self._file_source(source, node, name)
+            if file_source is None:
+                return None
+            name = file_source.path
         dataset = Dataset(
             name=name,
+            source=file_source,
             datasource=datasource,
             datasource_state=state,
             path=source.relative,
@@ -409,6 +424,64 @@ class _ChecksLoader:
                         check.span = _span(dataset.source_lines, root, index)
                     dataset.checks.append(check)
         return dataset
+
+    def _file_source(
+        self, source: YAMLSource, node: CommentedMap, name: str
+    ) -> FileSource | None:
+        """A files datasource's dataset: a local path inside its root.
+
+        Normalised (`./orders.csv` is `orders.csv`) before it names the
+        dataset, so the check id does not depend on how it was written.
+        """
+        at = source.of_value(node, "dataset")
+        if any(ord(c) < 32 or ord(c) == 127 for c in name):
+            self.diagnostics.append(
+                error("a files dataset path cannot hold control characters", at)
+            )
+            return None
+        if set(name) & set("*?[]{}"):
+            # Globs come later: today a pattern could also take in a file
+            # that a single path would refuse (a symlink, say).
+            self.diagnostics.append(
+                error(
+                    "a files dataset is one file; patterns (*, ?, [ ], { }) are not "
+                    f"supported yet; got '{name}'",
+                    at,
+                )
+            )
+            return None
+        if "://" in name:
+            self.diagnostics.append(
+                error(
+                    "files datasets are local paths; URLs are not supported; "
+                    f"got '{name}'",
+                    at,
+                )
+            )
+            return None
+        path = PurePosixPath(name.replace("\\", "/"))
+        parts = [p for p in path.parts if p not in (".", "")]
+        if path.is_absolute() or ".." in parts or not parts:
+            self.diagnostics.append(
+                error(
+                    "a files dataset must be a path inside its datasource's root; "
+                    f"got '{name}'",
+                    at,
+                )
+            )
+            return None
+        relative = "/".join(parts)
+        fmt = file_format(relative)
+        if fmt is None:
+            self.diagnostics.append(
+                error(
+                    f"cannot tell the format of '{relative}' from its extension: "
+                    "use .csv, .tsv, .parquet, .json, .jsonl or .ndjson",
+                    at,
+                )
+            )
+            return None
+        return FileSource(relative, fmt)
 
     def _resolve_datasource(
         self, source: YAMLSource, node: CommentedMap, defaults: _Defaults

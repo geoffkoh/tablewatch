@@ -45,6 +45,10 @@ there are.
 pip install 'tablewatch[duckdb]'      # or [postgres], or both: [duckdb,postgres]
 ```
 
+The `duckdb` extra also lets you check CSV, Parquet and JSON files in place,
+before you load them: a `type: files` datasource (needs duckdb 1.5 or later;
+see [Files as datasets](docs/check-language.md#files-as-datasets)).
+
 ## Try the example
 
 The example project has a small retail database with defects planted on purpose:

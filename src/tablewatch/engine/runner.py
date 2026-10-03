@@ -172,7 +172,9 @@ def run_checks(
     )
     order = {check.id: index for index, check in enumerate(checks)}
     factory = engine_factory or (
-        lambda name: create_engine_for(project.config.datasources[name], project.root)
+        lambda name: create_engine_for(
+            project.config.datasources[name], project.root, name
+        )
     )
 
     by_source: dict[str, dict[Dataset, list[Check]]] = {}

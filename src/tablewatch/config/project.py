@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import PurePosixPath
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -75,8 +76,40 @@ class URLDatasource(_DatasourceBase):
     url: str
 
 
+class FilesDatasource(_DatasourceBase):
+    """CSV, Parquet and JSON files under `root`, read in place by DuckDB."""
+
+    type: Literal["files"]
+    # Relative to the project, inside it. Not a secret, so not `${env:}`:
+    # `validate` must be able to say where it points.
+    root: str
+
+    @field_validator("root")
+    @classmethod
+    def _inside_the_project(cls, value: str) -> str:
+        if ENV_REFERENCE.search(value):
+            raise ValueError(
+                "a files root is a path in the project, not an ${env:} reference"
+            )
+        path = PurePosixPath(value.replace("\\", "/"))
+        parts = [p for p in path.parts if p not in ("", ".")]
+        if path.is_absolute() or ".." in path.parts or not parts:
+            raise ValueError(
+                "a files root must be a folder inside the project (not the project "
+                f"itself), without '..'; got '{value}'"
+            )
+        if parts[0] == ".tablewatch":
+            # Check SQL could read the results store and any secret beside it.
+            raise ValueError("a files root cannot be the results folder .tablewatch")
+        return value
+
+
 Datasource = Annotated[
-    PostgresDatasource | DuckDBDatasource | SQLiteDatasource | URLDatasource,
+    PostgresDatasource
+    | DuckDBDatasource
+    | SQLiteDatasource
+    | URLDatasource
+    | FilesDatasource,
     Field(discriminator="type"),
 ]
 

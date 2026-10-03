@@ -6,6 +6,34 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 23 — Files as datasets, part 1: CSV, Parquet, JSON via DuckDB (I-08), 2026-10-03
+
+- **Spec:** [023-files-as-datasets](specs/023-files-as-datasets.md). **Branch:** `iter/023`.
+  Full track. No items added (freeze).
+- **REFINE.** Architect → D1–D3: `Dataset.source` (`TableSource`/`FileSource`); a relative `tw_path`
+  bind swapped at execution; no executor protocol yet. Security R1–R7 → D4–D7: one `SELECT` per
+  statement, duckdb ≥ 1.5, sandbox connect settings, symlinks refused, root rules, fixed error
+  texts. Data-steward → D8: CSV blanks are NULL, JSON keeps `''`, BOM and non-UTF-8 handled.
+  G3, S7 and S8 split to part 2 (globs, `schema`, a `sql_metric` reading the file).
+- **Shipped:** `type: files` datasources read CSV, Parquet and JSON in place through a sandboxed
+  in-memory DuckDB (≥ 1.5), one `SELECT` per statement, no credentials. Suite: Python
+  **1913 passed, 2 xfailed**; ruff and mypy clean.
+- **Reviewer findings and resolution:**
+  - *security — approve, after ~90 probes.* Fixed: a `root` may not be the project root or
+    `.tablewatch`; control characters in a path are refused.
+  - *qa-engineer — fail, then fixed; 2 blockers, 35 tests.* A glob pattern got through, and through
+    it a symlink inside root escaped the sandbox. Fixed: a pattern in a files dataset is now a
+    Diagnostic (globs move to part 2). Check identity pinned against main.
+  - *data-steward — accept*, 27/27 live probes.
+- **Not added (backlog freeze):** `(BinderException)` gives no column hint; the `:tw_path`-misuse
+  message names the wrong cause; the `duckdb` extra floor stays at 1.1, checked at runtime (1.5).
+  D10: F10 (a text column makes `min()` compare strings and pass) moves to I-30.
+- **Lessons:** splitting the sandbox hardening (R1–R7) from the format readers let security clear
+  the connect path before QA found the glob/symlink path — the two blockers were both reachable
+  only through the part the split deferred, not the part just reviewed.
+- **Backlog:** I-08 stays in progress (part 2: globs, `schema` on files, a `sql_metric` reading the
+  file). Next: iteration 24, I-30 (now carrying F10).
+
 ## Iteration 22 — Store and file errors without tracebacks; `runs` and `history` per project (I-17 rest, I-19), 2026-10-03
 
 - **Spec:** [022-cli-store-errors](specs/022-cli-store-errors.md). **Branch:** `iter/022`. Full track.
