@@ -117,4 +117,9 @@ messages is the data-steward's to amend in REFINE (Q8); the exit codes are not.
   `could not read '<rel>' as <format>` (non-UTF-8: F14's text); anything else → `(ExceptionTypeName)`.
 - **D8 (Q7, Q8).** DuckDB's native reading is kept (F11–F14), with the wording as the data-steward amended
   it. The DATASET column shows the relative path; I-45 is the general fix.
+- **D10 (BUILD).** F10 moves to I-30. A text column (`N/A` in `amount`) makes `min()` compare strings and
+  pass; a table's text column does the same today. The numeric-type check belongs in the metric layer
+  (I-30, iteration 24); the strict xfail test stays. DuckDB 1.5.5 refuses `allowed_directories` in the
+  connect config, so the three sandbox settings run first in the pool's connect hook, before any SQL
+  (security re-checks in VERIFY).
 - **D9 (non-blocking).** `memory_limit`, `threads` and no temp spill on the files connection.

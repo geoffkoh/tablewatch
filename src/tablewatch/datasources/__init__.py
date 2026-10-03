@@ -20,6 +20,7 @@ from tablewatch.config.project import (
     ENV_REFERENCE,
     PROJECT_FILE,
     DuckDBDatasource,
+    FilesDatasource,
     PostgresDatasource,
     SQLiteDatasource,
     URLDatasource,
@@ -27,7 +28,11 @@ from tablewatch.config.project import (
 )
 
 DatasourceConfig = (
-    PostgresDatasource | DuckDBDatasource | SQLiteDatasource | URLDatasource
+    PostgresDatasource
+    | DuckDBDatasource
+    | SQLiteDatasource
+    | URLDatasource
+    | FilesDatasource
 )
 
 
@@ -84,14 +89,29 @@ def dialect_for(config: DatasourceConfig) -> Dialect:
             return make_url("sqlite://").get_dialect()()
         case DuckDBDatasource():
             return _duckdb_dialect()
+        case FilesDatasource():
+            # Files are read by DuckDB; compile needs neither root nor files.
+            return _duckdb_dialect("files")
         case URLDatasource(url=url):
             return _load_dialect(_scheme_of(url))()
 
 
-def create_engine_for(config: DatasourceConfig, project_root: Path) -> Engine:
-    """An engine for a datasource; `${env:}` references are resolved only here."""
+def create_engine_for(
+    config: DatasourceConfig, project_root: Path, name: str = ""
+) -> Engine:
+    """An engine for a datasource; `${env:}` references are resolved only here.
+
+    `name` is the datasource's name in `tablewatch.yml`; the files engine
+    puts it in its "no file matches" message.
+    """
     connect_args: dict[str, Any] = {}
     match config:
+        case FilesDatasource():
+            _require("duckdb", "duckdb", "files")
+            _require("duckdb_engine", "duckdb", "files")
+            from tablewatch.datasources.files import create_files_engine
+
+            return create_files_engine(config, project_root, name)
         case PostgresDatasource():
             dialect = "postgresql"
             try:
@@ -233,18 +253,18 @@ def _local_path(path: str, project_root: Path) -> str:
     return str(candidate if candidate.is_absolute() else project_root / candidate)
 
 
-def _require(module: str, extra: str) -> None:
+def _require(module: str, extra: str, kind: str | None = None) -> None:
     try:
         __import__(module)
     except ImportError:
         raise DatasourceError(
-            f"the {extra} datasource needs an optional dependency: "
+            f"the {kind or extra} datasource needs an optional dependency: "
             f"pip install 'tablewatch[{extra}]'"
         ) from None
 
 
-def _duckdb_dialect() -> Dialect:
-    _require("duckdb_engine", "duckdb")
+def _duckdb_dialect(kind: str = "duckdb") -> Dialect:
+    _require("duckdb_engine", "duckdb", kind)
     from duckdb_engine import Dialect as DuckDBDialect
 
     return DuckDBDialect()

@@ -611,7 +611,7 @@ def test_connection(ctx: click.Context, names: tuple[str, ...]) -> None:
     failed = 0
     for name in names or tuple(configured):
         try:
-            engine = create_engine_for(configured[name], project.root)
+            engine = create_engine_for(configured[name], project.root, name)
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             engine.dispose()

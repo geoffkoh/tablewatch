@@ -99,7 +99,11 @@ def check_file_schema() -> dict[str, Any]:
         "properties": {
             "dataset": {
                 "type": "string",
-                "description": "Table name, optionally schema.table.",
+                "description": (
+                    "Table name, optionally schema.table; on a `type: files` "
+                    "datasource, a file path relative to its root "
+                    "(.csv, .tsv, .parquet, .json, .jsonl, .ndjson, optionally .gz)."
+                ),
             },
             "datasource": {
                 "type": "string",

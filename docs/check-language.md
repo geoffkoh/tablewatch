@@ -180,6 +180,54 @@ datasource's timezone`); further ahead, a placeholder such as `9999-12-31` or a
 forward-dated row. The age itself is the check's value; read that, not the
 timestamp, to judge it.
 
+## Files as datasets
+
+A `type: files` datasource names a folder; each check file on it names a file
+in that folder as its `dataset:`. The file is read in place by an in-memory
+DuckDB, in the same single scan as a table: nothing is copied, cached or
+written. Every metric, `filter:` and `where:` works as on a table; `schema`
+checks on files come in a later release.
+
+```yaml
+# tablewatch.yml                       # checks/landing/orders.yml
+datasources:                           datasource: drop
+  drop:                                dataset: orders.csv
+    type: files                        checks:
+    root: landing                        - row_count = 5
+    timezone: UTC                        - missing_count(email) = 0
+```
+
+- **Install:** `pip install 'tablewatch[duckdb]'`, with duckdb 1.5.0 or later
+  (older versions are refused at connect: they follow symlinks out of the
+  allowed folder).
+- **Formats** follow the extension: `.csv` and `.tsv` (`read_csv`), `.parquet`,
+  `.json` (an array or one object per line), `.jsonl` and `.ndjson`; a trailing
+  `.gz` is read through. DuckDB detects delimiters, headers and types; there
+  are no reader options.
+- **Root:** a relative path inside the project, without `..` and not an
+  `${env:}` reference. When tablewatch connects, the real path of `root`
+  (symlinks followed) must still be inside the project, or every check on the
+  datasource is `error`.
+- **Dataset paths** are relative to `root` and use `/`: `orders.csv` and
+  `./orders.csv` are the same dataset and the same check id, and moving `root`
+  does not change ids. Absolute paths, `..` and URLs (`s3://`, `https://`) are
+  reported by `validate`. SQL, `compile`, the results store and the web UI show
+  the relative path only.
+- **A read-only sandbox.** The DuckDB connection can read only files under
+  `root`: no other folder, no URL, no extension install or load, and its
+  configuration is locked before any check runs. Every statement must be a
+  single `SELECT`, so a `sql_metric` cannot `COPY`, `SET` or `ATTACH`. A path
+  that goes through a **symlink is refused**, even one pointing inside `root`.
+  Memory is capped at 2 GB and 4 threads, with no spill to disk.
+- **Errors** are fixed text, never DuckDB's own (which quotes file paths and
+  lines of the file): `no file matches 'x.csv' in the files datasource 'drop'`,
+  `could not read 'x.csv' as csv`, `'x.csv' is not valid UTF-8`, `the read was
+  refused (outside root, a write, a URL or a setting)`, or the error type, such
+  as `(BinderException)` for a column that does not exist.
+- **Blanks:** in a CSV every blank field, quoted or not, reads as NULL, so it
+  counts as missing; JSON keeps an absent key (NULL) and `""` apart, as a table
+  does. A UTF-8 byte-order mark is ignored.
+
 ## Check identity
 
 History, and in later phases alert state, follows a check by its **id**.
