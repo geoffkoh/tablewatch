@@ -178,6 +178,14 @@ All notable changes to tablewatch. The format follows
   the store's history, it just never writes to it. The JSON report gains `measured`, `unit` and
   `previous` (the prior value and when it was recorded) for every result. See "Change over time"
   in `docs/check-language.md`.
+- `change()` can compare against more than the last run: `change(row_count, same weekday) > -20%`
+  compares with the newest run on the same weekday (in UTC) that is at least 6 days earlier, so a
+  daily check on a table that is quiet every weekend no longer fails every Saturday and reads every
+  Monday as a surge. `change(row_count, last 7 runs) > -20%` compares with the mean of the 7 newest
+  earlier runs, so one odd run does not become the next run's whole baseline; it is `skipped` until
+  enough earlier runs exist (`N` from 2 to 100). The JSON report's `previous` gains `baseline`
+  (`"previous run"`, `"same weekday"` or `"last N runs"`) and `runs` (how many results it averaged)
+  for every `change()` check. See "Change over time" in `docs/check-language.md`.
 
 ### Changed (breaking)
 
@@ -552,6 +560,8 @@ All notable changes to tablewatch. The format follows
   bad `results.url` reports "not a valid database URL"; a filesystem
   problem reports its reason (for example "Permission denied") without
   the path.
+- A non-ASCII digit in a check, such as `last ² runs` or `row_count > ²`, is now a diagnostic at
+  its `file:line:col`, not a Python traceback. The lexer now reads ASCII digits (`0`–`9`) only.
 
 ## 0.1.0 — not yet published
 

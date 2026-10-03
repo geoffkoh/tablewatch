@@ -138,7 +138,7 @@ def test_a_column_named_change(project: Path, ds: str) -> None:
         # `  - ` puts the expression at column 5.
         ("change(change(row_count)) < 1%", "change() cannot contain change()", 12),
         ("change() < 1%", "inside change(...)", 12),
-        ("change(row_count, x) < 1%", "change() takes one metric", 21),
+        ("change(row_count, x) < 1%", "expected a baseline after the metric", 23),
         ("change(email) < 1%", "inside change(...)", 12),
         ("change(change) < 1%", "inside change(...)", 12),
         ("change(row_count < 1%", "')' to close change(", 22),

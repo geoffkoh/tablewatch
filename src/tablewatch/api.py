@@ -20,7 +20,7 @@ from pathlib import Path
 from tablewatch.checks.model import Check
 from tablewatch.config import Project, find_project, load_project
 from tablewatch.diagnostics import ProjectError, Severity
-from tablewatch.engine.baselines import Baselines
+from tablewatch.engine.baselines import Baselines, request_for
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import (
     FAIL_ON_CHOICES,
@@ -180,7 +180,11 @@ def read_baselines(
     creates a store (`--no-store` reads history too): no store yet, or one in
     memory, means no history.
     """
-    changes = {c.id: c.metric.name for c in checks if c.expression.change is not None}
+    changes = {
+        c.id: request_for(c.expression.change, c.metric.name, now)
+        for c in checks
+        if c.expression.change is not None
+    }
     if not changes:
         return Baselines()
     url = project.config.results.url

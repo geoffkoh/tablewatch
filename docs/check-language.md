@@ -306,8 +306,20 @@ checks:
   nothing). If the store cannot be read, only the `change()` checks are
   `error`. Editing a check (a new id) starts a new baseline; pin `id:` to keep
   it.
-- It compares with the previous run whatever its weekday, so a quiet weekend
-  shows as a drop. Same-weekday and last-N baselines come later.
+- **Baselines.** A second argument says what to compare with:
+
+  ```yaml
+  - change(row_count, same weekday) > -20%    # the newest run on this weekday, 6+ days ago
+  - change(row_count, last 7 runs) > -20%     # the average of the 7 newest earlier runs
+  ```
+
+  Without one, it is the previous run, whatever its weekday, so a quiet
+  weekend shows as a drop; `same weekday` compares a Saturday with a Saturday
+  (weekdays in UTC, as run times are). `last N runs` (N from 2 to 100) takes the
+  mean, so one odd run does not become the next run's yardstick, and stays
+  `skipped` until N earlier results exist. A message names its baseline:
+  `1,000 → 950 rows since the run of 2026-09-26 06:00 UTC (same weekday)`,
+  `average 1,000 of the last 3 runs (2026-09-30 06:00 to 2026-10-02 06:00 UTC) → 500 rows`.
 
 ## Notifications
 

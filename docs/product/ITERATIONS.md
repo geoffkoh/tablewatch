@@ -6,6 +6,37 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 27 — `change(<metric>)` baselines: same weekday, last N runs, part 2 (I-07), 2026-10-03
+
+- **Spec:** [027-change-over-time-baselines](specs/027-change-over-time-baselines.md). **Branch:**
+  `iter/027`. Full track. No items added (freeze).
+- **REFINE.** Architect → D1–D3: a grammar after the comma, not lexer keywords, so a column named
+  `last` still works; a closed `Baseline` enum with `runs: int`; part-1 ids unchanged (rendered only
+  when not the default); JSON `previous` gains typed `baseline` and `runs`; `ResultStore.baselines`
+  takes a per-check request with a `ROW_NUMBER()` window and a per-check SQL limit, fixing
+  iteration 26's unbounded read; baseline selection is a pure function in `engine/baselines.py`.
+  Data-steward → D4: UTC weekday (not the datasource's `timezone:`, which interprets data columns,
+  not the job's own clock); mean, not median; `skipped` until N results exist, not an average of
+  what exists; final wording for S1, S3, S6, S7.
+- **Shipped:** `change(<metric>, same weekday)` compares with the newest run at least 6 days
+  earlier on the same UTC weekday; `change(<metric>, last N runs)` compares with the mean of the N
+  newest earlier measured results (N 2–100), `skipped` until N exist; JSON `previous` gains
+  `baseline` and `runs` for every `change()` check, including part 1's `previous run`.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — fail, then fixed; 1 blocker, 62 tests.* `last ² runs` (and, pre-existing on
+    main, `row_count > ²`) crashed with a traceback — a Unicode digit reached Python's `int()`.
+    Fixed: the lexer accepts ASCII digits only. Also fixed: `same weekday` at a high cadence read
+    unboundedly far back instead of stopping at last week's day; an overflow-safe mean. Part-1 ids
+    unchanged.
+  - *data-steward — accept*, live.
+- **Not added (backlog freeze):** a DuckDB results store does not work (Alembic has no duckdb
+  dialect; pre-existing, not touched by this spec).
+- **Lessons:** the lexer accepted any Unicode decimal digit because Python's `str.isdigit()`/`int()`
+  do; worth grepping for that pattern anywhere else user text reaches a number, not just `change()`.
+- **Backlog:** I-07 stays in progress — parts 1–2 done, part 3 (change over percent/duration
+  metrics, the baseline on the check page's chart) is next. I-14 still waits on the owner. Next:
+  iteration 28, I-13 (`validate --connect`).
+
 ## Iteration 26 — `change(<metric>)` against the previous recorded run, part 1 (I-07), 2026-10-03
 
 - **Spec:** [026-change-over-time-part-1](specs/026-change-over-time-part-1.md). **Branch:**

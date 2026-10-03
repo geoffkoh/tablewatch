@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from tablewatch.checks.model import Check, Outcome
+from tablewatch.dsl.ast import Baseline
 from tablewatch.engine.baselines import Sample
 from tablewatch.jsonvalues import utc
 from tablewatch.metrics.base import Measurement, Unit
@@ -61,8 +62,21 @@ def change_of(
         value = current - previous.value
     then = format_value(metric.unit, previous.value)
     now = format_value(metric.unit, current, metric.count_noun)
-    when = utc(previous.started_at).strftime("%Y-%m-%d %H:%M UTC")
-    return Measurement(value, f"{then} → {now} since the run of {when}")
+    when = utc(previous.started_at).strftime("%Y-%m-%d %H:%M")
+    change = check.expression.change
+    if previous.runs > 1 and previous.oldest is not None:
+        oldest = utc(previous.oldest).strftime("%Y-%m-%d %H:%M")
+        return Measurement(
+            value,
+            f"average {then} of the last {previous.runs} runs "
+            f"({oldest} to {when} UTC) → {now}",
+        )
+    same = (
+        " (same weekday)"
+        if change is not None and change.baseline is Baseline.SAME_WEEKDAY
+        else ""
+    )
+    return Measurement(value, f"{then} → {now} since the run of {when} UTC{same}")
 
 
 def _join(rule: str, detail: str | None) -> str:
