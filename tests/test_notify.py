@@ -51,6 +51,18 @@ class Hook:
         return [e for body in self.bodies for e in body["events"]]
 
 
+class _QuietServer(ThreadingHTTPServer):
+    """A test receiver that does not print a traceback when the client left.
+
+    A timed-out client closes its socket before the slow reply is written;
+    the default handler would print BrokenPipeError to the stderr the test
+    inspects.
+    """
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        pass
+
+
 def _serve() -> tuple[ThreadingHTTPServer, Hook]:
     hook = Hook(url="")
 
@@ -83,7 +95,7 @@ def _serve() -> tuple[ThreadingHTTPServer, Hook]:
         def log_message(self, format: str, *args: Any) -> None:
             pass
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = _QuietServer(("127.0.0.1", 0), Handler)
     hook.url = f"http://127.0.0.1:{server.server_address[1]}/hook"
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, hook
