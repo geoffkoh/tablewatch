@@ -675,6 +675,7 @@ class _ChecksLoader:
         ):
             if condition is not None and expression.change is None:
                 self._check_units(metric, condition, at)
+                self._check_fraction(metric, condition, text_at)
         if expression.change is not None:
             self._check_change_units(
                 expression.subject,
@@ -712,7 +713,12 @@ class _ChecksLoader:
                 )
             )
             return None
+        explicit_id = check_id is not None
         where = self._string(source, options_node, "where")
+        if where is None and "where" in options_node:
+            # Reported by _string; without its scope this check would also
+            # collide with the same check unscoped — a second, phantom error.
+            return None
         own_notify = self._notify(source, options_node)
         check_id = check_id or derive_check_id(
             dataset.path,
@@ -726,13 +732,22 @@ class _ChecksLoader:
             ],
         )
         if check_id in self._ids:
-            self.diagnostics.append(
-                error(
-                    f"duplicate check (also at {self._ids[check_id]}) — "
-                    "give one of them an explicit `id:`",
-                    text_at,
+            if explicit_id:
+                message = (
+                    f"the id '{check_id}' is already used at {self._ids[check_id]} — "
+                    "ids must be unique in the project"
                 )
-            )
+            else:
+                fix = (
+                    "put both lists in one `schema` check, or "
+                    if metric.name == "schema"
+                    else ""
+                )
+                message = (
+                    f"duplicate check (also at {self._ids[check_id]}) — "
+                    f"{fix}give one of them an explicit `id:`"
+                )
+            self.diagnostics.append(error(message, text_at))
             return None
         self._ids[check_id] = text_at
 
@@ -810,6 +825,30 @@ class _ChecksLoader:
                 problem = f"'{value}' is a percentage, but {metric.name} is not{hint}"
             if problem:
                 self.diagnostics.append(error(problem, at))
+
+    def _check_fraction(
+        self, metric: Metric, condition: Condition, at: SourceLocation
+    ) -> None:
+        """Warn on `missing_percent(x) < 0.05`: a fraction, read as 0.05%.
+
+        Percent thresholds are 0–100, as in Soda; Great Expectations' `mostly`
+        is a 0–1 fraction, so the habit carries over. Only a bare number
+        strictly between 0 and 1 is ambiguous: `0.05%` says what it means.
+        """
+        if metric.unit is not Unit.PERCENT:
+            return
+        for value in values_in(condition):
+            if isinstance(value, Number) and not value.percent and 0 < value.value < 1:
+                written = Number(value.value, percent=True)
+                scaled = Number(round(value.value * 100, 10), percent=True)
+                self.diagnostics.append(
+                    warning(
+                        f"{value} on {metric.name} means {written}, not {scaled} — "
+                        f"write {scaled} for {scaled.value:g} percent, or {written} "
+                        f"if {written} is meant",
+                        at,
+                    )
+                )
 
     def _trigger(
         self, source: YAMLSource, node: CommentedMap, key: str
@@ -981,6 +1020,19 @@ class _ChecksLoader:
             self.diagnostics.extend(warnings + errors)
             return None
         if not kept and hint is not None and hint.all_null is not None:
+            if items and all(
+                item is None and not source.of_null_item(items, index)[1]
+                for index, item in enumerate(items)
+            ):
+                # Every `-` is bare: one message for the list, not one per line.
+                self.diagnostics.append(
+                    error(
+                        f"`{key}:` is empty: each `-` has nothing after it, which is "
+                        "null in YAML. Fill in the values you meant",
+                        source.of_value(node, key),
+                    )
+                )
+                return None
             self.diagnostics.append(
                 error(
                     f"`{key}:` has no values: {hint.all_null}",
@@ -998,7 +1050,10 @@ class _ChecksLoader:
         ok = _matches(value, kind)
         if not ok:
             self.diagnostics.append(
-                error(f"`{key}:` must be a {kind}", source.of_value(node, key))
+                error(
+                    f"`{key}:` must be {_article(kind)} {kind}",
+                    source.of_value(node, key),
+                )
             )
         return ok
 
@@ -1059,3 +1114,7 @@ def _own_key_line(source: YAMLSource, node: CommentedMap, key: str) -> int | Non
     """The 1-based line of a key written in this mapping; None if absent or merged."""
     own = source.of_own_key(node, key)
     return own.line if own is not None else None
+
+
+def _article(noun: str) -> str:
+    return "an" if noun[:1] in "aeiou" else "a"

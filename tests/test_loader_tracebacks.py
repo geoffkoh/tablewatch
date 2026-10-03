@@ -212,7 +212,7 @@ def test_one_pass(project: Path) -> None:  # T7
     code, out, err = invoke(project, "validate")
     assert code == 3
     assert "checks/zz_broken.yml:2:13: error:" in err
-    assert "1 datasets, 1 checks" in out + err
+    assert "1 dataset, 1 check" in out + err
     assert invoke(project, "run")[0] == 3
 
 
@@ -273,7 +273,7 @@ def test_bad_tags_in_the_other_files(project: Path) -> None:  # G3
 def test_the_reported_merge_loads_and_runs(project: Path) -> None:  # M1
     _file(project, M1)
     code, out, _ = invoke(project, "validate")
-    assert (code, out) == (0, "1 datasets, 1 checks — no problems found\n")
+    assert (code, out) == (0, "1 dataset, 1 check — no problems found\n")
     [result] = tw.run(project, record=False).results
     assert (result.outcome.value, result.value) == ("warn", 1.0)
     _file(project, M1.replace(b"warn", b"fail"))

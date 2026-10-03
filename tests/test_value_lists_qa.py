@@ -479,7 +479,7 @@ def test_validate_with_errors_and_warnings_keeps_the_error_line(nulls: Path) -> 
     code, out, err = invoke(nulls, "validate")
     assert code == 3
     assert out == ""
-    assert err.rstrip().endswith("1 datasets, 1 checks — 1 error")
+    assert err.rstrip().endswith("1 dataset, 1 check — 1 error")
     assert "warning" in err
 
 

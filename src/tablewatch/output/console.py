@@ -7,6 +7,8 @@ thing for an enterprise security review.
 
 from __future__ import annotations
 
+from collections import Counter
+
 import click
 
 from tablewatch.checks.model import Outcome
@@ -25,8 +27,17 @@ _MAX_DETAIL = 200
 
 
 def render(run: RunResult, colour: bool = False) -> str:
-    rows = [_row(result) for result in run.results]
-    headers = ("OUTCOME", "DATASET", "CHECK", "VALUE", "DETAIL")
+    """The results table and the summary line.
+
+    A run over more than one datasource gets a DATASOURCE column; rows that
+    still read alike (two unnamed `failed_rows`, say) get their source
+    location. Both are the console's only: names and ids are unchanged.
+    """
+    sources = {r.check.dataset.datasource for r in run.results}
+    wide = len(sources) > 1
+    headers = ("OUTCOME", "DATASET", *(("DATASOURCE",) if wide else ()), "CHECK")
+    headers = (*headers, "VALUE", "DETAIL")
+    rows = _rows(run.results, wide)
     widths = [
         max([len(headers[i]), *(len(row[i]) for row in rows)])
         for i in range(len(headers))
@@ -55,21 +66,37 @@ def summary(run: RunResult) -> str:
     return " · ".join(parts) + f"  (run {run.id[:12]})"
 
 
-def _row(result: CheckResult) -> tuple[str, str, str, str, str]:
-    return (
-        str(result.outcome).upper(),
-        result.check.dataset.name,
-        _clip(result.check.name, _MAX_CHECK),
-        result.display_value,
-        _clip(result.message or "", _MAX_DETAIL),
-    )
+def _rows(results: list[CheckResult], wide: bool) -> list[tuple[str, ...]]:
+    def key(result: CheckResult) -> tuple[str, str, str]:
+        dataset = result.check.dataset
+        return (dataset.datasource, dataset.name, result.check.name)
+
+    seen = Counter(key(r) for r in results)
+    rows = []
+    for result in results:
+        check = _clip(result.check.name, _MAX_CHECK)
+        if seen[key(result)] > 1:
+            at = result.check.location
+            check += f" ({at.path.as_posix()}:{at.line})"
+        rows.append(
+            (
+                str(result.outcome).upper(),
+                result.check.dataset.name,
+                *((result.check.dataset.datasource,) if wide else ()),
+                check,
+                result.display_value,
+                _clip(result.message or "", _MAX_DETAIL),
+            )
+        )
+    return rows
 
 
 def _line(
     cells: tuple[str, ...], widths: list[int], outcome: Outcome | None, colour: bool
 ) -> str:
     padded = [cell.ljust(width) for cell, width in zip(cells, widths, strict=True)]
-    padded[3] = cells[3].rjust(widths[3])  # values read best right-aligned
+    value = len(cells) - 2  # values read best right-aligned
+    padded[value] = cells[value].rjust(widths[value])
     if colour:
         if outcome is None:
             padded = [click.style(cell, bold=True) for cell in padded]
