@@ -11,6 +11,9 @@ Built to run unattended: no prompts, logs on stderr (stdout stays clean for
     3  the project is invalid, a selector matched nothing, or the command
        line is wrong — nothing ran
 
+`validate --connect` exits 3 for a mistake in the files (a missing table
+or column included), 2 when only a datasource could not be reached.
+
 `run --output-file` that cannot be written is 2, after the run is recorded.
 `runs` and `history` read this project's history only: 0 when listed (an
 empty or absent store included for `runs`), 2 when the results store could
@@ -46,7 +49,7 @@ from tablewatch.config import Project, find_project, load_project
 from tablewatch.config.jsonschema import check_file_schema, project_schema
 from tablewatch.config.project import PROJECT_FILE, MissingEnvironmentVariableError
 from tablewatch.datasources import DatasourceError, create_engine_for
-from tablewatch.diagnostics import Diagnostic, ProjectError, Severity
+from tablewatch.diagnostics import Diagnostic, ProjectError, Severity, error
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import FAIL_ON_CHOICES, MAX_CONCURRENCY, FailOn
@@ -320,15 +323,27 @@ def init(directory: Path, name: str | None) -> None:
 
 
 @cli.command()
+@click.option(
+    "--connect",
+    is_flag=True,
+    help="Also connect to each datasource (read-only, credentials needed) and check "
+    "that every dataset and column the checks name exists. Exits 2 when a "
+    "datasource cannot be reached. Do not run it with secrets on untrusted pull "
+    "requests: a changed tablewatch.yml can point a datasource elsewhere.",
+)
 @click.pass_context
-def validate(ctx: click.Context) -> None:
-    """Check every file for mistakes. Needs no database or credentials."""
+def validate(ctx: click.Context, connect: bool) -> None:
+    """Check every file for mistakes. Needs no database or credentials,
+    unless --connect."""
     project = _project(ctx, require_valid=False)
     errors = [d for d in project.diagnostics if d.severity is Severity.ERROR]
     for diagnostic in errors:
         _say_diagnostic(diagnostic)
     checks = len(project.checks)
     summary = f"{len(project.datasets)} datasets, {checks} checks"
+    if connect:
+        _validate_connect(project, summary, errors)
+        return
     if errors:
         _fail(f"{summary} — {len(errors)} error{'s' if len(errors) != 1 else ''}")
     warnings = sum(1 for d in project.diagnostics if d.severity is Severity.WARNING)
@@ -340,6 +355,45 @@ def validate(ctx: click.Context) -> None:
         )
         return
     click.echo(f"{summary} — no problems found")
+
+
+def _validate_connect(project: Project, summary: str, errors: list[Diagnostic]) -> None:
+    from tablewatch.engine.probe import probe_project
+
+    result = probe_project(project)
+    for diagnostic in result.diagnostics:
+        _say_diagnostic(diagnostic)
+    for unreached in result.unreached:
+        noun = "check" if unreached.checks == 1 else "checks"
+        _say_diagnostic(
+            error(
+                f"datasource '{unreached.name}': {unreached.reason} — "
+                f"{unreached.checks} {noun} not checked",
+                unreached.location,
+            )
+        )
+    mistakes = len(errors) + len(result.diagnostics)
+    parts = [
+        f"{mistakes} error{'s' if mistakes != 1 else ''}" if mistakes else "no errors"
+    ]
+    for unreached in result.unreached:
+        noun = "check" if unreached.checks == 1 else "checks"
+        parts.append(
+            f"datasource '{unreached.name}' not reached "
+            f"({unreached.checks} {noun} not checked)"
+        )
+    code = result.exit_code(bool(errors))
+    if code:
+        _fail(f"{summary} — {'; '.join(parts)}", code)
+    reached = len({d.datasource for d in project.datasets if d.checks})
+    checked = f"{reached} datasource{'s' if reached != 1 else ''} checked"
+    warnings = sum(1 for d in project.diagnostics if d.severity is Severity.WARNING)
+    if warnings:
+        # As plain validate: the closing line is the one read in a CI log.
+        noun = "warning" if warnings == 1 else "warnings"
+        click.echo(f"{summary} — no errors, {warnings} {noun}; {checked}")
+        return
+    click.echo(f"{summary} — no problems found; {checked}")
 
 
 @cli.command("list")

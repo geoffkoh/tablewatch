@@ -182,15 +182,18 @@ class _Parser:
             )
         self.advance()
         args: list[str] = []
+        offsets: list[int] = []
         if self.at(TokenKind.LPAREN):
             self.advance()
             if not self.at(TokenKind.RPAREN):
+                offsets.append(self.peek().offset)
                 args.append(self._arg())
                 while self.at(TokenKind.COMMA):
                     self.advance()
+                    offsets.append(self.peek().offset)
                     args.append(self._arg())
             self.expect(TokenKind.RPAREN, "')' to close the argument list")
-        return MetricCall(name.text, tuple(args))
+        return MetricCall(name.text, tuple(args), tuple(offsets))
 
     def _arg(self) -> str:
         token = self.peek()

@@ -86,6 +86,8 @@ class Project:
     config: ProjectConfig
     datasets: list[Dataset] = field(default_factory=list)
     diagnostics: list[Diagnostic] = field(default_factory=list)
+    # Where each datasource is defined in tablewatch.yml (provisional).
+    datasource_locations: dict[str, SourceLocation] = field(default_factory=dict)
 
     @property
     def checks(self) -> list[Check]:
@@ -141,8 +143,8 @@ def load_project(root: Path) -> Project:
     Problems in check files are returned on `Project.diagnostics`.
     """
     root = root.resolve()
-    config = _load_config(root)
-    project = Project(root=root, config=config)
+    config, locations = _load_config(root)
+    project = Project(root=root, config=config, datasource_locations=locations)
     _ChecksLoader(project).load()
     return project
 
@@ -150,7 +152,7 @@ def load_project(root: Path) -> Project:
 # --- tablewatch.yml ---------------------------------------------------------
 
 
-def _load_config(root: Path) -> ProjectConfig:
+def _load_config(root: Path) -> tuple[ProjectConfig, dict[str, SourceLocation]]:
     path = root / PROJECT_FILE
     if not path.is_file():
         raise ProjectError([error(f"no {PROJECT_FILE} in {root}")])
@@ -186,7 +188,13 @@ def _load_config(root: Path) -> ProjectConfig:
         )
     if problems:
         raise ProjectError(problems)
-    return config
+    sources = node.get("datasources")
+    locations = (
+        {str(name): source.of_key(sources, name) for name in sources}
+        if isinstance(sources, CommentedMap)
+        else {}
+    )
+    return config, locations
 
 
 _BAD_NOTIFIER_NAME = (

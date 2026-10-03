@@ -38,6 +38,15 @@ All notable changes to tablewatch. The format follows
   tree, with fail, warn and pass counts on every folder and file, a search
   box and a status filter. The filters are kept in the URL, so a view can be
   shared and Back returns to it.
+- `tablewatch validate --connect`: catches a misspelt table or column before the first scheduled
+  run. It connects to each datasource, read-only, and checks every dataset and column a check
+  names with zero-row probes — no data is read. Problems are reported at `file:line:col`, the
+  same way `validate` reports everything else. Exits 3 for a mistake in the project (a missing
+  dataset or column — a retry will not fix it) and 2 when only a datasource could not be reached
+  (an unset `${env:}`, a refused connection, a missing database file — a retry might). `--connect`
+  never creates a file, even for a datasource that has none yet.
+- SQLite and DuckDB datasource paths containing `?` or `#` now work in `run` (previously truncated
+  as if they started a URL fragment or query string).
 - The check explorer filters by tag, owner and datasource as well as
   status, and its search also finds tags, owners and datasources. Ticking
   two tags shows checks with either, as `tw run --tag a --tag b` does.

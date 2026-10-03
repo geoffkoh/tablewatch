@@ -7,7 +7,7 @@ stable: `row_count>0` and `row_count  >  0` render identically.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 
@@ -108,6 +108,9 @@ Condition = Compare | Between
 class MetricCall:
     name: str
     args: tuple[str, ...] = ()
+    # Each argument's 0-based column in the expression, for diagnostics.
+    # Not compared and not rendered: it never feeds a check's identity.
+    arg_offsets: tuple[int, ...] = field(default=(), compare=False, repr=False)
 
     def __str__(self) -> str:
         # `row_count` and `row_count()` mean the same, so both render bare.
