@@ -33,6 +33,7 @@ from tablewatch.datasources import (
 from tablewatch.engine.evaluate import evaluate, format_value
 from tablewatch.engine.executor import error_message, execute_plan
 from tablewatch.engine.planner import plan_dataset
+from tablewatch.metrics.base import MetricInputError
 
 log = logging.getLogger(__name__)
 
@@ -241,7 +242,7 @@ def _run_datasource(
                         check,
                         Outcome.ERROR,
                         None,
-                        f"internal error: {_short_error(exc)}",
+                        f"internal error ({type(exc).__name__})",
                     )
                     for check in checks
                 )
@@ -280,6 +281,24 @@ def _run_dataset(
             )
             continue
         wiring = plan.wiring[check.id]
+        ctx = plan.contexts[check.id]
+        succeeded = {
+            role: measured.values[key]
+            for role, key in wiring.items()
+            if key in measured.values
+        }
+        try:
+            # Before measure errors: a database refusing the input (DuckDB's
+            # `avg(VARCHAR)`) reads the same as SQLite's quiet coercion.
+            check.metric.check_input(ctx, succeeded)
+        except MetricInputError as exc:
+            results.append(
+                CheckResult(check, Outcome.ERROR, None, str(exc), measured.duration_ms)
+            )
+            continue
+        except Exception as exc:
+            results.append(_internal_error(dataset, check, exc, measured.duration_ms))
+            continue
         failed = [
             measured.errors[key] for key in wiring.values() if key in measured.errors
         ]
@@ -290,16 +309,16 @@ def _run_dataset(
             continue
         values = {role: measured.values[key] for role, key in wiring.items()}
         # One check's failure is that check's `error`, never the dataset's
-        # (rule 7). A TypeError/ValueError from compute is the data's fault
-        # and its text is the message; anything else, from compute or from
-        # evaluation, is a bug: logged with its traceback, named as internal.
+        # (rule 7). A MetricInputError is the data's fault and its text —
+        # built never to hold a value — is the message; anything else, from
+        # compute or from evaluation, is a bug: its traceback goes to stderr
+        # and the stored message names only its class, since an exception's
+        # text can quote a row.
         try:
-            measurement = check.metric.compute(plan.contexts[check.id], values)
-        except (TypeError, ValueError) as exc:
+            measurement = check.metric.compute(ctx, values)
+        except MetricInputError as exc:
             results.append(
-                CheckResult(
-                    check, Outcome.ERROR, None, _short_error(exc), measured.duration_ms
-                )
+                CheckResult(check, Outcome.ERROR, None, str(exc), measured.duration_ms)
             )
             continue
         except Exception as exc:
@@ -329,7 +348,7 @@ def _internal_error(
         check,
         Outcome.ERROR,
         None,
-        f"internal error in {check.metric.name}: {_short_error(exc)}",
+        f"internal error in {check.metric.name} ({type(exc).__name__})",
         duration_ms,
     )
 

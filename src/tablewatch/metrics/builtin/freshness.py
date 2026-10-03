@@ -25,8 +25,10 @@ from tablewatch.metrics.base import (
     Measurement,
     Metric,
     MetricContext,
+    MetricInputError,
     Unit,
     format_duration,
+    kind_of,
 )
 from tablewatch.metrics.registry import register
 
@@ -125,10 +127,15 @@ def _as_datetime(value: Any) -> tuple[datetime, bool] | None:
     if isinstance(value, str):
         # SQLite has no timestamp type; it hands back ISO-8601 text. Only
         # exactly ten characters (YYYY-MM-DD) is a date.
-        return datetime.fromisoformat(value), len(value) == 10
-    raise TypeError(
-        f"freshness needs a date or timestamp column, got {type(value).__name__}"
-    )
+        try:
+            return datetime.fromisoformat(value), len(value) == 10
+        except ValueError:
+            # Its text quotes the value: never shown.
+            raise MetricInputError(_NEEDS + "; got other text") from None
+    raise MetricInputError(f"{_NEEDS}; got {kind_of(value)}")
+
+
+_NEEDS = "freshness needs a date or timestamp column, or ISO-8601 text"
 
 
 register(Freshness())

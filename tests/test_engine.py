@@ -41,10 +41,11 @@ def test_aggregates_fold_into_one_scan(workspace: Workspace) -> None:
     plan = _plan(workspace, MANY_AGGREGATES)
     assert plan.scan() is not None
     assert plan.queries == {}
-    # 8 checks, 7 measures: the row count behind row_count and both
+    # 8 checks, 8 measures: the row count behind row_count and both
     # *_percent checks is taken once, as is the missing count that
-    # missing_count and missing_percent share.
-    assert len(plan.aggregates) == 7
+    # missing_count and missing_percent share. avg adds MIN and MAX of
+    # amount as type probes (spec 024); max(amount) shares the MAX one.
+    assert len(plan.aggregates) == 8
 
 
 def test_only_duplicates_schema_and_sql_need_their_own_queries(

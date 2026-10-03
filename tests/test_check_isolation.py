@@ -110,7 +110,12 @@ def test_any_compute_exception_errors_only_its_check(
     _checks(project, ds, THREE)
     caplog.set_level(logging.ERROR, logger="tablewatch")
     assert _results(project) == [
-        ("explodes(id) > 0", "error", None, f"internal error in explodes: {raised}"),
+        (
+            "explodes(id) > 0",
+            "error",
+            None,
+            f"internal error in explodes ({type(raised).__name__})",
+        ),
         ("row_count > 0", "pass", 3.0, None),
         ("missing_count(id) = 0", "pass", 0.0, None),
     ]
@@ -136,7 +141,7 @@ def test_the_messages_users_rely_on_are_unchanged(project: Path, ds: str) -> Non
     assert results[0][1:] == (
         "error",
         None,
-        "freshness needs a date or timestamp column, got int",
+        "freshness needs a date or timestamp column, or ISO-8601 text; got numeric",
     )
     assert results[1][1] == "pass"
 
@@ -155,7 +160,12 @@ def test_an_evaluation_error_is_isolated(
 
     monkeypatch.setattr(runner, "evaluate", planted)
     assert _results(project) == [
-        ("row_count > 0", "error", None, "internal error in row_count: evaluate broke"),
+        (
+            "row_count > 0",
+            "error",
+            None,
+            "internal error in row_count (ZeroDivisionError)",
+        ),
         ("missing_count(id) = 0", "pass", 0.0, None),
     ]
 
@@ -181,21 +191,20 @@ def test_the_dataset_safety_net_still_catches_planning(
     }
     assert results[("duck", "row_count > 0")][0] == "error"
     assert results[("duck", "missing_count(id) = 0")][0] == "error"
-    assert "planning broke" in (results[("duck", "row_count > 0")][1] or "")
+    # Spec 024: the class only, never the exception's text.
+    assert results[("duck", "row_count > 0")][1] == "internal error (RuntimeError)"
     assert results[("lite", "row_count > 0")] == ("pass", None)
 
 
-def test_a_long_message_is_first_line_and_capped(
+def test_an_internal_error_never_shows_its_text(
     project: Path, explodes: type[Explodes], monkeypatch: pytest.MonkeyPatch
 ) -> None:  # security R5
     monkeypatch.setattr(Explodes, "raises", RuntimeError("x" * 2000 + "\nsecond line"))
     _checks(project, "duck", "  - explodes(id) > 0\n")
     [(_, outcome, _, message)] = _results(project)
     assert outcome == "error"
-    assert message is not None
-    assert len(message) == len("internal error in explodes: ") + 500
-    assert message.endswith("...")
-    assert "second line" not in message
+    # Spec 024 D1: the class only — exception text can quote a row.
+    assert message == "internal error in explodes (RuntimeError)"
 
 
 def test_keyboard_interrupt_still_ends_the_run(

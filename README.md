@@ -146,6 +146,15 @@ In the `--output json` report, the text of each result's `message` and
 `display_value` is for people and not part of the contract: it may change
 between versions, so a program should read `value` and `outcome`.
 
+
+**What error messages hold.** A check's stored and served message never
+quotes a value from your data: a metric that cannot measure a column names
+its kind (`min needs a numeric column; got text`), and an unexpected failure
+names only its class (`internal error in min (ValueError)`). The full
+traceback goes to stderr only, where it can hold row values, so treat logs
+with the same care as the warehouse. History recorded before this release
+is not scrubbed.
+
 ## Notifications
 
 Name a webhook in `tablewatch.yml` and a `notify:` in a check file or

@@ -15,10 +15,13 @@ from tablewatch.metrics.base import (
     Measurement,
     Metric,
     MetricContext,
+    MetricInputError,
     OptionType,
     QueryMeasure,
     Unit,
     as_float,
+    kind_of,
+    numeric,
     sql_condition,
 )
 from tablewatch.metrics.registry import register
@@ -69,7 +72,12 @@ class SqlMetric(Metric):
         return {"value": QueryMeasure(text(ctx.options["query"]))}
 
     def compute(self, ctx: MetricContext, values: Mapping[str, Any]) -> Measurement:
-        value = as_float(values["value"])
+        try:
+            value = numeric(values["value"], "sql_metric")
+        except MetricInputError:
+            raise MetricInputError(
+                f"sql_metric's query must return a number; got {kind_of(values['value'])}"
+            ) from None
         return Measurement(value, None if value is not None else "query returned NULL")
 
 

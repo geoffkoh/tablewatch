@@ -306,12 +306,6 @@ def test_f9_without_duckdb(landing: Path, monkeypatch: pytest.MonkeyPatch) -> No
     }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="metric layer: CSV sniffs `amount` as VARCHAR and min() of text is "
-    "lexicographic ('10.5'), which as_float accepts; the same on a VARCHAR table "
-    "column. Needs a numeric-type guard in stats.py (tech lead / I-30)",
-)
 def test_f10_a_bad_number_errors_not_fails(landing: Path) -> None:
     (landing / "landing" / "orders.csv").write_text(
         ORDERS_CSV.replace(",20,", ",N/A,"), encoding="utf-8"
@@ -321,6 +315,10 @@ def test_f10_a_bad_number_errors_not_fails(landing: Path) -> None:
     results = by_name(report)
     assert results["row_count = 5"]["outcome"] == "pass"
     assert results["min(amount) > 0"]["outcome"] == "error"
+    # Spec 024 S1: the column's kind, never the value.
+    assert (
+        results["min(amount) > 0"]["message"] == "min needs a numeric column; got text"
+    )
     assert code == 2
 
 

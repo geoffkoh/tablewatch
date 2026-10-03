@@ -131,7 +131,7 @@ def test_runs_are_recorded_and_history_reads_them(retail: Path) -> None:
 def test_compile_shows_one_scan_per_dataset(retail: Path) -> None:
     code, output = invoke(retail, "compile", "checks/sales/orders.yml")
     assert code == 0
-    assert output.count("-- single scan: 6 measures") == 1
+    assert output.count("-- single scan: 8 measures") == 1
     assert "FROM sales.orders" in output
     assert "GROUP BY order_id" in output  # the duplicate check's own query
 

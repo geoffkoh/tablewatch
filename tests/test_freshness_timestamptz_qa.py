@@ -226,7 +226,10 @@ def test_year_10000_errors_only_its_own_check(
         _project(tmp_path / "p"), "10000-01-01 00:00:00+00", session_zone
     )
     assert zoned.outcome.value == "error"
-    assert (zoned.message or "").startswith("Invalid isoformat string")
+    # Spec 024: the value is never quoted.
+    assert zoned.message == (
+        "freshness needs a date or timestamp column, or ISO-8601 text; got other text"
+    )
     assert _summary(rows) == ("pass", 1.0, None)
 
 
@@ -290,7 +293,7 @@ def test_sqlite_freshness_is_untouched(tmp_path: Path) -> None:
     assert _summary(rows) == ("pass", 3.0, None)
 
 
-def test_an_unparseable_sqlite_timestamp_keeps_its_plain_message(
+def test_an_unparseable_sqlite_timestamp_never_quotes_its_value(
     tmp_path: Path,
 ) -> None:  # I2, the SQLite example the spec names
     root = _project(tmp_path / "p")
@@ -306,6 +309,6 @@ def test_an_unparseable_sqlite_timestamp_keeps_its_plain_message(
     assert _summary(fresh) == (
         "error",
         None,
-        "Invalid isoformat string: '29/09/2026 10:00'",
+        "freshness needs a date or timestamp column, or ISO-8601 text; got other text",
     )
     assert _summary(rows) == ("pass", 1.0, None)

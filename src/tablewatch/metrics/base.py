@@ -145,6 +145,19 @@ class MetricContext:
         scope = self.scope
         return value if scope is None else case((scope, value))
 
+    def type_probes(self, col: ColumnElement[Any]) -> dict[str, AggregateMeasure]:
+        """MIN and MAX of the column in scope: what kind of values it holds.
+
+        SQLite sorts text above numbers, so a stray text value surfaces in
+        MAX; a text column returns text from both. Deduped with `min` and
+        `max` themselves, so the scan stays one.
+        """
+        value = self.scoped_value(col)
+        return {
+            "probe_min": AggregateMeasure(func.min(value)),
+            "probe_max": AggregateMeasure(func.max(value)),
+        }
+
     def row_count(self) -> AggregateMeasure:
         scope = self.scope
         if scope is None:
@@ -233,11 +246,61 @@ class Metric(ABC):
 
     @abstractmethod
     def compute(self, ctx: MetricContext, values: Mapping[str, Any]) -> Measurement:
-        """Turn measured values (keyed by role) into the metric's value."""
+        """Turn measured values (keyed by role) into the metric's value.
+
+        Raise `MetricInputError` when the data cannot be measured this way;
+        any other exception is reported as an internal error, by class only.
+        """
+
+    def check_input(self, ctx: MetricContext, values: Mapping[str, Any]) -> None:
+        """Raise `MetricInputError` if the data cannot be measured this way.
+
+        Called with the measures that succeeded, before any that failed is
+        reported — so a database's own refusal (DuckDB and Postgres reject
+        `avg` of text at bind time) reads the same as SQLite's quiet
+        coercion, which the probes catch. Most metrics need no check.
+        """
+        return
+
+
+class MetricInputError(Exception):
+    """The data cannot be measured this way; the message says why.
+
+    The one exception whose text a check's message shows, so it is stored
+    and served. Build it from constants and `kind_of()` only — never from a
+    value of the data, which can be an email, an id or a secret.
+    """
+
+
+def kind_of(value: Any) -> str:
+    """A value's kind in one fixed word, safe to show: never the value."""
+    if isinstance(value, bool):  # before int: bool is an int in Python
+        return "boolean"
+    if isinstance(value, int | float | Decimal):
+        return "numeric"
+    if isinstance(value, datetime):  # before date: a datetime is a date
+        return "timestamp"
+    if isinstance(value, date):
+        return "date"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, bytes | bytearray | memoryview):
+        return "binary"
+    return "other"
+
+
+def numeric(value: Any, what: str) -> float | None:
+    """`value` as a float, or `MetricInputError` naming its kind."""
+    if value is None:
+        return None
+    if kind_of(value) != "numeric":
+        raise MetricInputError(f"{what} needs a numeric column; got {kind_of(value)}")
+    return float(value)
 
 
 def as_float(value: Any) -> float | None:
-    return None if value is None else float(value)
+    """A count or other number the SQL returned, as a float."""
+    return numeric(value, "this metric")
 
 
 def percent(part: Any, whole: Any) -> Measurement:
