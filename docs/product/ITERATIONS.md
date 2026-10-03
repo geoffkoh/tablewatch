@@ -6,6 +6,45 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 28 — `validate --connect`: datasets and columns exist, part 1 (I-13), 2026-10-03
+
+- **Spec:** [028-validate-connect-existence](specs/028-validate-connect-existence.md). **Branch:**
+  `iter/028`. Full track. No items added (freeze).
+- **REFINE.** Architect → D1–D2: zero-row probes in order (all named columns, then the table,
+  then each column, Q1); a new `engine/probe.py` (`probe_project`, `ConnectResult.exit_code`);
+  `MetricCall.arg_offsets` outside check identity; `Metric.args_are_columns`; datasource key
+  locations recorded by the loader. Security → D3 (R1–R7, wins on wording): read-only connections
+  (SQLite `mode=ro`, DuckDB `read_only`, Postgres read-only with timeouts); no driver text in any
+  message; a networked database's unreachable reason is fixed words, with the driver's text at
+  `-v`; a README warning against `--connect` with secrets on a fork PR. Data-steward → D4: the
+  column, table and closing-line wording, and the 0/3/2/3 exit codes.
+- **Shipped:** `validate --connect` opens each datasource read-only and asks, with zero-row
+  probes, whether every dataset and every column a check names exists — no row is read, and a
+  mistyped path never creates a file. A project mistake (missing dataset or column) exits 3; a
+  datasource that cannot be reached exits 2, and its checks are reported as not checked, without
+  stopping the others. Also: SQLite/DuckDB paths containing `?` or `#` now work in `run`.
+- **Reviewer findings and resolution:**
+  - *security-reviewer — accept, then fixed; 3 findings.* A SQLAlchemy-URL SQLite datasource
+    still created a file under `--connect`; fixed to open read-only. Postgres had no
+    `connect_timeout`; added. README said URL datasources follow `--connect`'s read-only rule;
+    fixed to say they open as given.
+  - *qa-engineer — fail, then fixed; 1 blocker, 53 tests, 5 strict xfails.* Any SQLite refusal
+    (including a corrupt or locked file) was reported as "not found". Fixed: only a driver's own
+    not-found text (DuckDB Catalog/Binder, SQLite "no such", Postgres codes, a file's fixed text)
+    is a mistake; anything else is unreached (exit 2).
+  - *data-steward — accept, then fixed.* `--connect`'s closing line dropped the warning count at
+    `-v`, and doubled a phrase; both fixed.
+- **Not added (backlog freeze), as strict xfails or notes:** SQLite reads a double-quoted unknown
+  column name as a string literal, so a quoted missing column passes in both `run` and
+  `--connect` (pre-existing, rule 3; belongs in `MetricContext.column`); block-scalar check
+  positions; `-wal`/`-shm` side files on a WAL database; a broken view reads as "table not found".
+- **Lessons:** "not found" needs a driver-specific allowlist, not a catch-all — a refused or
+  locked connection looks identical to a missing table unless each driver's own wording is
+  checked.
+- **Backlog:** I-13 stays in progress — part 1 done, part 2 (type suitability, compiled
+  statements and user SQL) is next for I-13. I-14 still waits on the owner. Next: iteration 29,
+  I-08 part 2.
+
 ## Iteration 27 — `change(<metric>)` baselines: same weekday, last N runs, part 2 (I-07), 2026-10-03
 
 - **Spec:** [027-change-over-time-baselines](specs/027-change-over-time-baselines.md). **Branch:**
