@@ -213,8 +213,12 @@ def expand(root: str, relative: str, name: str) -> list[str]:
     """
     if not is_pattern(relative):
         return [_inside(root, relative)]
+    parts: list[str] = []
+    for part in relative.split("/"):
+        if not (part == "**" and parts and parts[-1] == "**"):
+            parts.append(part)  # `**/**` is `**`: it bounds the recursion
     walk = _Walk(root, relative, name)
-    walk.visit(root, tuple(relative.split("/")), 0)
+    walk.visit(root, tuple(parts), 0)
     if not walk.matches:
         raise FilesError(
             f"no file matches '{relative}' in the files datasource '{name}'"
@@ -245,24 +249,22 @@ class _Walk:
             if rest:
                 self.visit(directory, rest, depth)  # `**` matches no folder too
             for entry in self._entries(directory):
-                if self._is_dir(entry):
+                if _kind(entry) == stat.S_IFDIR:
                     self.visit(entry.path, parts, depth + 1)
             return
         for entry in self._entries(directory):
             if not fnmatchcase(entry.name, head):
                 continue
-            if entry.is_symlink():
-                raise FilesError(REFUSED)
-            if rest:
-                if self._is_dir(entry):
-                    self.visit(entry.path, rest, depth + 1)
-            elif stat.S_ISREG(entry.stat(follow_symlinks=False).st_mode):
+            kind = _kind(entry)
+            if rest and kind == stat.S_IFDIR:
+                self.visit(entry.path, rest, depth + 1)
+            elif not rest and kind == stat.S_IFREG:
                 self.matches.append(entry.path)
                 if len(self.matches) > MAX_MATCHES:
                     raise self._too_much(f"matches more than {MAX_MATCHES:,} files")
 
     def _entries(self, directory: str) -> list[os.DirEntry[str]]:
-        """A folder's visible entries; a symlink under `**` refuses."""
+        """A folder's visible (not hidden) entries."""
         try:
             with os.scandir(directory) as found:
                 entries = [e for e in found if not e.name.startswith(".")]
@@ -275,11 +277,23 @@ class _Walk:
             raise self._too_much(f"scans more than {MAX_ENTRIES:,} entries")
         return entries
 
-    @staticmethod
-    def _is_dir(entry: os.DirEntry[str]) -> bool:
-        if entry.is_symlink():  # a link to a folder would be entered
-            raise FilesError(REFUSED)
-        return entry.is_dir(follow_symlinks=False)
+
+def _kind(entry: os.DirEntry[str]) -> int | None:
+    """An entry's file type, never following it; None if it has vanished.
+
+    A symlink refuses the dataset: a link to a folder would be entered, and
+    one to a file read. Any other failure refuses too — the OSError's text
+    holds the absolute path.
+    """
+    try:
+        mode = entry.stat(follow_symlinks=False).st_mode
+    except FileNotFoundError:  # rotated away mid-walk: not a match
+        return None
+    except OSError:
+        raise FilesError(REFUSED) from None
+    if stat.S_ISLNK(mode):
+        raise FilesError(REFUSED)
+    return stat.S_IFMT(mode)
 
 
 def _inside(root: str, relative: str) -> str:

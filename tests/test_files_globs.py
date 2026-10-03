@@ -351,3 +351,45 @@ def test_d2_docs() -> None:
     ):
         assert phrase in section
     assert "schema` checks, and" not in section
+
+
+def test_a_file_vanishing_mid_walk_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # security VERIFY
+    root = tmp_path / "r"
+    root.mkdir()
+    (root / "a.csv").write_text("id\n1\n")
+    (root / "b.csv").write_text("id\n1\n")
+    real = os.DirEntry.stat
+
+    def racing(entry: os.DirEntry[str], **kw: bool) -> os.stat_result:
+        if entry.name == "b.csv":
+            raise FileNotFoundError(2, "gone", entry.path)
+        return real(entry, **kw)
+
+    monkeypatch.setattr(os.DirEntry, "stat", racing)
+    assert expand(str(root), "*.csv", "drop") == [str(root / "a.csv")]
+
+
+def test_a_failing_stat_is_refused_without_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # security VERIFY
+    root = tmp_path / "r"
+    root.mkdir()
+    (root / "a.csv").write_text("id\n1\n")
+
+    def failing(entry: os.DirEntry[str], **kw: bool) -> os.stat_result:
+        raise PermissionError(13, "denied", entry.path)
+
+    monkeypatch.setattr(os.DirEntry, "stat", failing)
+    with pytest.raises(FilesError) as caught:
+        expand(str(root), "*.csv", "drop")
+    assert str(caught.value) == REFUSED
+
+
+def test_many_double_stars_are_one(tmp_path: Path) -> None:  # security VERIFY
+    root = tmp_path / "r"
+    (root / "d").mkdir(parents=True)
+    (root / "d" / "x.csv").write_text("id\n1\n")
+    pattern = "/".join(["**"] * 1500) + "/*.csv"
+    assert expand(str(root), pattern, "drop") == [str(root / "d" / "x.csv")]
