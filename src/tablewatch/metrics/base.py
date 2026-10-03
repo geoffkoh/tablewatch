@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Boolean, and_, case, false, func, literal, literal_column
 from sqlalchemy.engine import Dialect
 from sqlalchemy.sql import ColumnElement, Select, column
-from sqlalchemy.sql.expression import TableClause, TextClause
+from sqlalchemy.sql.expression import FromClause, TextClause
 
 from tablewatch.dsl import Condition
 
@@ -85,7 +85,7 @@ class MetricContext:
     """Everything a metric needs to describe its measures for one check."""
 
     check: Check
-    table: TableClause
+    table: FromClause
     now: datetime
     timezone: ZoneInfo
     dialect: Dialect

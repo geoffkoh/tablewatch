@@ -10,10 +10,13 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from tablewatch.checks.sources import Source, TableSource
 from tablewatch.diagnostics import SourceLocation
 from tablewatch.dsl import CheckExpr, Condition
 
 if TYPE_CHECKING:
+    from sqlalchemy.sql.expression import FromClause
+
     from tablewatch.metrics.base import Metric
 
 
@@ -106,6 +109,13 @@ class Dataset:
     datasource_state: DatasourceState = "defined"
     # Notifier names for its checks, after `_defaults.yml` inheritance.
     notify: tuple[str, ...] = ()
+    # Where its rows come from; None means the table `name` names.
+    source: Source | None = None
+
+    def from_clause(self) -> FromClause:
+        """The one `FROM` its scan reads (rule 1)."""
+        source = self.source or TableSource(self.table.table, self.table.schema)
+        return source.from_clause()
 
     @property
     def table(self) -> TableRef:

@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy import Connection, Engine, column, inspect, select, table
 from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
 
+from tablewatch.checks.sources import FileSource
 from tablewatch.engine.planner import SCHEMA_KEY, DatasetPlan
 
 log = logging.getLogger(__name__)
@@ -87,6 +88,9 @@ def _scalar(conn: Connection, key: str, statement: Any, measured: Measured) -> N
 
 
 def _schema(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
+    if isinstance(plan.dataset.source, FileSource):
+        measured.errors[SCHEMA_KEY] = "schema checks on files are not supported yet"
+        return
     ref = plan.dataset.table
     columns: list[tuple[str, str]] | None
     try:
