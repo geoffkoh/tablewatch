@@ -215,11 +215,7 @@ def test_the_scrub_rule(text: str, expected: str) -> None:  # D3
 
 
 def test_assets_cache_and_coop_by_host(retail: Path) -> None:  # S7, S7b, S8
-    from tests import test_webui
-
-    with served(
-        retail, ui=test_webui.FAKE_BUNDLE, allowed_hosts=("tw.example",)
-    ) as client:
+    with served(retail, ui=FAKE_BUNDLE, allowed_hosts=("tw.example",)) as client:
         asset = client.get("/assets/app-abc123.js")
         missing = client.get("/assets/does-not-exist-abc123.js")
         page = client.get("/")
