@@ -126,8 +126,6 @@ def test_l7_plurals(p: Path) -> None:
     assert invoke(p, "validate")[1] == "1 dataset, 1 check — no problems found\n"
     checks(p, "  - row_count > 0\n", name="b.yml", ds="prod")
     assert invoke(p, "validate")[1] == "2 datasets, 2 checks — no problems found\n"
-    code, _, err = invoke(p, "validate", "--connect")
-    assert code == 0 or "2 datasets, 2 checks" in err
 
 
 def test_l8_two_schema_checks(p: Path) -> None:

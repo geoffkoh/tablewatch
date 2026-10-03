@@ -839,13 +839,13 @@ class _ChecksLoader:
             return
         for value in values_in(condition):
             if isinstance(value, Number) and not value.percent and 0 < value.value < 1:
-                written = Number(value.value, percent=True)
-                scaled = Number(round(value.value * 100, 10), percent=True)
+                written = _decimal(value.value)
+                scaled = _decimal(value.value * 100)
                 self.diagnostics.append(
                     warning(
-                        f"{value} on {metric.name} means {written}, not {scaled} — "
-                        f"write {scaled} for {scaled.value:g} percent, or {written} "
-                        f"if {written} is meant",
+                        f"{written} on {metric.name} means {written}%, not {scaled}% "
+                        f"— write {scaled}% for {scaled} percent, or {written}% "
+                        f"if {written}% is meant",
                         at,
                     )
                 )
@@ -1118,3 +1118,9 @@ def _own_key_line(source: YAMLSource, node: CommentedMap, key: str) -> int | Non
 
 def _article(noun: str) -> str:
     return "an" if noun[:1] in "aeiou" else "a"
+
+
+def _decimal(value: float) -> str:
+    """A number as the check language accepts it: plain digits, never `1e-06`."""
+    text = f"{value:.12f}".rstrip("0").rstrip(".")
+    return text or "0"

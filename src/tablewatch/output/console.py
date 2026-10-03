@@ -68,8 +68,9 @@ def summary(run: RunResult) -> str:
 
 def _rows(results: list[CheckResult], wide: bool) -> list[tuple[str, ...]]:
     def key(result: CheckResult) -> tuple[str, str, str]:
+        # The clipped cell is what reads alike, not the full name.
         dataset = result.check.dataset
-        return (dataset.datasource, dataset.name, result.check.name)
+        return (dataset.datasource, dataset.name, _clip(result.check.name, _MAX_CHECK))
 
     seen = Counter(key(r) for r in results)
     rows = []
