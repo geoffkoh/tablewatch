@@ -101,7 +101,8 @@ def check_file_schema() -> dict[str, Any]:
                 "type": "string",
                 "description": (
                     "Table name, optionally schema.table; on a `type: files` "
-                    "datasource, a file path relative to its root "
+                    "datasource, a file path or pattern (*, ?, [ ], ** for any "
+                    "depth) relative to its root "
                     "(.csv, .tsv, .parquet, .json, .jsonl, .ndjson, optionally .gz)."
                 ),
             },

@@ -10,14 +10,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from sqlalchemy import bindparam, func, table
+from sqlalchemy import TextClause, bindparam, func, literal_column, table, text
 from sqlalchemy.sql.expression import FromClause
 
 FileFormat = Literal["csv", "parquet", "json"]
 
-# The bind parameter that carries a file's path. SQL shows it relative to the
-# datasource's root; the engine swaps in the absolute path when it executes.
+# The bind parameter that carries a file's path or pattern. SQL shows it
+# relative to the datasource's root; the engine swaps in the list of absolute
+# paths it matches when it executes.
 PATH_PARAM = "tw_path"
+
+# Files matched by one pattern are unified by column name: a file with its
+# columns in another order reads the same, and a column one file lacks reads
+# NULL there (spec 029, Q5). Harmless for a single file.
+_UNION = "union_by_name => true"
+
+# The characters that make a dataset a pattern (spec 029).
+PATTERN_CHARS = frozenset("*?[]")
 
 # Extension -> format; a trailing `.gz` is read through by DuckDB.
 FILE_FORMATS: dict[str, FileFormat] = {
@@ -55,17 +64,36 @@ class TableSource:
         return f"{self.schema}.{self.table}" if self.schema else self.table
 
 
+def is_pattern(path: str) -> bool:
+    """Whether a files dataset names a pattern rather than one file."""
+    return bool(PATTERN_CHARS & set(path))
+
+
 @dataclass(frozen=True)
 class FileSource:
-    """A file, by its path relative to its datasource's root (POSIX)."""
+    """A file or a pattern, relative to its datasource's root (POSIX)."""
 
     path: str
     format: FileFormat
 
     def from_clause(self) -> FromClause:
         reader = _READERS[self.format]
-        alias: FromClause = reader(bindparam(PATH_PARAM, self.path)).table_valued()
+        alias: FromClause = reader(
+            bindparam(PATH_PARAM, self.path), literal_column(_UNION)
+        ).table_valued()
         return alias
+
+    def schema_statement(self) -> TextClause:
+        """Column names and DuckDB's types, as `(column_name, column_type)`.
+
+        One SELECT, so it passes the files engine's gate; DuckDB samples the
+        files to detect types but returns no row of them.
+        """
+        reader = f"read_{self.format}"
+        return text(
+            "SELECT column_name, column_type FROM "
+            f"(DESCRIBE SELECT * FROM {reader}(:{PATH_PARAM}, {_UNION}))"
+        ).bindparams(bindparam(PATH_PARAM, self.path))
 
     def __str__(self) -> str:
         return self.path

@@ -6,6 +6,45 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 29 — Files as datasets, part 2: glob patterns and `schema` on files (I-08 part 2), 2026-10-03
+
+- **Spec:** [029-files-globs-schema](specs/029-files-globs-schema.md). **Branch:** `iter/029`.
+  Full track. No items added (freeze).
+- **REFINE.** Architect → Q1–Q2: one `expand(root, pattern)` called only from `swap_path`, binding
+  the list of absolute paths, matches cached per pattern per run; `FileSource.schema_statement()`
+  via `DESCRIBE`, passing the one-`SELECT` gate. Security → Q3–Q4: the walk uses `os.scandir`/
+  `lstat`, never entering a symlinked directory; a symlink anywhere among the matches refuses the
+  whole dataset; a match whose own name holds a pattern character is refused too (G14); caps on
+  matches, `**` depth and entries scanned; `allowed_directories` as the read-time backstop.
+  Data-steward → Q5–Q6: files are unified by column name (`union_by_name`), a column missing from
+  one file reads NULL rather than erroring; messages name the pattern and datasource, never a
+  matched file or DuckDB's own text.
+- **Shipped:** a files dataset may be a glob (`*`, `?`, `[ ]`, `**`, any depth); tablewatch expands
+  it in Python inside root, checks every match against part 1's inside/symlink rule, sorts them and
+  hands DuckDB the list — DuckDB never globs. `schema` now works on a file or a pattern, reading
+  DuckDB's column list through `DESCRIBE` without reading rows beyond its own type-detection sample.
+  Suite: **2435 passed, 1 skipped, 16 xfailed**.
+- **Reviewer findings and resolution:**
+  - *security-reviewer — approve-with-followups; fixed.* A file vanishing mid-walk leaked its
+    absolute path in the refusal; now skipped silently (9258a77). Consecutive `**` segments caused
+    a RecursionError; collapsed (9258a77). Repeated `**/*` routes made the walk combinatorial; fixed
+    with a (folder, rest-of-pattern) memo so each is walked once (eb1ebe7). Accepted: a metadata-only
+    `stat` of a link target under `**`, and that a segment starting with `.` matches hidden names.
+  - *qa-engineer — pass, no blockers; 59 tests plus 4 strict xfails, all fixed (a790b3a).* An
+    unrelated file symlink under `**` no longer refuses the dataset; a literal `.hidden/` segment is
+    now entered; the entry cap counts each entry once; names are compared in NFC.
+  - *data-steward — accept; 22/23 scenarios run via the CLI, G16 checked by inspection.*
+    Non-blocking: the editor's JSON Schema did not say a files dataset may be a pattern; fixed
+    (9e57b93).
+- **Not added (backlog freeze):** none beyond I-08's own remaining scope.
+- **Lesson:** expanding the glob in Python, not DuckDB, moved every denial-of-service question
+  (deep `**`, huge match counts, repeated route explosion, a file vanishing mid-walk) onto
+  tablewatch's own walk — each is a cost the walk has to bound itself, not one DuckDB's own glob
+  would have hit.
+- **Backlog:** I-08 stays in progress — glob patterns and `schema` on files are done; a
+  `sql_metric` naming its own file remains (needs a language decision on how a query names its
+  dataset). Next: iteration 30, I-28 with I-45, as planned in iteration 25.
+
 ## Iteration 28 — `validate --connect`: datasets and columns exist, part 1 (I-13), 2026-10-03
 
 - **Spec:** [028-validate-connect-existence](specs/028-validate-connect-existence.md). **Branch:**

@@ -20,7 +20,6 @@ import pytest
 
 import tablewatch as tw
 from tablewatch.checks.model import derive_check_id
-from tablewatch.datasources.files import REFUSED
 from tablewatch.engine.runner import run_checks
 from tests.conftest import invoke
 from tests.test_files_datasets import (
@@ -219,31 +218,6 @@ def test_an_empty_parquet_is_an_error_not_a_crash(landing: Path) -> None:
     code, report, _ = run_json(landing)
     assert code == 2
     assert report["results"][0]["message"] == "could not read 'e.parquet' as parquet"
-
-
-# --- globs belong to part 2 (G3) -------------------------------------------------
-
-
-@pytest.mark.parametrize("dataset", ["'*.csv'", "'**/*.csv'", "'orders_[0-9].csv'"])
-def test_g3_a_glob_is_not_accepted_in_part_1(landing: Path, dataset: str) -> None:
-    # Spec 023 leaves globs to part 2. Accepting one now runs undesigned
-    # semantics: `*.csv` silently unions every CSV under root.
-    write_checks(landing, "  - row_count = 5\n", dataset)
-    code, _, _ = invoke(landing, "validate")
-    assert code == 3
-
-
-def test_s5_a_glob_does_not_follow_a_symlink_inside_root(landing: Path) -> None:
-    # D4/docs: "A path that goes through a symlink is refused, even one
-    # pointing inside root." A glob reaches the same link `zlink.csv` does.
-    (landing / "landing" / "zlink.csv").symlink_to(landing / "landing" / "orders.csv")
-    write_checks(landing, "  - row_count = 5\n", "zlink.csv")
-    assert run_json(landing)[1]["results"][0]["message"] == REFUSED
-    write_checks(landing, "  - row_count = 5\n", "'*.csv'")
-    # A pattern is a Diagnostic in part 1, so nothing can read through the link.
-    code, out, err = invoke(landing, "run", "--output", "json")
-    assert code == 3
-    assert "patterns" in out + err
 
 
 # --- filter / where with quotes ---------------------------------------------------
