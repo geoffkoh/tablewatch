@@ -293,7 +293,7 @@ def connection_problem(config: DatasourceConfig, exc: BaseException) -> str:
     """
     detail = _first_line(exc)
     if isinstance(config, PostgresDatasource | URLDatasource):
-        log.info("connection failed: %s", detail)
+        log.info("datasource connection: %s", detail)
         return CONNECTION_FAILED
     return detail
 

@@ -386,10 +386,14 @@ def _validate_connect(project: Project, summary: str, errors: list[Diagnostic]) 
     if code:
         _fail(f"{summary} — {'; '.join(parts)}", code)
     reached = len({d.datasource for d in project.datasets if d.checks})
-    click.echo(
-        f"{summary} — no problems found; {reached} "
-        f"datasource{'s' if reached != 1 else ''} checked"
-    )
+    checked = f"{reached} datasource{'s' if reached != 1 else ''} checked"
+    warnings = sum(1 for d in project.diagnostics if d.severity is Severity.WARNING)
+    if warnings:
+        # As plain validate: the closing line is the one read in a CI log.
+        noun = "warning" if warnings == 1 else "warnings"
+        click.echo(f"{summary} — no errors, {warnings} {noun}; {checked}")
+        return
+    click.echo(f"{summary} — no problems found; {checked}")
 
 
 @cli.command("list")
