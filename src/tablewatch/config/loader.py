@@ -434,6 +434,11 @@ class _ChecksLoader:
         dataset, so the check id does not depend on how it was written.
         """
         at = source.of_value(node, "dataset")
+        if any(ord(c) < 32 or ord(c) == 127 for c in name):
+            self.diagnostics.append(
+                error("a files dataset path cannot hold control characters", at)
+            )
+            return None
         if "://" in name:
             self.diagnostics.append(
                 error(

@@ -622,3 +622,25 @@ def test_u1_api_shows_the_relative_path(
     assert_no_leak(
         [json.dumps(items), *pages, caplog.text, *stored_messages(landing)], landing
     )
+
+
+# --- VERIFY (security): the root is a folder, never the project or its store ----------
+
+
+@pytest.mark.parametrize("root", [".", "./", ".tablewatch", ".tablewatch/x"])
+def test_the_root_is_never_the_project_or_its_store(landing: Path, root: str) -> None:
+    config = landing / "tablewatch.yml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("root: landing", f"root: {root}"),
+        encoding="utf-8",
+    )
+    code, out, err = invoke(landing, "validate")
+    assert code == 3
+    assert "a files root" in out + err
+
+
+def test_a_control_character_in_a_path_is_a_diagnostic(landing: Path) -> None:
+    write_checks(landing, "  - row_count > 0\n", dataset='"or\\0ders.csv"')
+    code, out, err = invoke(landing, "validate")
+    assert code == 3
+    assert "a files dataset path cannot hold control characters" in out + err

@@ -184,7 +184,12 @@ def _path_of(element: Any) -> str | None:
 
 def _inside(root: str, relative: str) -> str:
     """`root/relative`, or FilesError: outside root, or through a symlink (S5)."""
-    if not relative or Path(relative).is_absolute() or "\\" in relative:
+    if (
+        not relative
+        or Path(relative).is_absolute()
+        or "\\" in relative
+        or any(ord(c) < 32 or ord(c) == 127 for c in relative)
+    ):
         raise FilesError(REFUSED)
     candidate = os.path.normpath(Path(root) / relative)
     if candidate == root or os.path.commonpath([root, candidate]) != root:

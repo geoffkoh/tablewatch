@@ -92,11 +92,15 @@ class FilesDatasource(_DatasourceBase):
                 "a files root is a path in the project, not an ${env:} reference"
             )
         path = PurePosixPath(value.replace("\\", "/"))
-        if not value.strip() or path.is_absolute() or ".." in path.parts:
+        parts = [p for p in path.parts if p not in ("", ".")]
+        if path.is_absolute() or ".." in path.parts or not parts:
             raise ValueError(
-                "a files root must be a relative path inside the project, "
-                f"without '..'; got '{value}'"
+                "a files root must be a folder inside the project (not the project "
+                f"itself), without '..'; got '{value}'"
             )
+        if parts[0] == ".tablewatch":
+            # Check SQL could read the results store and any secret beside it.
+            raise ValueError("a files root cannot be the results folder .tablewatch")
         return value
 
 
