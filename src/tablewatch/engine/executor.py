@@ -84,7 +84,7 @@ def _scalar(conn: Connection, key: str, statement: Any, measured: Measured) -> N
     except Exception as exc:  # SQL errors, and values the driver cannot fetch
         # Postgres refuses further statements in a failed transaction.
         conn.rollback()
-        measured.errors[key] = error_message(exc)
+        measured.errors[key] = measure_error(exc)
 
 
 def _schema(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
@@ -142,6 +142,30 @@ isc = table(
     column("ordinal_position"),
     schema="information_schema",
 )
+
+
+# A database's text when a value cannot be converted quotes the value —
+# a row (DuckDB: "Could not convert string 'bob@…' to INT32"; Postgres:
+# 'invalid input syntax for type integer: "N/A"'). Never stored.
+_CONVERSION_MARKERS = (
+    "conversion error",
+    "could not convert",
+    "invalid input syntax",
+    "invalid literal",
+    "malformed",
+)
+CONVERSION_MESSAGE = (
+    "a value in the column could not be converted: "
+    "the check's options and the column's type disagree"
+)
+
+
+def measure_error(exc: BaseException) -> str:
+    """`error_message`, unless the database's text would quote a row value."""
+    text = error_message(exc)
+    if any(marker in text.lower() for marker in _CONVERSION_MARKERS):
+        return CONVERSION_MESSAGE
+    return text
 
 
 def error_message(exc: BaseException) -> str:

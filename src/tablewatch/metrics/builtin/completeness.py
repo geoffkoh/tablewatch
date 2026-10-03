@@ -22,6 +22,8 @@ from tablewatch.metrics.base import (
     OptionType,
     Unit,
     as_float,
+    has_number,
+    numbers_against_text,
     percent,
 )
 from tablewatch.metrics.registry import register
@@ -37,6 +39,13 @@ def missing_predicate(ctx: MetricContext, column_name: str) -> ColumnElement[boo
 
 # NULL is always missing; listing it adds nothing (and today it never did).
 MISSING_VALUES_NULL = NullHint("NULL always counts as missing already")
+
+
+def _probes(ctx: MetricContext) -> dict[str, AggregateMeasure]:
+    """Type probes, only when `missing_values` holds numbers (spec 024)."""
+    if has_number(ctx.options.get("missing_values")):
+        return ctx.type_probes(ctx.column(ctx.args[0]))
+    return {}
 
 
 class MissingCount(Metric):
@@ -55,8 +64,12 @@ class MissingCount(Metric):
         return {
             "missing": AggregateMeasure(
                 ctx.count_where(missing_predicate(ctx, ctx.args[0]))
-            )
+            ),
+            **_probes(ctx),
         }
+
+    def check_input(self, ctx: MetricContext, values: Mapping[str, Any]) -> None:
+        numbers_against_text(self.name, ctx.options, values)
 
     def compute(self, ctx: MetricContext, values: Mapping[str, Any]) -> Measurement:
         return Measurement(as_float(values["missing"]) or 0.0)

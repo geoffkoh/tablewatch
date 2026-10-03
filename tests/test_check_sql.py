@@ -313,7 +313,7 @@ def test_sharing(retail: Path) -> None:  # S4
         duplicates = _sql(client, DUPLICATES)
         percent = _sql(client, PERCENT)
     [scan] = volume["statements"]
-    assert scan["measures"] == 6
+    assert scan["measures"] == 8  # avg(amount)'s MIN/MAX type probes (spec 024)
     assert scan["uses"] == [{"label": "m0", "sql": "count(*)", "shared_by": 2}]
     assert scan["shared_by"] == 6
     assert duplicates["statements"][0]["shared_by"] == 0
@@ -344,14 +344,24 @@ def test_filter_and_where_are_visible(filtered: Path) -> None:  # S11
     with served(filtered) as client:
         body = _sql(client, RETURNS_AVG)
     [scan] = body["statements"]
-    assert scan["measures"] == 3
+    assert scan["measures"] == 5  # with the MIN/MAX type probes (spec 024)
     assert scan["sql"].endswith("FROM sales.returns \nWHERE (status != 'test')")
     assert scan["uses"] == [
         {
             "label": "m2",
             "sql": "avg(CASE WHEN (reason != 'damaged') THEN amount END)",
             "shared_by": 0,
-        }
+        },
+        {
+            "label": "m3",
+            "sql": "min(CASE WHEN (reason != 'damaged') THEN amount END)",
+            "shared_by": 0,
+        },
+        {
+            "label": "m4",
+            "sql": "max(CASE WHEN (reason != 'damaged') THEN amount END)",
+            "shared_by": 0,
+        },
     ]
 
 

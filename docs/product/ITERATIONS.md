@@ -6,6 +6,33 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 24 — Metric errors name the column kind, never a row value (I-30), 2026-10-03
+
+- **Spec:** [024-metric-errors-no-row-values](specs/024-metric-errors-no-row-values.md). **Branch:**
+  `iter/024`. Full track. No items added (freeze).
+- **REFINE.** Security R1–R6 → D1–D2, D6: a message names the metric and a fixed column kind, never
+  a value; every other exception stores only its class name; a database's own conversion-error text
+  is never stored. Architect → D3–D4: `MetricInputError`, `numeric(value, what)`, MIN/MAX type probes
+  folded into the one scan, a `check_input(ctx, values)` hook. Data-steward stalled twice on Q5/Q6
+  (text-as-numerals vs. a stray value vs. boolean); the tech lead recorded D5.
+- **Shipped:** `min`/`max`/`avg`/`sum` on a text, date or boolean column now `error`
+  ("`min` needs a numeric column; got text") instead of comparing strings or coercing silently;
+  `freshness` and `sql_metric` get the same treatment. Internal errors show only the exception's
+  class. Iteration-11 isolation tests and compile goldens updated for the new probes and messages.
+  Suite: **1991 passed, 4 xfailed**; ruff and mypy clean.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — fail, then fixed; 1 blocker, 48 tests.* DuckDB's own conversion error quoted a row
+    for `missing_*`/`invalid_*` with a numbers-only option list on a text column. Fixed: those
+    metrics probe and error the same on both databases; conversion-error text is never stored (D6).
+  - *data-steward — accept*, S1–S11 live.
+- **Not added (backlog freeze):** an empty scope on DuckDB still shows the `avg(VARCHAR)` bind error
+  (strict xfail); a `where:` keeping only the stray text row says `got text`; TIME/INTERVAL/UUID
+  read `got other`; probe columns appear unlabelled in the SQL section.
+- **Lessons:** when a reviewer stalls on wording for a borderline case (numerals-as-text vs. a stray
+  value in a numeric column), the tech lead recording the decision keeps REFINE moving without
+  losing the distinction the steward was defending.
+- **Backlog:** I-30 done. I-14 (Postgres store in CI) still waits on the owner. Next: iteration 25.
+
 ## Iteration 23 — Files as datasets, part 1: CSV, Parquet, JSON via DuckDB (I-08), 2026-10-03
 
 - **Spec:** [023-files-as-datasets](specs/023-files-as-datasets.md). **Branch:** `iter/023`.

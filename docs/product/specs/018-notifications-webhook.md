@@ -140,7 +140,7 @@ local server) and `checks/sales/_defaults.yml` holding `notify: data-alerts`.
   it unparsed. No HMAC in part 1.
 - **D7 (security R5, blocker adopted; tightened in BUILD).** For `error` events `message` is always the
   fixed `could not evaluate`, never `error_message()` text; the reason stays in the run's results. Other
-  outcomes send `message` as is. Revisit with I-30.
+  outcomes send `message` as is. Revisit with I-31 (spec 024 R6).
 - **D8 (security R6–R9, Q6).** `url` is exactly one `${env:NAME}` (N12), resolved only in `send`.
   Reasons come from a fixed set: `HTTP <code>`, `timed out`, `connection failed`, `TLS verification
   failed`, `redirect not followed`, `the url is not https`, `the url is not a valid URL`. Never

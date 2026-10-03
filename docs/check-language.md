@@ -103,8 +103,8 @@ identifiers: `missing_count("Order ID") = 0`.
 | `distinct_count` | column | count | Distinct non-NULL values. |
 | `duplicate_count` | column, … | count | Surplus rows sharing a key: a key seen 3 times adds 2. Rows with a NULL key are skipped. |
 | `duplicate_percent` | column, … | percent | Surplus duplicates as a share of rows in scope. |
-| `min` `max` `avg` `sum` | column | number | In the column's own units. |
-| `freshness` | column | duration | Age of the newest timestamp. |
+| `min` `max` `avg` `sum` | column | number | In the column's own units. Needs a numeric column: text, dates and booleans are `error` (`min needs a numeric column; got text`), and so is a stray text value in a numeric column. |
+| `freshness` | column | duration | Age of the newest timestamp. Needs a date or timestamp column, or ISO-8601 text. |
 | `failed_rows` | — | count | Rows matching `condition`. Bare `- failed_rows:` expects 0. |
 | `sql_metric` | optional label | number | The number your `query` returns. The label is for display; the `query` already tells two checks apart. |
 | `schema` | — | count | Problems with the options below, shown as `N problems`. Bare `- schema:` expects 0. |

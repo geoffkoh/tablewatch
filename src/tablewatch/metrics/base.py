@@ -145,6 +145,19 @@ class MetricContext:
         scope = self.scope
         return value if scope is None else case((scope, value))
 
+    def type_probes(self, col: ColumnElement[Any]) -> dict[str, AggregateMeasure]:
+        """MIN and MAX of the column in scope: what kind of values it holds.
+
+        SQLite sorts text above numbers, so a stray text value surfaces in
+        MAX; a text column returns text from both. Deduped with `min` and
+        `max` themselves, so the scan stays one.
+        """
+        value = self.scoped_value(col)
+        return {
+            "probe_min": AggregateMeasure(func.min(value)),
+            "probe_max": AggregateMeasure(func.max(value)),
+        }
+
     def row_count(self) -> AggregateMeasure:
         scope = self.scope
         if scope is None:
@@ -233,11 +246,104 @@ class Metric(ABC):
 
     @abstractmethod
     def compute(self, ctx: MetricContext, values: Mapping[str, Any]) -> Measurement:
-        """Turn measured values (keyed by role) into the metric's value."""
+        """Turn measured values (keyed by role) into the metric's value.
+
+        Raise `MetricInputError` when the data cannot be measured this way;
+        any other exception is reported as an internal error, by class only.
+        """
+
+    def check_input(self, ctx: MetricContext, values: Mapping[str, Any]) -> None:
+        """Raise `MetricInputError` if the data cannot be measured this way.
+
+        Called with the measures that succeeded, before any that failed is
+        reported — so a database's own refusal (DuckDB and Postgres reject
+        `avg` of text at bind time) reads the same as SQLite's quiet
+        coercion, which the probes catch. Most metrics need no check.
+        """
+        return
+
+
+class MetricInputError(Exception):
+    """The data cannot be measured this way; the message says why.
+
+    The one exception whose text a check's message shows, so it is stored
+    and served. Build it from constants and `kind_of()` only — never from a
+    value of the data, which can be an email, an id or a secret.
+    """
+
+
+def kind_of(value: Any) -> str:
+    """A value's kind in one fixed word, safe to show: never the value."""
+    if isinstance(value, bool):  # before int: bool is an int in Python
+        return "boolean"
+    if isinstance(value, int | float | Decimal):
+        return "numeric"
+    if isinstance(value, datetime):  # before date: a datetime is a date
+        return "timestamp"
+    if isinstance(value, date):
+        return "date"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, bytes | bytearray | memoryview):
+        return "binary"
+    return "other"
+
+
+def numeric(value: Any, what: str) -> float | None:
+    """`value` as a float, or `MetricInputError` naming its kind."""
+    if value is None:
+        return None
+    if kind_of(value) != "numeric":
+        raise MetricInputError(f"{what} needs a numeric column; got {kind_of(value)}")
+    return float(value)
+
+
+def numbers_against_text(
+    metric: str, options: Mapping[str, Any], values: Mapping[str, Any]
+) -> None:
+    """`MetricInputError` when numeric options meet a text column.
+
+    DuckDB and Postgres then fail to convert a row (and quote it); SQLite
+    compares text to numbers and counts every row. Both read the same here.
+    `values` holds the `type_probes` roles; options without numbers pass.
+    """
+    numeric_options = [
+        name for name in NUMERIC_OPTIONS if has_number(options.get(name))
+    ]
+    if not numeric_options:
+        return
+    kinds = {
+        kind_of(values[role])
+        for role in ("probe_min", "probe_max")
+        if values.get(role) is not None
+    }
+    if "text" in kinds:
+        raise MetricInputError(
+            f"{metric}: {numeric_options[0]} holds numbers but the column holds text"
+        )
+
+
+NUMERIC_OPTIONS = ("missing_values", "valid_values", "valid_min", "valid_max")
+
+
+def has_number(value: Any) -> bool:
+    """Whether an option compares the column with numbers only.
+
+    A list that also holds text (`['', 'N/A', 7]`) is compared as text,
+    which every database accepts, so it does not count.
+    """
+    items = value if isinstance(value, list | tuple) else [value]
+    if any(isinstance(item, str) for item in items):
+        return False
+    return any(
+        isinstance(item, int | float | Decimal) and not isinstance(item, bool)
+        for item in items
+    )
 
 
 def as_float(value: Any) -> float | None:
-    return None if value is None else float(value)
+    """A count or other number the SQL returned, as a float."""
+    return numeric(value, "this metric")
 
 
 def percent(part: Any, whole: Any) -> Measurement:

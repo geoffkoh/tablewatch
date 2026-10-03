@@ -41,7 +41,7 @@ class UnprintableError(Exception):
         (LookupError("é ü 漢字 \u202e"), "é ü 漢字 \u202e"),
     ],
 )
-def test_the_message_is_the_first_line(
+def test_the_message_names_the_class_never_the_text(
     project: Path,
     explodes: type[Explodes],
     ds: str,
@@ -52,27 +52,25 @@ def test_the_message_is_the_first_line(
     monkeypatch.setattr(Explodes, "raises", raised)
     _checks(project, ds, THREE)
     [boom, rows, missing] = _results(project)
+    # Spec 024 D1: the class only; the exception's text can quote a row.
     assert boom == (
         "explodes(id) > 0",
         "error",
         None,
-        f"internal error in explodes: {shown}",
+        f"internal error in explodes ({type(raised).__name__})",
     )
+    if shown != type(raised).__name__:
+        assert shown.strip() not in (boom[3] or "")
     assert rows[1] == missing[1] == "pass"
 
 
 @BACKENDS
-def test_a_huge_message_is_capped_at_500(
+def test_a_huge_message_is_never_stored(
     project: Path, explodes: type[Explodes], ds: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(Explodes, "raises", OverflowError("x" * 100_000))
     _checks(project, ds, THREE)
-    message = _results(project)[0][3] or ""
-    prefix = "internal error in explodes: "
-    assert message.startswith(prefix)
-    detail = message.removeprefix(prefix)
-    assert len(detail) == 500
-    assert detail.endswith("...")
+    assert _results(project)[0][3] == "internal error in explodes (OverflowError)"
 
 
 @BACKENDS
@@ -126,7 +124,12 @@ def test_a_type_or_value_error_in_evaluation_is_internal(
     monkeypatch.setattr(runner, "evaluate", planted)
     caplog.set_level(logging.ERROR, logger="tablewatch")
     assert _results(project) == [
-        ("row_count > 0", "error", None, "internal error in row_count: bad"),
+        (
+            "row_count > 0",
+            "error",
+            None,
+            f"internal error in row_count ({type(raised).__name__})",
+        ),
         ("missing_count(id) = 0", "pass", 0.0, None),
     ]
     assert any(r.exc_info for r in caplog.records if r.levelno == logging.ERROR)
@@ -164,7 +167,7 @@ def test_the_safety_net_message_is_the_first_line_and_other_datasets_run(
         for r in tw.run(project, record=False).results
     }
     assert results == {
-        "duck": ("error", "internal error: planning broke"),
+        "duck": ("error", "internal error (RuntimeError)"),
         "lite": ("pass", None),
     }
 
@@ -192,7 +195,10 @@ def test_json_and_history_agree_and_stdout_is_only_json(
     report = json.loads(out)  # stdout carries the report and nothing else
     reported = {c["name"]: (c["outcome"], c["message"]) for c in report["results"]}
     assert reported == _stored(project)
-    assert reported["explodes(id) > 0"] == ("error", "internal error in explodes: boom")
+    assert reported["explodes(id) > 0"] == (
+        "error",
+        "internal error in explodes (ZeroDivisionError)",
+    )
     assert (
         reported["row_count > 0"][0] == reported["missing_count(id) = 0"][0] == "pass"
     )

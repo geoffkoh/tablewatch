@@ -15,6 +15,7 @@ from sqlalchemy import and_, func, literal, not_
 from sqlalchemy.sql import ColumnElement
 
 from tablewatch.metrics.base import (
+    NUMERIC_OPTIONS,
     AggregateMeasure,
     Measure,
     Measurement,
@@ -24,6 +25,8 @@ from tablewatch.metrics.base import (
     OptionType,
     Unit,
     as_float,
+    has_number,
+    numbers_against_text,
     percent,
 )
 from tablewatch.metrics.builtin.completeness import (
@@ -67,6 +70,13 @@ def valid_predicate(ctx: MetricContext, column_name: str) -> ColumnElement[bool]
     return and_(*rules)
 
 
+def _probes(ctx: MetricContext) -> dict[str, AggregateMeasure]:
+    """Type probes, only when an option holds numbers (spec 024)."""
+    if any(has_number(ctx.options.get(name)) for name in NUMERIC_OPTIONS):
+        return ctx.type_probes(ctx.column(ctx.args[0]))
+    return {}
+
+
 class InvalidCount(Metric):
     name = "invalid_count"
     unit = Unit.COUNT
@@ -101,7 +111,10 @@ class InvalidCount(Metric):
         )
 
     def measures(self, ctx: MetricContext) -> dict[str, Measure]:
-        return {"invalid": self._invalid(ctx)}
+        return {"invalid": self._invalid(ctx), **_probes(ctx)}
+
+    def check_input(self, ctx: MetricContext, values: Mapping[str, Any]) -> None:
+        numbers_against_text(self.name, ctx.options, values)
 
     def compute(self, ctx: MetricContext, values: Mapping[str, Any]) -> Measurement:
         return Measurement(as_float(values["invalid"]) or 0.0)
@@ -113,7 +126,7 @@ class InvalidPercent(InvalidCount):
     summary = "Percentage of rows in scope where the column is invalid."
 
     def measures(self, ctx: MetricContext) -> dict[str, Measure]:
-        return {"invalid": self._invalid(ctx), "rows": ctx.row_count()}
+        return {"invalid": self._invalid(ctx), "rows": ctx.row_count(), **_probes(ctx)}
 
     def compute(self, ctx: MetricContext, values: Mapping[str, Any]) -> Measurement:
         return percent(values["invalid"], values["rows"])

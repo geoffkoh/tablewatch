@@ -185,6 +185,12 @@ All notable changes to tablewatch. The format follows
   missing argument — now exits 3, the same code as an invalid project,
   instead of 2 (which still means tablewatch could not evaluate a
   check). `--help` and `--version` still exit 0.
+- `min`, `max`, `avg` and `sum` on a text, date or boolean column now
+  report "could not evaluate" instead of running: before, they either
+  compared values as strings and passed or failed with the wrong number,
+  or (on some databases) succeeded by coercing the column. A metric that
+  fails for a reason other than bad data now reports only the exception's
+  class (for example "internal error in avg (ValueError)"), not its text.
 
 ### Changed
 
@@ -362,6 +368,10 @@ All notable changes to tablewatch. The format follows
 
 ### Fixed
 
+- A metric's error message never quotes a value from the data: it names
+  the column's kind instead ("`min` needs a numeric column; got text"),
+  so a stray email, id or secret in a mistyped column can no longer end
+  up stored in results, reports, the API or a notification.
 - A number in a check too large to represent (for example a threshold
   400 digits long) is now reported as "this number is too large" at its
   `file:line:col` when the project loads, and `validate` exits 3. Before,
