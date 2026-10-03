@@ -127,7 +127,15 @@ class CheckExpr:
     @property
     def subject(self) -> str:
         """What the condition is about: `row_count`, or `change(row_count)`."""
-        return f"change({self.metric})" if self.change else str(self.metric)
+        if self.change is None:
+            return str(self.metric)
+        baseline = str(self.change)
+        # The default baseline renders as part 1 did, so its ids never move.
+        return (
+            f"change({self.metric}, {baseline})"
+            if baseline
+            else f"change({self.metric})"
+        )
 
     def __str__(self) -> str:
         if self.condition is None:
@@ -135,14 +143,34 @@ class CheckExpr:
         return f"{self.subject} {self.condition}"
 
 
+class Baseline(StrEnum):
+    """What a `change()` compares with."""
+
+    PREVIOUS = "previous run"
+    SAME_WEEKDAY = "same weekday"
+    LAST_RUNS = "last runs"
+
+
 @dataclass(frozen=True)
 class Change:
     """`change(...)`: the difference from an earlier run of the same check.
 
-    Part 1 knows one baseline, the previous run. Later baselines add fields
-    here, rendered only when they are not the default, so ids derived today
-    stay the same.
+    Rendered only when it is not the default (the previous run), so ids
+    derived before baselines existed stay the same.
     """
+
+    baseline: Baseline = Baseline.PREVIOUS
+    runs: int = 1  # `last N runs`
+
+    @property
+    def label(self) -> str:
+        """The baseline in words: `previous run`, `same weekday`, `last 7 runs`."""
+        if self.baseline is Baseline.LAST_RUNS:
+            return f"last {self.runs} runs"
+        return self.baseline.value
+
+    def __str__(self) -> str:
+        return "" if self.baseline is Baseline.PREVIOUS else self.label
 
 
 def values_in(condition: Condition) -> tuple[Value, ...]:

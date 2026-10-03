@@ -30,7 +30,7 @@ from tablewatch.datasources import (
     datasource_problem,
     timezone_of,
 )
-from tablewatch.engine.baselines import Baselines, Sample
+from tablewatch.engine.baselines import Baselines, Sample, choose
 from tablewatch.engine.evaluate import change_of, evaluate, format_value
 from tablewatch.engine.executor import execute_plan
 from tablewatch.engine.planner import plan_dataset
@@ -345,7 +345,9 @@ def _run_dataset(
             continue
         if check.expression.change is not None:
             results.append(
-                _changed(check, measurement, baselines, dataset, measured.duration_ms)
+                _changed(
+                    check, measurement, baselines, dataset, measured.duration_ms, now
+                )
             )
             continue
         try:
@@ -367,15 +369,22 @@ def _changed(
     baselines: Baselines,
     dataset: Dataset,
     duration_ms: float,
+    now: datetime,
 ) -> CheckResult:
     """A `change()` check: the inner metric's value against its baseline."""
     if baselines.problem is not None:
         problem = f"could not read this check's history: {baselines.problem}"
         return CheckResult(check, Outcome.ERROR, None, problem, duration_ms)
     current = measurement.value
-    samples = baselines.samples.get(check.id, ())
-    previous = samples[0] if samples else None
+    history = baselines.samples.get(check.id, ())
+    assert check.expression.change is not None
     try:
+        chosen = choose(check.expression.change, now, history)
+        if isinstance(chosen, str) and current is not None:
+            return CheckResult(
+                check, Outcome.SKIPPED, None, chosen, duration_ms, current, None
+            )
+        previous = chosen if isinstance(chosen, Sample) else None
         change = change_of(check, current, previous)
         if isinstance(change, str):  # no comparison this run
             return CheckResult(

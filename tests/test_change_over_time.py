@@ -298,7 +298,7 @@ def test_identity(project: Path) -> None:  # S16
             "  - change() < 1%\n",
             "expected a metric such as row_count inside change(...)",
         ),
-        ("  - change(row_count, x) < 1%\n", "change() takes one metric"),
+        ("  - change(row_count, x) < 1%\n", "expected a baseline after the metric"),
         (
             "  - change(email) < 1%\n",
             "expected a metric such as row_count inside change(...)",

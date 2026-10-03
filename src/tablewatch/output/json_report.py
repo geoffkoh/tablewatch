@@ -54,6 +54,10 @@ def as_dict(run: RunResult) -> dict[str, Any]:
                     "value": finite(r.previous.value),
                     "run_id": r.previous.run_id,
                     "started_at": utc(r.previous.started_at).isoformat(),
+                    "baseline": r.check.expression.change.label
+                    if r.check.expression.change
+                    else "previous run",
+                    "runs": r.previous.runs,
                 },
             }
             for r in run.results

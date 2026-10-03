@@ -24,6 +24,7 @@ from sqlalchemy import (
     Engine,
     and_,
     create_engine,
+    func,
     make_url,
     or_,
     select,
@@ -32,7 +33,7 @@ from sqlalchemy.exc import NoSuchModuleError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from tablewatch.checks.model import Outcome
-from tablewatch.engine.baselines import Sample
+from tablewatch.engine.baselines import BaselineRequest, Sample
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import ResultSink, RunResult
 from tablewatch.results.models import CheckResultRow, RunRow
@@ -376,51 +377,76 @@ class ResultStore:
     def baselines(
         self,
         project: str,
-        checks: Mapping[str, str],
+        requests: Mapping[str, BaselineRequest],
         before: datetime,
-        limit: int = 1,
     ) -> dict[str, tuple[Sample, ...]]:
         """Each `change()` check's earlier measurements, newest first.
 
-        `checks` maps a check id to its inner metric's name: a result of
-        another metric (an `id:` kept across an edit) is never a baseline.
-        Only runs of this project that started before `before`, with a
-        measured value.
+        Only this project's runs that started before `before`, with a
+        measured value of the request's metric (a result of another metric,
+        under an `id:` kept across an edit, is never a baseline), and at most
+        `limit` per check, cut in SQL so a long history is never read whole.
         """
-        wanted = list(checks)
+        wanted = list(requests)
         found: dict[str, list[Sample]] = {}
         with _reading(self.engine), Session(self.engine) as session:
             for start in range(0, len(wanted), _CHUNK):
-                statement = (
+                chunk = wanted[start : start + _CHUNK]
+                groups: dict[tuple[str, datetime | None], list[str]] = {}
+                for check in chunk:
+                    request = requests[check]
+                    groups.setdefault((request.metric, request.not_after), []).append(
+                        check
+                    )
+                eligible = or_(
+                    *(
+                        and_(
+                            CheckResultRow.metric == metric,
+                            CheckResultRow.check_id.in_(ids),
+                            *([RunRow.started_at <= not_after] if not_after else []),
+                        )
+                        for (metric, not_after), ids in groups.items()
+                    )
+                )
+                rank = (
+                    func.row_number()
+                    .over(
+                        partition_by=CheckResultRow.check_id,
+                        order_by=(RunRow.started_at.desc(), RunRow.id.desc()),
+                    )
+                    .label("rank")
+                )
+                ranked = (
                     select(
                         CheckResultRow.check_id,
-                        CheckResultRow.metric,
                         CheckResultRow.measured,
                         RunRow.started_at,
-                        RunRow.id,
+                        RunRow.id.label("run_id"),
+                        rank,
                     )
                     .join(RunRow, CheckResultRow.run_id == RunRow.id)
                     .where(
                         RunRow.project == project,
-                        CheckResultRow.check_id.in_(wanted[start : start + _CHUNK]),
                         CheckResultRow.measured.is_not(None),
                         RunRow.started_at < before,
+                        eligible,
                     )
-                    .order_by(
-                        CheckResultRow.check_id,
-                        RunRow.started_at.desc(),
-                        RunRow.id.desc(),
-                    )
+                    .subquery()
                 )
-                for check, metric, measured, started_at, run_id in session.execute(
-                    statement
-                ):
+                most = max(requests[check].limit for check in chunk)
+                statement = (
+                    select(
+                        ranked.c.check_id,
+                        ranked.c.measured,
+                        ranked.c.started_at,
+                        ranked.c.run_id,
+                    )
+                    .where(ranked.c.rank <= most)
+                    .order_by(ranked.c.check_id, ranked.c.rank)
+                )
+                for check, measured, started_at, run_id in session.execute(statement):
                     samples = found.setdefault(check, [])
-                    if (
-                        measured is not None
-                        and metric == checks[check]
-                        and len(samples) < limit
-                    ):
+                    if measured is not None and len(samples) < requests[check].limit:
                         samples.append(Sample(measured, started_at, run_id))
         return {check: tuple(samples) for check, samples in found.items() if samples}
 

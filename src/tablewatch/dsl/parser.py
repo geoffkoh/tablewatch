@@ -16,6 +16,7 @@ from __future__ import annotations
 import math
 
 from tablewatch.dsl.ast import (
+    Baseline,
     Between,
     Change,
     CheckExpr,
@@ -44,8 +45,7 @@ def parse_check(text: str) -> CheckExpr:
     parser = _Parser(text)
     change = None
     if parser.at_change():
-        metric = parser.change_of()
-        change = Change()
+        metric, change = parser.change_of()
     else:
         metric = parser.metric()
     expression = CheckExpr(metric, None, change)
@@ -111,8 +111,8 @@ class _Parser:
             and after[0].kind is TokenKind.LPAREN
         )
 
-    def change_of(self) -> MetricCall:
-        """`change(<metric>)`: the metric inside, with errors at their column."""
+    def change_of(self) -> tuple[MetricCall, Change]:
+        """`change(<metric>[, <baseline>])`, with errors at their column."""
         self.advance()  # change
         self.advance()  # (
         inner = self.peek()
@@ -123,13 +123,55 @@ class _Parser:
         if self.at_change():
             raise DSLSyntaxError("change() cannot contain change()", inner.offset)
         metric = self.metric()
-        token = self.peek()
-        if token.kind is TokenKind.COMMA:
-            raise DSLSyntaxError(
-                "change() takes one metric, e.g. change(row_count)", token.offset
-            )
+        change = Change()
+        if self.at(TokenKind.COMMA):
+            self.advance()
+            change = self._baseline(metric)
+            token = self.peek()
+            if token.kind is TokenKind.COMMA:
+                raise DSLSyntaxError("change() takes one baseline", token.offset)
         self.expect(TokenKind.RPAREN, "')' to close change(")
-        return metric
+        return metric, change
+
+    def _baseline(self, metric: MetricCall) -> Change:
+        """`same weekday` or `last N runs`: plain words here, not keywords."""
+        first = self.peek()
+        expected = DSLSyntaxError(
+            "expected a baseline after the metric: same weekday, or last N runs",
+            first.offset,
+        )
+        words = self._tokens[self._pos : self._pos + 3]
+        if (
+            len(words) >= 2
+            and words[0].kind is TokenKind.NAME
+            and words[0].text == "same"
+            and words[1].kind is TokenKind.NAME
+            and words[1].text == "weekday"
+        ):
+            self._pos += 2
+            return Change(Baseline.SAME_WEEKDAY)
+        if (
+            len(words) == 3
+            and words[0].kind is TokenKind.NAME
+            and words[0].text == "last"
+            and words[1].kind is TokenKind.NUMBER
+            and words[2].kind is TokenKind.NAME
+            and words[2].text == "runs"
+        ):
+            number = words[1]
+            if (
+                number.suffix
+                or not number.text.isdigit()
+                or not 2 <= int(number.text) <= 100
+            ):
+                raise DSLSyntaxError(
+                    "last N runs takes a whole number from 2 to 100; for the previous "
+                    f"run, write change({metric})",
+                    number.offset,
+                )
+            self._pos += 3
+            return Change(Baseline.LAST_RUNS, int(number.text))
+        raise expected
 
     def metric(self) -> MetricCall:
         name = self.peek()
