@@ -365,9 +365,39 @@ All notable changes to tablewatch. The format follows
 - `--project-dir` (and `TABLEWATCH_PROJECT_DIR`) now also accepts a path
   to a `tablewatch.yml` file directly, not only its containing directory,
   matching what `tablewatch.load()` already accepted.
+- `tablewatch serve --host 0.0.0.0` (or `--host ::`) now prints a startup
+  URL you can actually open — `http://127.0.0.1:8765/ (listening on all
+  IPv4 addresses; …)` — instead of `http://0.0.0.0:8765/`, which no
+  browser accepts. Binding one address is unchanged. Under
+  `--log-format json`, every line `serve` writes to stderr — the startup
+  line, the non-loopback warning, a failure to start — is now a JSON
+  object, not a mix of JSON and plain text.
+- Past 64 requests in flight, `serve` now answers `503` with a JSON body
+  (`{"error": {"code": "unavailable", "message": "the server is busy —
+  try again shortly"}}`) and the usual security headers, instead of
+  uvicorn's plain-text 503. A hard backstop at 256 connections still
+  answers uvicorn's own plain-text 503 (documented, not a target for this
+  change).
+- Hashed UI assets under `/assets/` (`index-<hash>.js`) are now served
+  `Cache-Control: public, max-age=31536000, immutable`, so a browser
+  reloading the page no longer re-downloads the bundle it already has.
+  `/` and every `/api/v1` response stay `no-store`.
+- The `Cross-Origin-Opener-Policy` header, which only ever has effect on
+  a trustworthy origin, is now sent only when the request's `Host` is
+  loopback — no more Chromium console warning when `serve` is opened
+  from another machine over plain `http`.
 
 ### Fixed
 
+- The API never shows the server's own directory layout. An error
+  message that names a file inside the project now shows that path
+  relative to the project root (`missing.duckdb`, not
+  `/srv/dq/retail/missing.duckdb`); a path outside the project shows only
+  `<outside the project>/name`. This applies wherever `/api/v1` serves a
+  message — check results, history, run detail, project diagnostics — for
+  results recorded before this change as well as new ones. The CLI
+  (`run`, `history`, `report`) is unchanged: a path shown to the person
+  running it locally is shown in full.
 - A metric's error message never quotes a value from the data: it names
   the column's kind instead ("`min` needs a numeric column; got text"),
   so a stray email, id or secret in a mistyped column can no longer end

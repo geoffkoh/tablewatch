@@ -6,6 +6,35 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 25 — `serve` polish: URL, JSON stderr, no server paths, the 503 envelope (I-20), 2026-10-03
+
+- **Spec:** [025-serve-polish](specs/025-serve-polish.md). **Branch:** `iter/025`. Full track. No
+  items added (freeze).
+- **REFINE.** Security R1–R7 → D3–D5: a path-scrub helper outside `server/`, applied to every
+  served message; an in-flight request counter in `_Guard`; uvicorn's `limit_concurrency` as a 256
+  backstop, never `None`; COOP sent only on loopback. Architect → D4, D6: the counter lives in the
+  ASGI layer, not uvicorn internals; a `tablewatch.console` logger; `startup_host` moved to
+  `hosts.py`. Data-steward → D2: "IPv4"/"IPv6" named explicitly; the 503 code `unavailable`. Tech
+  lead: D1 keeps exit 3 on an unreadable store, as already documented (Q1). S5 was rewritten as
+  "requests in flight": idle sockets never reach the app.
+- **Shipped:** a usable startup URL for `0.0.0.0`/`::`; every stderr line JSON under
+  `--log-format json`; past 64 requests in flight, a JSON `503 unavailable` (uvicorn's 256-connection
+  backstop documented); hashed assets cached `immutable`; COOP sent only on loopback; absolute
+  server paths scrubbed from every `/api/v1` message.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — fail, then fixed; 1 blocker, 67 tests.* A quoted path containing a space leaked
+    its directories past the scrub. Fixed: a quoted path is cut whole. Also fixed: the `/assets/`
+    index fallback was never `immutable`; the console docstring.
+  - *data-steward — accept.*
+- **Not added (backlog freeze), as strict xfails or notes:** a path right after a colon
+  (`duckdb:////srv/…`) is not scrubbed; some legitimate slashes (`/* c */`, `see /api/v1`) are
+  rewritten; a click usage error after the group runs is still plain text under JSON; the SIGTERM
+  flake persists (1 in 30), cause not found.
+- **Lessons:** idle sockets never reaching the ASGI app meant the connection-limit scenario (S5)
+  had to be rewritten mid-REFINE to "requests in flight" — worth stating that boundary in the spec
+  next time a connection limit is on the table.
+- **Backlog:** I-20 done. I-14 still waits on the owner. Next: iteration 26 (I-07).
+
 ## Iteration 24 — Metric errors name the column kind, never a row value (I-30), 2026-10-03
 
 - **Spec:** [024-metric-errors-no-row-values](specs/024-metric-errors-no-row-values.md). **Branch:**
