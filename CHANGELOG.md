@@ -8,6 +8,10 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- Files as datasets: a datasource with `type: files` checks CSV, Parquet or JSON files directly,
+  with no database to load them into first. Files are read in place through DuckDB (1.5 or newer)
+  inside a read-only sandbox — only the configured root folder is reachable, and only as a file,
+  never a symlink or a folder outside it. See "Files as datasets" in `docs/check-language.md`.
 - `tablewatch report [--run ID] [--output-file PATH]`: a recorded run as one static HTML page —
   a header with the outcome, counts and what was selected, and every check result, failing first,
   with its value, message, owner, tags and how long it has been failing. It opens offline in a
