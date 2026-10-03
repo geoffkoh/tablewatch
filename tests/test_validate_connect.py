@@ -302,3 +302,18 @@ def test_help(p: Path) -> None:  # S16
     assert code == 0
     assert "--connect" in out
     assert "credentials" in out
+
+
+def test_a_url_datasource_never_creates_a_file(tmp_path: Path) -> None:  # VERIFY
+    root = tmp_path / "u"
+    target = tmp_path / "urlnew.db"
+    _write(
+        root,
+        "tablewatch.yml",
+        f"name: u\ndatasources:\n  raw: {{type: sqlalchemy, url: 'sqlite:///{target}'}}\n",
+    )
+    _write(root, "checks/t.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    code, _, err = invoke(root, "validate", "--connect")
+    assert code == 2
+    assert "database file not found" in err
+    assert not target.exists()

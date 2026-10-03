@@ -136,7 +136,9 @@ checks/sales/orders.yml:9:19: error: column 'custmer_id' not found in sales.orde
 It exits `3` when a file is wrong (a missing table or column included), and
 `2` when the files are fine but a datasource could not be reached (an unset
 `${env:}` variable, a refused connection, a database file that does not
-exist; nothing is ever created). It needs the datasource credentials, so
+exist; nothing is ever created). `type: sqlalchemy` datasources are opened
+as their URL says, without the read-only settings the typed datasources get.
+It needs the datasource credentials, so
 **do not run it with secrets on pull requests from untrusted forks**: a
 changed `tablewatch.yml` could point a datasource at someone else's server.
 

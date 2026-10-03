@@ -163,6 +163,9 @@ def create_engine_for(
                 query["options"] = " ".join(
                     filter(None, [query.get("options", ""), PG_READ_ONLY_OPTIONS])
                 )
+                # statement_timeout covers statements only: a host that drops
+                # packets would otherwise hang the connect itself.
+                query.setdefault("connect_timeout", "10")
             url: URL | str = URL.create(
                 "postgresql+psycopg",
                 username=_env(config.user),
@@ -206,6 +209,15 @@ def create_engine_for(
             scheme = _scheme_of(url)
             _load_dialect(scheme)
             dialect = _dialect_name(scheme)
+            if read_only and dialect in ("sqlite", "duckdb"):
+                # A URL is opened as given (no read-only mode), but a missing
+                # file is still never created.
+                try:
+                    database = make_url(url).database
+                except (ArgumentError, ValueError):
+                    raise DatasourceError(UNREADABLE_URL) from None
+                if database and database != ":memory:" and "mode=" not in database:
+                    _require_file(_local_path(database, project_root))
     try:
         engine = create_engine(url, connect_args=connect_args)
     except ImportError as exc:
