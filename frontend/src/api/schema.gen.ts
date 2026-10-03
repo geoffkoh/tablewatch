@@ -347,7 +347,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "invalid_parameter" | "forbidden_host" | "not_found" | "method_not_allowed" | "internal_error" | "store_unavailable";
+            code: "invalid_parameter" | "forbidden_host" | "not_found" | "method_not_allowed" | "internal_error" | "store_unavailable" | "unavailable";
             /** Message */
             message: string;
         };
