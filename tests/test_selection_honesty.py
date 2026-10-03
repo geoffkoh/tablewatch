@@ -136,7 +136,7 @@ def test_the_stored_and_served_form(
     assert json.loads(out)["run"]["selection"] == expected
     url = load_project(retail).config.results.url
     with ResultStore.open(url, retail) as store:
-        assert store.recent_runs(1)[0].selection == expected
+        assert store.runs_page("retail-example", limit=1)[0].selection == expected
 
 
 def test_the_root_is_dot(retail: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # S12
@@ -230,4 +230,6 @@ def test_old_rows_are_shown_as_stored(retail: Path) -> None:  # S20
                 .where(RunRow.id == result.id)
                 .values(selection={"paths": ["./checks/sales/"]})
             )
-        assert store.recent_runs(1)[0].selection == {"paths": ["./checks/sales/"]}
+        assert store.runs_page("retail-example", limit=1)[0].selection == {
+            "paths": ["./checks/sales/"]
+        }

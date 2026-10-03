@@ -11,6 +11,11 @@ Built to run unattended: no prompts, logs on stderr (stdout stays clean for
     3  the project is invalid, a selector matched nothing, or the command
        line is wrong — nothing ran
 
+`run --output-file` that cannot be written is 2, after the run is recorded.
+`runs` and `history` read this project's history only: 0 when listed (an
+empty or absent store included for `runs`), 2 when the results store could
+not be read, 3 when there is no such check or the command line is wrong.
+
 `report` writes a recorded run as HTML: 0 when written, 2 when the results
 store or the file could not be read or written, 3 when there is no such run
 (or the id is ambiguous). It never exits 1: the run's outcome is in the file.
@@ -24,7 +29,8 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn, cast
@@ -36,7 +42,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from tablewatch import __version__, logs, templates
 from tablewatch.api import default_sinks, execute
 from tablewatch.checks.model import Check, Dataset
-from tablewatch.config import Project, find_project_root, load_project
+from tablewatch.config import Project, find_project, load_project
 from tablewatch.config.jsonschema import check_file_schema, project_schema
 from tablewatch.config.project import PROJECT_FILE, MissingEnvironmentVariableError
 from tablewatch.datasources import DatasourceError, create_engine_for
@@ -46,6 +52,7 @@ from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import FAIL_ON_CHOICES, MAX_CONCURRENCY, FailOn
 from tablewatch.output import REPORTERS, console
 from tablewatch.results import ResultStore
+from tablewatch.results.store import NoStoreError, StoreError, open_store
 from tablewatch.selection import Selection, SelectionError, select_checks
 
 EXIT_OK = 0
@@ -94,9 +101,10 @@ class _Group(click.Group):
 @click.version_option(version=__version__, prog_name="tablewatch")
 @click.option(
     "--project-dir",
-    type=click.Path(file_okay=False, path_type=Path),
+    type=click.Path(path_type=Path),
     envvar="TABLEWATCH_PROJECT_DIR",
-    help="Project root. Default: the nearest directory with a tablewatch.yml.",
+    help="Project root, or its tablewatch.yml. Default: the nearest directory "
+    "with a tablewatch.yml.",
 )
 @click.option(
     "--log-format",
@@ -138,11 +146,10 @@ def _fail(message: str, code: int = EXIT_INVALID_PROJECT) -> NoReturn:
 
 def _project(ctx: click.Context, require_valid: bool = True) -> Project:
     settings: _Settings = ctx.obj
-    root = settings.project_dir or find_project_root(Path.cwd())
-    if root is None:
-        _fail(
-            f"no {PROJECT_FILE} here or in any parent directory — run `tablewatch init`"
-        )
+    try:
+        root = find_project(settings.project_dir)
+    except ProjectError as exc:
+        _fail(exc.diagnostics[0].message)
     try:
         project = load_project(root)
     except ProjectError as exc:
@@ -158,6 +165,79 @@ def _project(ctx: click.Context, require_valid: bool = True) -> Project:
             f"{errors} error{'s' if errors != 1 else ''} in the project — nothing ran"
         )
     return project
+
+
+@contextmanager
+def _reading_store(project: Project) -> Iterator[ResultStore | None]:
+    """The project's results store for reading, or None when there is none yet.
+
+    Never creates a store. A store that cannot be opened or read is one line
+    on stderr and exit 2: tablewatch could not do its job. The reason comes
+    from the store module, which never puts the URL or driver text that can
+    hold a credential into it.
+    """
+    try:
+        with open_store(
+            project.config.results.url, project.root, create=False
+        ) as store:
+            yield store
+    except NoStoreError:
+        yield None
+    except StoreError as exc:
+        reason = str(exc).removeprefix("results store: ")
+        _fail(f"could not read the results store: {reason}", EXIT_CHECK_ERROR)
+
+
+def _write_output(path: Path | None, text: str) -> bool:
+    """Write `text` to `path`, or to stdout for None or `-`; False if stdout.
+
+    A file that cannot be written is one line on stderr and exit 2.
+    """
+    if path is None or str(path) == "-":
+        click.echo(text, nl=False)
+        return False
+    try:
+        _write_atomically(path, text)
+    except OSError as exc:
+        _fail(
+            f"could not write {path}: {exc.strerror or type(exc).__name__}",
+            EXIT_CHECK_ERROR,
+        )
+    return True
+
+
+def _write_atomically(path: Path, text: str) -> None:
+    """Write `path` by renaming a temp file over it.
+
+    A symlink at `path` is replaced, not written through, and a reader never
+    sees half a file. A new file is readable by its owner only; a regular
+    file that was there keeps its permission bits (never set-id or sticky).
+    """
+    import os
+    import stat
+    import tempfile
+
+    try:
+        mode: int | None = stat.S_IMODE(path.lstat().st_mode) & 0o777
+        if not path.is_file() or path.is_symlink():
+            mode = None
+    except FileNotFoundError:
+        mode = None
+    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        try:
+            handle = os.fdopen(fd, "w", encoding="utf-8")
+        except BaseException:
+            os.close(fd)
+            raise
+        with handle:
+            handle.write(text)
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
+        Path(temp).replace(path)
+    except BaseException:
+        Path(temp).unlink(missing_ok=True)
+        raise
 
 
 def _selector_options[F: Callable[..., Any]](command: F) -> F:
@@ -397,21 +477,23 @@ def run(
     # The checks ran and their outcome stands, but a gap in history is
     # tablewatch failing at part of its job: exit 2 (see RunResult.exit_code).
     for reason in result.record_errors:
-        click.echo(f"tablewatch: could not record the run: {reason}", err=True)
+        shown = reason.removeprefix("results store: ")
+        click.echo(f"tablewatch: could not record the run: {shown}", err=True)
     code = result.exit_code()
 
-    if output == "table" and output_file is None:
+    to_stdout = output_file is None or str(output_file) == "-"
+    if output == "table" and to_stdout:
         if settings.quiet:
             click.echo(console.summary(result))
         else:
             click.echo(console.render(result, colour=sys.stdout.isatty()))
+    elif to_stdout:
+        click.echo(REPORTERS[output](result))
     else:
-        report = REPORTERS[output](result)
-        if output_file is None:
-            click.echo(report)
-        else:
-            output_file.write_text(report + "\n", encoding="utf-8")
-            click.echo(console.summary(result))
+        # The summary first: the checks ran and were recorded whatever
+        # happens to the file, and a write failure exits 2 after it.
+        click.echo(console.summary(result))
+        _write_output(output_file, REPORTERS[output](result) + "\n")
     sys.exit(code)
 
 
@@ -557,8 +639,9 @@ def test_connection(ctx: click.Context, names: tuple[str, ...]) -> None:
 def runs(ctx: click.Context, limit: int) -> None:
     """Recent runs from the results store."""
     project = _project(ctx, require_valid=False)
-    with ResultStore.open(project.config.results.url, project.root) as store:
-        recent = store.recent_runs(limit)
+    name = project.config.name
+    with _reading_store(project) as store:
+        recent = [] if store is None else store.runs_page(name, limit=limit)
     rows = [
         (
             r.id[:12],
@@ -572,7 +655,7 @@ def runs(ctx: click.Context, limit: int) -> None:
         for r in recent
     ]
     if not rows:
-        click.echo("no runs recorded yet")
+        click.echo(f'no runs recorded for project {name} — run "tw run" first')
         return
     _table(
         ("RUN", "STARTED (UTC)", "OUTCOME", "CHECKS", "P/W/F/E", "EXIT", "HOST"), rows
@@ -586,11 +669,18 @@ def runs(ctx: click.Context, limit: int) -> None:
 def history(ctx: click.Context, check_id: str, limit: int) -> None:
     """Outcomes and values of one check over its recent runs."""
     project = _project(ctx, require_valid=False)
-    with ResultStore.open(project.config.results.url, project.root) as store:
-        matches = store.matching_check_ids(check_id)
-        entries = store.history(matches[0], limit) if len(matches) == 1 else []
+    name = project.config.name
+    if not check_id.strip():
+        _fail("history needs the first characters of a check id")
+    with _reading_store(project) as store:
+        matches = [] if store is None else store.matching_check_ids(name, check_id)
+        entries = (
+            store.history_page(name, matches[0], limit=limit)
+            if store is not None and len(matches) == 1
+            else []
+        )
     if not matches:
-        _fail(f"no recorded results for check {check_id}")
+        _fail(f"no recorded results for check {check_id} in project {name}")
     if len(matches) > 1:
         _fail(f"{check_id} is ambiguous: {', '.join(m[:12] for m in matches)}")
     latest = entries[0][0]
@@ -625,74 +715,38 @@ def report(ctx: click.Context, run_id: str | None, output_file: Path | None) -> 
     from datetime import UTC, datetime
 
     from tablewatch.output.html_report import render, view_from_rows
-    from tablewatch.results.store import NoStoreError, PageKey, StoreError, open_store
+    from tablewatch.results.store import PageKey
 
     project = _project(ctx, require_valid=False)
     name = project.config.name
     no_runs = f'no runs recorded for project {name} — run "tw run" first'
     if run_id is not None and not run_id.strip():
         _fail("--run needs the first characters of a run id")
-    try:
-        # open_store: the one place that keeps the store's URL out of errors.
-        with open_store(
-            project.config.results.url, project.root, create=False
-        ) as store:
-            if run_id is not None:
-                ids = store.matching_run_ids(name, run_id)
-                if not ids:
-                    _fail(f"no recorded run of project {name} starts with {run_id}")
-                if len(ids) > 1:
-                    _fail(f"{run_id} is ambiguous: {', '.join(i[:12] for i in ids)}")
-                chosen = ids[0]
-            else:
-                newest = store.runs_page(name, limit=1)
-                if not newest:
-                    _fail(no_runs)
-                chosen = newest[0].id
-            row = store.run(name, chosen)
-            if row is None:
-                _fail(f"no recorded run of project {name} starts with {chosen}")
-            states = store.latest_results(name, as_of=PageKey(row.started_at, row.id))
-            view = view_from_rows(
-                row, {k: v.state for k, v in states.items()}, datetime.now(UTC)
-            )
-    except NoStoreError:
-        _fail(no_runs)
-    except (StoreError, SQLAlchemyError, OSError, ValueError) as exc:
-        reason = str(exc) if isinstance(exc, StoreError) else error_message(exc)
-        reason = reason.removeprefix("results store: ")
-        _fail(f"could not read the results store: {reason}", EXIT_CHECK_ERROR)
-    document = render(view)
-    if output_file is None:
-        click.echo(document, nl=False)
-        return
-    try:
-        _write_atomically(output_file, document)
-    except OSError as exc:
-        _fail(
-            f"could not write {output_file}: {exc.strerror or type(exc).__name__}",
-            EXIT_CHECK_ERROR,
+    with _reading_store(project) as store:
+        if store is None:
+            _fail(no_runs)
+        if run_id is not None:
+            ids = store.matching_run_ids(name, run_id)
+            if not ids:
+                _fail(f"no recorded run of project {name} starts with {run_id}")
+            if len(ids) > 1:
+                _fail(f"{run_id} is ambiguous: {', '.join(i[:12] for i in ids)}")
+            chosen = ids[0]
+        else:
+            newest = store.runs_page(name, limit=1)
+            if not newest:
+                _fail(no_runs)
+            chosen = newest[0].id
+        row = store.run(name, chosen)
+        if row is None:
+            _fail(f"no recorded run of project {name} starts with {chosen}")
+        states = store.latest_results(name, as_of=PageKey(row.started_at, row.id))
+        view = view_from_rows(
+            row, {k: v.state for k, v in states.items()}, datetime.now(UTC)
         )
+    if not _write_output(output_file, render(view)):
+        return
     click.echo(f"wrote {output_file} (run {view.run_id[:12]})")
-
-
-def _write_atomically(path: Path, text: str) -> None:
-    """Write `path` by renaming a private temp file over it.
-
-    A symlink at `path` is replaced, not written through, a reader never
-    sees half a file, and a new file is readable by its owner only.
-    """
-    import os
-    import tempfile
-
-    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        Path(temp).replace(path)
-    except BaseException:
-        Path(temp).unlink(missing_ok=True)
-        raise
 
 
 @cli.command()

@@ -17,9 +17,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from tablewatch.checks.model import Check
-from tablewatch.config import Project, find_project_root, load_project
-from tablewatch.config.project import PROJECT_FILE
-from tablewatch.diagnostics import ProjectError, Severity, error
+from tablewatch.config import Project, find_project, load_project
+from tablewatch.diagnostics import ProjectError, Severity
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import (
     FAIL_ON_CHOICES,
@@ -46,17 +45,8 @@ def load(project_dir: PathArg | None = None) -> Project:
     `Project.diagnostics` (check `Project.ok`); a `ProjectError` is raised
     only when there is no usable `tablewatch.yml`.
     """
-    if project_dir is None:
-        root = find_project_root(Path.cwd())
-        if root is None:
-            raise ProjectError(
-                [error(f"no {PROJECT_FILE} in {Path.cwd()} or any parent directory")]
-            )
-        return load_project(root)
-    path = Path(project_dir)
-    if path.is_file() and path.name == PROJECT_FILE:
-        path = path.parent
-    return load_project(path)
+    path = None if project_dir is None else Path(project_dir)
+    return load_project(find_project(path))
 
 
 def run(

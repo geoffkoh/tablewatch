@@ -60,10 +60,10 @@ def test_save_and_read_history(workspace: Workspace) -> None:
         for _ in range(3):
             run = run_checks(project, project.checks, trigger="test", now=NOW)
             store.save(run)
-        [latest, *_] = store.recent_runs(limit=5)
+        [latest, *_] = store.runs_page(project.config.name, limit=5)
         failing = project.checks[1]
-        matches = store.matching_check_ids(failing.id[:6])
-        entries = store.history(failing.id)
+        matches = store.matching_check_ids(project.config.name, failing.id[:6])
+        entries = store.history_page(project.config.name, failing.id, limit=20)
 
     assert (latest.total, latest.passed, latest.failed, latest.exit_code) == (
         2,

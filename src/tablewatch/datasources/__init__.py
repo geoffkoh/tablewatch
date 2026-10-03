@@ -131,6 +131,15 @@ def create_engine_for(config: DatasourceConfig, project_root: Path) -> Engine:
         raise DatasourceError(UNREADABLE_URL) from None
 
 
+def dialect_problem(url: str) -> str | None:
+    """Why `url`'s dialect cannot be loaded, in plain words; None if it can."""
+    try:
+        _load_dialect(_scheme_of(url))
+    except DatasourceError as exc:
+        return str(exc)
+    return None
+
+
 def _scheme_of(url: str) -> str:
     """The URL's scheme, if it is one; never echoes anything else of the URL."""
     scheme, separator, _ = url.partition("://")

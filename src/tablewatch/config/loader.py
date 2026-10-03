@@ -103,6 +103,31 @@ def find_project_root(start: Path) -> Path | None:
     return None
 
 
+def find_project(project_dir: Path | None = None) -> Path:
+    """The project root: `project_dir` (a directory or its `tablewatch.yml`),
+    else the nearest directory at or above the cwd holding a `tablewatch.yml`.
+
+    The one way the CLI and `tablewatch.load()` find a project. Raises
+    `ProjectError` when there is none.
+    """
+    if project_dir is not None:
+        if project_dir.is_file() and project_dir.name == PROJECT_FILE:
+            return project_dir.parent
+        return project_dir
+    cwd = Path.cwd()
+    root = find_project_root(cwd)
+    if root is None:
+        raise ProjectError(
+            [
+                error(
+                    f"no {PROJECT_FILE} in {cwd} or any parent directory — "
+                    'run "tablewatch init"'
+                )
+            ]
+        )
+    return root
+
+
 def load_project(root: Path) -> Project:
     """Load config and every check file under `root`.
 
