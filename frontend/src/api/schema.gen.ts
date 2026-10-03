@@ -617,6 +617,8 @@ export interface components {
             duration_ms: number;
             /** Expression */
             expression: string;
+            /** Measured */
+            measured: number | null;
             /** Message */
             message: string | null;
             /** Metric */
@@ -634,6 +636,8 @@ export interface components {
             source: string;
             /** Tags */
             tags: string[];
+            /** Unit */
+            unit: ("count" | "percent" | "duration" | "number") | null;
             /** Value */
             value: number | null;
         };

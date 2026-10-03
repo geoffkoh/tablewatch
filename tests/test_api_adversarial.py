@@ -478,6 +478,10 @@ def test_json_report_shape_is_unchanged(retail: Path) -> None:
         "owner",
         "tags",
         "duration_ms",
+        # Added by spec 026 (additive: schema_version stays 1).
+        "measured",
+        "unit",
+        "previous",
     }
     assert report["run"]["counts"] == {"fail": 6, "pass": 11, "warn": 2}
 

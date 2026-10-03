@@ -71,5 +71,11 @@ class CheckResultRow(Base):
     owner: Mapped[str | None] = mapped_column(String(320))
     tags: Mapped[list[str]] = mapped_column(JSON)
     duration_ms: Mapped[float] = mapped_column(Float)
+    # A change() check: `value` is the change and this is what the inner
+    # metric measured, the next run's baseline. NULL for every other check.
+    measured: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The unit `value` is in (`percent` for a relative change). NULL on rows
+    # recorded before it existed: their metric's unit applies.
+    unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     run: Mapped[RunRow] = relationship(back_populates="results")

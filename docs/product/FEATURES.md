@@ -21,7 +21,7 @@ backlog item until the existing backlog is finished; see BACKLOG.md.
 | A2 | Variables `${var:name}`, `--var` | Partition dates and environments without copies | Dana | 2b | S | catalogue |
 | A3 | `reference(col)` referential integrity | Orphaned rows are a top real-world defect | Sam | 2b | M | catalogue |
 | A4 | Distribution metrics: percentile, stddev, `value_share` | Catches drift that averages hide | Sam | 2b | M | catalogue |
-| A5 ★ | Change-over-time: `change(row_count) < 20%` against the last run or the same weekday | Catches "half the data didn't load" without guessing a fixed threshold | Sam, Alex | 2 | M | backlog |
+| A5 ★ | Change-over-time: `change(row_count) > -20%` against the last run or the same weekday | Catches "half the data didn't load" without guessing a fixed threshold | Sam, Alex | 2 | M | backlog |
 | A6 | Reusable check templates | Standard checks applied consistently | Dana | 3 | M | catalogue |
 | A7 | `group_by:` per-segment metrics | "Region APAC is missing", not "the table is 3% off" | Sam | 3 | L | catalogue |
 | A8 ★ | Files as datasets (CSV, Parquet, JSON via DuckDB) | Check landing files before they're loaded | Dana | 2 | S | backlog |

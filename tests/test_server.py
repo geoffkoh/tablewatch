@@ -810,9 +810,11 @@ def test_run_detail(recorded: Recorded) -> None:  # R3
     assert len(detail["results"]) == 14
     expected = recorded.run_b_report["results"]
     for got, want in zip(detail["results"], expected, strict=True):
-        assert set(got) == set(want)
-        assert {k: v for k, v in got.items() if k != "duration_ms"} == {
-            k: v for k, v in want.items() if k != "duration_ms"
+        # `previous` is the run's own context (spec 026), not stored.
+        assert set(got) == set(want) - {"previous"}
+        skip = {"duration_ms", "previous"}
+        assert {k: v for k, v in got.items() if k not in skip} == {
+            k: v for k, v in want.items() if k not in skip
         }
     for run, full in zip(listed, details, strict=True):
         tally = {
@@ -1213,7 +1215,8 @@ def test_the_checked_in_openapi_matches(recorded: Recorded) -> None:  # X4
 def test_run_items_match_the_json_report(recorded: Recorded) -> None:
     fields = set(schemas.RunResultItem.model_fields)
     result = tw.run(recorded.root, record=False)
-    assert fields == set(as_dict(result)["results"][0])
+    # `previous` is the run's own context (spec 026), not a stored field.
+    assert fields == set(as_dict(result)["results"][0]) - {"previous"}
 
 
 def test_wire_enums_match_the_engine() -> None:

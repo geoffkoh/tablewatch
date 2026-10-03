@@ -30,10 +30,11 @@ from tablewatch.datasources import (
     datasource_problem,
     timezone_of,
 )
-from tablewatch.engine.evaluate import evaluate, format_value
+from tablewatch.engine.baselines import Baselines, Sample
+from tablewatch.engine.evaluate import change_of, evaluate, format_value
 from tablewatch.engine.executor import execute_plan
 from tablewatch.engine.planner import plan_dataset
-from tablewatch.metrics.base import MetricInputError
+from tablewatch.metrics.base import Measurement, MetricInputError
 
 log = logging.getLogger(__name__)
 
@@ -64,11 +65,20 @@ class CheckResult:
     value: float | None
     message: str | None
     duration_ms: float = 0.0  # time spent on the check's dataset, shared by its checks
+    # A change() check: what the inner metric measured this run, and the
+    # earlier measurement it was compared with.
+    measured: float | None = None
+    previous: Sample | None = None
 
     @property
     def display_value(self) -> str:
-        metric = self.check.metric
-        return format_value(metric.unit, self.value, metric.count_noun)
+        check = self.check
+        return format_value(
+            check.unit,
+            self.value,
+            check.metric.count_noun,
+            signed=check.expression.change is not None,
+        )
 
     def __repr__(self) -> str:
         # The dataclass repr would print the check, its dataset, and every
@@ -160,8 +170,10 @@ def run_checks(
     engine_factory: EngineFactory | None = None,
     max_workers: int = 4,
     selection: dict[str, Any] | None = None,
+    baselines: Baselines | None = None,
 ) -> RunResult:
     checks = list(checks)
+    baselines = baselines or Baselines()
     now = now or datetime.now(UTC)
     run = RunResult(
         id=uuid.uuid4().hex,
@@ -188,7 +200,9 @@ def run_checks(
         max_workers=workers, thread_name_prefix="tablewatch"
     ) as pool:
         futures = [
-            pool.submit(_run_datasource, project, name, datasets, now, factory)
+            pool.submit(
+                _run_datasource, project, name, datasets, now, factory, baselines
+            )
             for name, datasets in by_source.items()
         ]
         for future in futures:
@@ -205,6 +219,7 @@ def _run_datasource(
     datasets: dict[Dataset, list[Check]],
     now: datetime,
     factory: EngineFactory,
+    baselines: Baselines,
 ) -> list[CheckResult]:
     config = project.config.datasources[name]
     try:
@@ -234,7 +249,9 @@ def _run_datasource(
     try:
         for dataset, checks in datasets.items():
             try:
-                results.extend(_run_dataset(dataset, checks, engine, now, timezone))
+                results.extend(
+                    _run_dataset(dataset, checks, engine, now, timezone, baselines)
+                )
             except Exception as exc:  # the safety net: one dataset never ends the run
                 log.exception("unexpected failure running %s", dataset.name)
                 results.extend(
@@ -257,7 +274,9 @@ def _run_dataset(
     engine: Engine,
     now: datetime,
     timezone: Any,
+    baselines: Baselines | None = None,
 ) -> list[CheckResult]:
+    baselines = baselines or Baselines()
     plan = plan_dataset(dataset, engine.dialect, now, timezone, checks)
     measured = execute_plan(plan, engine)
     log.info(
@@ -324,6 +343,11 @@ def _run_dataset(
         except Exception as exc:
             results.append(_internal_error(dataset, check, exc, measured.duration_ms))
             continue
+        if check.expression.change is not None:
+            results.append(
+                _changed(check, measurement, baselines, dataset, measured.duration_ms)
+            )
+            continue
         try:
             outcome, message = evaluate(check, measurement)
         except Exception as exc:
@@ -335,6 +359,34 @@ def _run_dataset(
             )
         )
     return results
+
+
+def _changed(
+    check: Check,
+    measurement: Measurement,
+    baselines: Baselines,
+    dataset: Dataset,
+    duration_ms: float,
+) -> CheckResult:
+    """A `change()` check: the inner metric's value against its baseline."""
+    if baselines.problem is not None:
+        problem = f"could not read this check's history: {baselines.problem}"
+        return CheckResult(check, Outcome.ERROR, None, problem, duration_ms)
+    current = measurement.value
+    samples = baselines.samples.get(check.id, ())
+    previous = samples[0] if samples else None
+    try:
+        change = change_of(check, current, previous)
+        if isinstance(change, str):  # no comparison this run
+            return CheckResult(
+                check, Outcome.SKIPPED, None, change, duration_ms, current, previous
+            )
+        outcome, message = evaluate(check, change)
+    except Exception as exc:
+        return _internal_error(dataset, check, exc, duration_ms)
+    return CheckResult(
+        check, outcome, change.value, message, duration_ms, current, previous
+    )
 
 
 def _internal_error(

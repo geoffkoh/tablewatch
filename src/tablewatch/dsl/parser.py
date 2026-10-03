@@ -1,6 +1,6 @@
 """Recursive-descent parser for check expressions.
 
-    check      := metric [condition]
+    check      := (metric | "change" "(" metric ")") [condition]
     trigger    := "when" condition
     metric     := NAME [ "(" [arg ("," arg)*] ")" ]
     arg        := NAME | STRING
@@ -17,6 +17,7 @@ import math
 
 from tablewatch.dsl.ast import (
     Between,
+    Change,
     CheckExpr,
     Compare,
     Condition,
@@ -41,12 +42,18 @@ class DSLSyntaxError(Exception):
 def parse_check(text: str) -> CheckExpr:
     """Parse `metric [condition]`, e.g. `missing_percent(email) < 1%`."""
     parser = _Parser(text)
-    metric = parser.metric()
+    change = None
+    if parser.at_change():
+        metric = parser.change_of()
+        change = Change()
+    else:
+        metric = parser.metric()
+    expression = CheckExpr(metric, None, change)
     condition = (
-        None if parser.at(TokenKind.END) else parser.condition(after=str(metric))
+        None if parser.at(TokenKind.END) else parser.condition(after=expression.subject)
     )
     parser.expect(TokenKind.END, "end of expression")
-    return CheckExpr(metric, condition)
+    return CheckExpr(metric, condition, change)
 
 
 def parse_trigger(text: str) -> Condition:
@@ -91,6 +98,38 @@ class _Parser:
                 f"expected {description}, found {_describe(token)}", token.offset
             )
         return self.advance()
+
+    def at_change(self) -> bool:
+        token, after = (
+            self._tokens[self._pos],
+            self._tokens[self._pos + 1 : self._pos + 2],
+        )
+        return (
+            token.kind is TokenKind.NAME
+            and token.text == "change"
+            and bool(after)
+            and after[0].kind is TokenKind.LPAREN
+        )
+
+    def change_of(self) -> MetricCall:
+        """`change(<metric>)`: the metric inside, with errors at their column."""
+        self.advance()  # change
+        self.advance()  # (
+        inner = self.peek()
+        if inner.kind is not TokenKind.NAME:
+            raise DSLSyntaxError(
+                "expected a metric such as row_count inside change(...)", inner.offset
+            )
+        if self.at_change():
+            raise DSLSyntaxError("change() cannot contain change()", inner.offset)
+        metric = self.metric()
+        token = self.peek()
+        if token.kind is TokenKind.COMMA:
+            raise DSLSyntaxError(
+                "change() takes one metric, e.g. change(row_count)", token.offset
+            )
+        self.expect(TokenKind.RPAREN, "')' to close change(")
+        return metric
 
     def metric(self) -> MetricCall:
         name = self.peek()

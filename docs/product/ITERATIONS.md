@@ -6,6 +6,37 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 26 — `change(<metric>)` against the previous recorded run, part 1 (I-07), 2026-10-03
+
+- **Spec:** [026-change-over-time-part-1](specs/026-change-over-time-part-1.md). **Branch:**
+  `iter/026`. Full track. No items added (freeze).
+- **REFINE.** Architect → D4–D8: `Change` sits beside the metric on `CheckExpr`, so the scan stays
+  one and old ids don't move; `Check.unit` decided once from the rule (its blocker: a relative
+  change's unit, D5); store revision `0002` adds `measured`/`unit`; a `Baselines` handoff read by
+  `execute` only when a selected check uses `change()`; the maths in `evaluate.py`; an additive
+  JSON report. Data-steward → D1–D3: the change is signed, no `abs()`; previous 0 → now 0 is
+  `0.00%`, previous 0 → non-zero under a `%` rule is `skipped`; the first run is `skipped`; a
+  non-zero value always shows its sign. FEATURES A5's example corrected to `> -20%`.
+- **Shipped:** `change(<metric call>)` wraps a count or number metric and compares it with the
+  newest earlier recorded result of the same check id, signed, relative (`%`) or absolute; the
+  first run and a `%` rule against a zero previous are `skipped`; `--no-store` reads history
+  without writing it; the JSON report gains `measured`, `unit` and `previous`.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — fail, then fixed; 1 blocker, 47 tests.* A relative change from a negative
+    previous value had the wrong sign. Fixed: divide by `abs(previous)`. Also fixed: `Infinity`
+    reaching the JSON; `previous.started_at` not in UTC; `--no-store` migrating an old store
+    (reads now go through `ResultStore.schema()`, which never migrates); a store from a newer
+    tablewatch read as ordinary history instead of an error; a signed `+0.00%`.
+  - *data-steward — accept*, live.
+- **Not added (backlog freeze):** the baselines read fetches every history row per check, with no
+  SQL per-check limit; the NUMBER format shows `1e+06` in details.
+- **Lessons:** `Check.unit` deciding relative-vs-absolute once at load time (D5) kept every reader
+  — display, store, JSON, API — reading one field instead of re-deriving it; worth reaching for
+  that pattern again when a check's shape depends on which rule form was written.
+- **Backlog:** I-07 stays in progress — part 1 done, part 2 (same-weekday and last-N baselines,
+  percent/duration metrics, the previous value on the chart) is next. I-14 still waits on the
+  owner. Next: iteration 27, I-07 part 2.
+
 ## Iteration 25 — `serve` polish: URL, JSON stderr, no server paths, the 503 envelope (I-20), 2026-10-03
 
 - **Spec:** [025-serve-polish](specs/025-serve-polish.md). **Branch:** `iter/025`. Full track. No

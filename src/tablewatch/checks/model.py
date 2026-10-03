@@ -13,11 +13,12 @@ from typing import TYPE_CHECKING, Any, Literal
 from tablewatch.checks.sources import Source, TableSource
 from tablewatch.diagnostics import SourceLocation
 from tablewatch.dsl import CheckExpr, Condition
+from tablewatch.dsl.ast import Number, values_in
 
 if TYPE_CHECKING:
     from sqlalchemy.sql.expression import FromClause
 
-    from tablewatch.metrics.base import Metric
+    from tablewatch.metrics.base import Metric, Unit
 
 
 class Outcome(StrEnum):
@@ -160,6 +161,26 @@ class Check:
         if span is None or span.end_line > len(lines):
             return None
         return "\n".join(lines[span.start_line - 1 : span.end_line])
+
+    @property
+    def relative_change(self) -> bool:
+        """A `change()` check whose rule is in `%`: compared relatively."""
+        if self.expression.change is None:
+            return False
+        rules = (self.expectation, self.warn, self.fail)
+        return any(
+            isinstance(v, Number) and v.percent
+            for rule in rules
+            if rule is not None
+            for v in values_in(rule)
+        )
+
+    @property
+    def unit(self) -> Unit:
+        """The unit of this check's value: a relative change is a percentage."""
+        from tablewatch.metrics.base import Unit
+
+        return Unit.PERCENT if self.relative_change else self.metric.unit
 
     @property
     def canonical(self) -> str:

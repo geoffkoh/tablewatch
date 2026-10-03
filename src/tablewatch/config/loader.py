@@ -52,7 +52,7 @@ from tablewatch.dsl import (
     parse_check,
     parse_trigger,
 )
-from tablewatch.dsl.ast import values_in
+from tablewatch.dsl.ast import Number, values_in
 from tablewatch.metrics.base import SINGLE_VALUES, Metric, OptionType, Unit
 from tablewatch.metrics.registry import get_metric
 from tablewatch.metrics.registry import suggest as suggest_metric
@@ -570,6 +570,14 @@ class _ChecksLoader:
             return None
 
         metric = get_metric(expression.metric.name)
+        if metric is None and expression.change is not None:
+            self.diagnostics.append(
+                error(
+                    "expected a metric such as row_count inside change(...)",
+                    text_at.shifted(len("change(")),
+                )
+            )
+            return None
         if metric is None:
             hint = suggest_metric(expression.metric.name)
             did_you_mean = f" — did you mean '{hint}'?" if hint else ""
@@ -581,6 +589,11 @@ class _ChecksLoader:
             return None
 
         problems_before = len(self.diagnostics)
+        if expression.change is not None:
+            problem = _change_problem(metric)
+            if problem is not None:
+                self.diagnostics.append(error(problem, text_at))
+                return None
         self._check_arguments(metric, expression.metric.args, text_at)
 
         allowed = (
@@ -616,7 +629,18 @@ class _ChecksLoader:
             and fail is None
             and "warn" not in options_node
         ):
-            if metric.default_condition is not None:
+            if expression.change is not None:
+                # A metric's default rule (failed_rows = 0) says nothing about
+                # how much it may move.
+                if "fail" not in options_node:
+                    self.diagnostics.append(
+                        error(
+                            f"{expression.subject} needs a comparison or triggers, "
+                            f"e.g. {expression.subject} > -20%",
+                            text_at.shifted(len(text.rstrip())),
+                        )
+                    )
+            elif metric.default_condition is not None:
                 expectation = metric.default_condition
             elif "fail" not in options_node:
                 self.diagnostics.append(
@@ -642,8 +666,14 @@ class _ChecksLoader:
                 else text_at,
             ),
         ):
-            if condition is not None:
+            if condition is not None and expression.change is None:
                 self._check_units(metric, condition, at)
+        if expression.change is not None:
+            self._check_change_units(
+                expression.subject,
+                [c for c in (expression.condition, warn, fail) if c],
+                text_at,
+            )
 
         # Semantic rules only once the syntax is clean: a mistyped option is
         # dropped from `options`, and reporting it as missing too would be a
@@ -730,6 +760,26 @@ class _ChecksLoader:
         else:
             wanted = f"{low} to {high} arguments"
         self.diagnostics.append(error(f"{metric.name} takes {wanted}, got {count}", at))
+
+    def _check_change_units(
+        self, subject: str, conditions: list[Condition], at: SourceLocation
+    ) -> None:
+        """A change is relative (`%`) or absolute (plain numbers), never both."""
+        values = [v for c in conditions for v in values_in(c)]
+        if any(isinstance(v, Duration) for v in values):
+            self.diagnostics.append(
+                error(f"{subject} counts or adds; a duration cannot measure it", at)
+            )
+            return
+        kinds = {isinstance(v, Number) and v.percent for v in values}
+        if len(kinds) > 1:
+            self.diagnostics.append(
+                error(
+                    f"{subject}: use % throughout (a relative change) or plain "
+                    "numbers throughout (an absolute change), not both",
+                    at,
+                )
+            )
 
     def _check_units(
         self, metric: Metric, condition: Condition, at: SourceLocation
@@ -967,6 +1017,17 @@ def _matches(value: Any, kind: OptionType) -> bool:
             return isinstance(value, dict) and all(
                 isinstance(k, str) and isinstance(v, str) for k, v in value.items()
             )
+
+
+def _change_problem(metric: Metric) -> str | None:
+    """Why `change()` cannot wrap `metric`, or None: counts and numbers only."""
+    if metric.name == "schema":
+        return "change() works on counts and numbers; schema counts problems, not data"
+    if metric.unit is Unit.PERCENT:
+        return f"change() works on counts and numbers; {metric.name} is a percentage"
+    if metric.unit is Unit.DURATION:
+        return f"change() works on counts and numbers; {metric.name} is a duration"
+    return None
 
 
 def _composed(text: str) -> MappingNode | None:
