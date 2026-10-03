@@ -168,6 +168,9 @@ def execute(
     return result
 
 
+NEWER_STORE = "it was upgraded by a newer tablewatch — upgrade tablewatch to read it"
+
+
 def read_baselines(
     project: Project, checks: Sequence[Check], now: datetime
 ) -> Baselines:
@@ -184,7 +187,15 @@ def read_baselines(
     try:
         if not is_persistent(url):
             return Baselines()
-        with open_store(url, project.root, create=False) as store:
+        # Never migrate here: a run that records migrates when it saves, and
+        # `--no-store` must leave a shared store as it found it. A store from
+        # before change() holds no measured values, so no baselines anyway.
+        with open_store(url, project.root, create=False, migrate=False) as store:
+            schema = store.schema()
+            if schema == "newer":
+                return Baselines(problem=NEWER_STORE)
+            if schema == "older":
+                return Baselines()
             samples = store.baselines(project.config.name, changes, now)
     except NoStoreError:
         return Baselines()

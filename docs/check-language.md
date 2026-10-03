@@ -288,7 +288,10 @@ checks:
 
 - The value is **signed**, now minus then: a drop is negative and a rise shows
   its sign (`+50 rows`, `-15.00%`). `between -20% and 20%` catches a move
-  either way.
+  either way. A relative change always shows two decimals (`0.00%`); an
+  absolute one is shown in the metric's own format (`0 rows`, `+3400`). A
+  relative change is measured against the size of the old value, so a sum
+  that rises from -100 to -50 reads `+50.00%`.
 - With `%` the change is relative, `(now − then) ÷ then × 100`; with plain
   numbers it is absolute, in the metric's own units. Use one or the other in a
   check, not both.

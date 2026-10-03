@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from alembic import command
 from alembic.config import Config
@@ -156,8 +156,10 @@ def _reading(engine: Engine) -> Iterator[None]:
 class ResultStore:
     """Run history in a SQL database, migrated to the current schema on open."""
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(self, engine: Engine, *, migrate: bool = True) -> None:
         self.engine = engine
+        if not migrate:
+            return
         try:
             self._migrate()
         except BaseException:
@@ -165,8 +167,33 @@ class ResultStore:
             raise
 
     @classmethod
-    def open(cls, url: str, project_root: Path, *, create: bool = True) -> ResultStore:
-        return cls(create_engine(resolve_store_url(url, project_root, create=create)))
+    def open(
+        cls, url: str, project_root: Path, *, create: bool = True, migrate: bool = True
+    ) -> ResultStore:
+        engine = create_engine(resolve_store_url(url, project_root, create=create))
+        return cls(engine, migrate=migrate)
+
+    def schema(self) -> Literal["current", "older", "newer"]:
+        """This store's schema against this version's, without migrating it.
+
+        `newer` is a revision this version does not know: a newer tablewatch
+        upgraded it. Raises `StoreError` when the store cannot be read.
+        """
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+
+        config = Config()
+        config.set_main_option("script_location", str(MIGRATIONS_DIR))
+        scripts = ScriptDirectory.from_config(config)
+        known = {revision.revision for revision in scripts.walk_revisions()}
+        with _reading(self.engine), self.engine.connect() as connection:
+            context = MigrationContext.configure(
+                connection, opts={"version_table": "tablewatch_alembic_version"}
+            )
+            current = context.get_current_revision()
+        if current == scripts.get_current_head():
+            return "current"
+        return "older" if current is None or current in known else "newer"
 
     def close(self) -> None:
         self.engine.dispose()
@@ -495,13 +522,16 @@ def is_persistent(url: str) -> bool:
     )
 
 
-def open_store(url: str, project_root: Path, *, create: bool = True) -> ResultStore:
+def open_store(
+    url: str, project_root: Path, *, create: bool = True, migrate: bool = True
+) -> ResultStore:
     """Open and migrate the store, or raise `StoreError` without the URL.
 
-    `create=False` raises `NoStoreError` for a SQLite store not yet on disk.
+    `create=False` raises `NoStoreError` for a SQLite store not yet on disk;
+    `migrate=False` leaves its schema as it is (a read that writes nothing).
     """
     try:
-        return ResultStore.open(url, project_root, create=create)
+        return ResultStore.open(url, project_root, create=create, migrate=migrate)
     except StoreError:
         raise
     except AlembicCommandError as exc:

@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from tablewatch.engine.runner import RunResult
+from tablewatch.jsonvalues import finite, utc
 
 SCHEMA_VERSION = 1
 
@@ -45,14 +46,14 @@ def as_dict(run: RunResult) -> dict[str, Any]:
                 "owner": r.check.dataset.owner,
                 "tags": list(r.check.dataset.tags),
                 "duration_ms": round(r.duration_ms, 3),
-                "measured": r.measured,
+                "measured": finite(r.measured),
                 "unit": str(r.check.unit),
                 "previous": None
                 if r.previous is None
                 else {
-                    "value": r.previous.value,
+                    "value": finite(r.previous.value),
                     "run_id": r.previous.run_id,
-                    "started_at": r.previous.started_at.isoformat(),
+                    "started_at": utc(r.previous.started_at).isoformat(),
                 },
             }
             for r in run.results

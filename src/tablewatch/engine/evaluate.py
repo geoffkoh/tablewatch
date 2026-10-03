@@ -55,7 +55,8 @@ def change_of(
                     "< 1000"
                 )
         else:
-            value = (current - previous.value) / previous.value * 100
+            # Over the size of the old value: a rise from -100 to -50 is +50%.
+            value = (current - previous.value) / abs(previous.value) * 100
     else:
         value = current - previous.value
     then = format_value(metric.unit, previous.value)
@@ -82,8 +83,10 @@ def format_value(
     """
     if value is None:
         return "—"
-    if signed and value > 0 and not (unit is Unit.COUNT and round(value) == 0):
-        return "+" + format_value(unit, value, noun)
+    if signed and value > 0:
+        shown = format_value(unit, value, noun)
+        # A value that rounds to zero is shown as zero, unsigned.
+        return "+" + shown if any(c in "123456789" for c in shown) else shown
     match unit:
         case Unit.COUNT:
             count = round(value)
