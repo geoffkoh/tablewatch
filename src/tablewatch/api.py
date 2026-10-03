@@ -14,11 +14,13 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from tablewatch.checks.model import Check
 from tablewatch.config import Project, find_project, load_project
 from tablewatch.diagnostics import ProjectError, Severity
+from tablewatch.engine.baselines import Baselines
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import (
     FAIL_ON_CHOICES,
@@ -29,7 +31,13 @@ from tablewatch.engine.runner import (
     run_checks,
 )
 from tablewatch.notify import NOT_RECORDED, notify_sink
-from tablewatch.results.store import store_sink
+from tablewatch.results.store import (
+    NoStoreError,
+    StoreError,
+    is_persistent,
+    open_store,
+    store_sink,
+)
 from tablewatch.selection import Selection, SelectionError, select_checks
 
 log = logging.getLogger(__name__)
@@ -141,13 +149,16 @@ def execute(
     checks: list[Check] = select_checks(project, selection)
     if not checks:
         raise SelectionError("no checks matched the selection — nothing ran")
+    now = datetime.now(UTC)
     result = run_checks(
         project,
         checks,
         trigger=trigger,
         fail_on=fail_on,
+        now=now,
         max_workers=concurrency,
         selection=selection.as_dict(),
+        baselines=read_baselines(project, checks, now),
     )
     for sink in sinks:
         try:
@@ -155,6 +166,31 @@ def execute(
         except Exception as exc:  # one broken sink never costs the others the run
             result.record_errors.append(error_message(exc))
     return result
+
+
+def read_baselines(
+    project: Project, checks: Sequence[Check], now: datetime
+) -> Baselines:
+    """What the `change()` checks among `checks` compare with.
+
+    Read before scanning, and only when there is such a check. It never
+    creates a store (`--no-store` reads history too): no store yet, or one in
+    memory, means no history.
+    """
+    changes = {c.id: c.metric.name for c in checks if c.expression.change is not None}
+    if not changes:
+        return Baselines()
+    url = project.config.results.url
+    try:
+        if not is_persistent(url):
+            return Baselines()
+        with open_store(url, project.root, create=False) as store:
+            samples = store.baselines(project.config.name, changes, now)
+    except NoStoreError:
+        return Baselines()
+    except StoreError as exc:
+        return Baselines(problem=str(exc).removeprefix("results store: "))
+    return Baselines(samples=samples)
 
 
 def default_sinks(

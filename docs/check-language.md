@@ -272,6 +272,40 @@ conditions on one dataset are two checks, each with its own history.
   It uses letters, digits, `.`, `_`, `:` and `-`, starts with a letter or
   digit, and is at most 64 characters.
 
+## Change over time
+
+`change(<metric>)` compares a check with the same check's previous recorded
+run, so a threshold follows the data instead of being guessed:
+
+```yaml
+checks:
+  - change(row_count) > -20%                 # no more than a 20% drop since the last run
+  - change(sum(amount)) between -5000 and 5000
+  - change(row_count):
+      warn: when < -10%
+      fail: when < -50%
+```
+
+- The value is **signed**, now minus then: a drop is negative and a rise shows
+  its sign (`+50 rows`, `-15.00%`). `between -20% and 20%` catches a move
+  either way.
+- With `%` the change is relative, `(now − then) ÷ then × 100`; with plain
+  numbers it is absolute, in the metric's own units. Use one or the other in a
+  check, not both.
+- `change()` wraps counts and numbers (`row_count`, `missing_count`,
+  `failed_rows`, `sum`, `avg`, `sql_metric`, …), not percentages, durations or
+  `schema`, and it always needs a comparison or triggers.
+- **Previous** is the newest result of the same check in this project, from a
+  run that started earlier and measured a value. An `error` is passed over.
+  The first run, and a relative change from a previous 0, are `skipped`: there
+  is nothing meaningful to compare.
+- It reads the results store, also under `run --no-store` (which still writes
+  nothing). If the store cannot be read, only the `change()` checks are
+  `error`. Editing a check (a new id) starts a new baseline; pin `id:` to keep
+  it.
+- It compares with the previous run whatever its weekday, so a quiet weekend
+  shows as a drop. Same-weekday and last-N baselines come later.
+
 ## Notifications
 
 tablewatch tells you when a check **changes state**, then stays quiet while

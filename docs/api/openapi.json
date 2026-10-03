@@ -1338,6 +1338,17 @@
             "title": "Expression",
             "type": "string"
           },
+          "measured": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured"
+          },
           "message": {
             "anyOf": [
               {
@@ -1390,6 +1401,23 @@
             "title": "Tags",
             "type": "array"
           },
+          "unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "count",
+                  "percent",
+                  "duration",
+                  "number"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
           "value": {
             "anyOf": [
               {
@@ -1416,7 +1444,9 @@
           "source",
           "owner",
           "tags",
-          "duration_ms"
+          "duration_ms",
+          "measured",
+          "unit"
         ],
         "title": "RunResultItem",
         "type": "object"

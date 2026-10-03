@@ -120,11 +120,29 @@ class MetricCall:
 class CheckExpr:
     metric: MetricCall
     condition: Condition | None = None
+    # `change(<metric>)`: compare with an earlier run. The metric stays the
+    # inner call, so the loader and the planner treat it as any other.
+    change: Change | None = None
+
+    @property
+    def subject(self) -> str:
+        """What the condition is about: `row_count`, or `change(row_count)`."""
+        return f"change({self.metric})" if self.change else str(self.metric)
 
     def __str__(self) -> str:
         if self.condition is None:
-            return str(self.metric)
-        return f"{self.metric} {self.condition}"
+            return self.subject
+        return f"{self.subject} {self.condition}"
+
+
+@dataclass(frozen=True)
+class Change:
+    """`change(...)`: the difference from an earlier run of the same check.
+
+    Part 1 knows one baseline, the previous run. Later baselines add fields
+    here, rendered only when they are not the default, so ids derived today
+    stay the same.
+    """
 
 
 def values_in(condition: Condition) -> tuple[Value, ...]:

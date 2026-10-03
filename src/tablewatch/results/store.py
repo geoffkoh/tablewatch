@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -32,6 +32,7 @@ from sqlalchemy.exc import NoSuchModuleError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from tablewatch.checks.model import Outcome
+from tablewatch.engine.baselines import Sample
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import ResultSink, RunResult
 from tablewatch.results.models import CheckResultRow, RunRow
@@ -214,6 +215,8 @@ class ResultStore:
                 value=r.value,
                 display_value=r.display_value,
                 message=r.message,
+                measured=r.measured,
+                unit=str(r.check.unit),
                 source=str(r.check.location),
                 owner=r.check.dataset.owner,
                 tags=list(r.check.dataset.tags),
@@ -342,6 +345,57 @@ class ResultStore:
                     if outcome in (Outcome.FAIL, Outcome.PASS):
                         done.add(check)
         return found
+
+    def baselines(
+        self,
+        project: str,
+        checks: Mapping[str, str],
+        before: datetime,
+        limit: int = 1,
+    ) -> dict[str, tuple[Sample, ...]]:
+        """Each `change()` check's earlier measurements, newest first.
+
+        `checks` maps a check id to its inner metric's name: a result of
+        another metric (an `id:` kept across an edit) is never a baseline.
+        Only runs of this project that started before `before`, with a
+        measured value.
+        """
+        wanted = list(checks)
+        found: dict[str, list[Sample]] = {}
+        with _reading(self.engine), Session(self.engine) as session:
+            for start in range(0, len(wanted), _CHUNK):
+                statement = (
+                    select(
+                        CheckResultRow.check_id,
+                        CheckResultRow.metric,
+                        CheckResultRow.measured,
+                        RunRow.started_at,
+                        RunRow.id,
+                    )
+                    .join(RunRow, CheckResultRow.run_id == RunRow.id)
+                    .where(
+                        RunRow.project == project,
+                        CheckResultRow.check_id.in_(wanted[start : start + _CHUNK]),
+                        CheckResultRow.measured.is_not(None),
+                        RunRow.started_at < before,
+                    )
+                    .order_by(
+                        CheckResultRow.check_id,
+                        RunRow.started_at.desc(),
+                        RunRow.id.desc(),
+                    )
+                )
+                for check, metric, measured, started_at, run_id in session.execute(
+                    statement
+                ):
+                    samples = found.setdefault(check, [])
+                    if (
+                        measured is not None
+                        and metric == checks[check]
+                        and len(samples) < limit
+                    ):
+                        samples.append(Sample(measured, started_at, run_id))
+        return {check: tuple(samples) for check, samples in found.items() if samples}
 
     def matching_check_ids(
         self, project: str, prefix: str, limit: int = 10

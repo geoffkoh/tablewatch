@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 from datetime import datetime
-from typing import Annotated, Literal, assert_never
+from typing import Annotated, Literal, assert_never, cast
 
 from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema
 
@@ -183,7 +183,7 @@ class CheckSummary(_Model):
             name=check.name,
             expression=check.canonical,
             metric=check.metric.name,
-            unit=check.metric.unit.value,
+            unit=check.unit.value,
             dataset=check.dataset.name,
             datasource=check.dataset.datasource,
             datasource_state=check.dataset.datasource_state,
@@ -444,7 +444,7 @@ class HistoryEntry(_Model):
             source=result.source,
             metric=result.metric,
             dataset=result.dataset,
-            unit=_unit(result.metric),
+            unit=_unit(result.metric, result.unit),
         )
 
 
@@ -516,6 +516,9 @@ class RunResultItem(_Model):
     owner: str | None
     tags: list[str]
     duration_ms: float
+    # A change() check: what its metric measured (the next run's baseline).
+    measured: JsonFloat
+    unit: Unit | None
 
     @classmethod
     def of(cls, result: CheckResultRow) -> RunResultItem:
@@ -534,6 +537,8 @@ class RunResultItem(_Model):
             owner=result.owner,
             tags=list(result.tags),
             duration_ms=result.duration_ms,
+            measured=result.measured,
+            unit=_unit(result.metric, result.unit),
         )
 
 
@@ -571,9 +576,11 @@ def _outcome(value: str) -> Outcome:
     return "error"
 
 
-def _unit(metric: str) -> Unit | None:
-    # The metric's unit in this version, not as recorded: the store keeps no
-    # unit. A future unit change must store it on the result row first.
+def _unit(metric: str, recorded: str | None = None) -> Unit | None:
+    # The unit as recorded (spec 026: a relative change is a percentage);
+    # rows from before it was stored take the metric's unit in this version.
+    if recorded in ("count", "percent", "duration", "number"):
+        return cast(Unit, recorded)
     found = get_metric(metric)
     return found.unit.value if found else None
 
