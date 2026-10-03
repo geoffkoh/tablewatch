@@ -81,11 +81,16 @@ Fixture: tables `t` on a DuckDB and a SQLite datasource, as above, plus `row_cou
   exception whose text is shown; its text is built from constants and `kind_of()` only. The runner's
   `except (TypeError, ValueError)` branch goes. `as_float` becomes `numeric(value, what)`, raising it.
   `freshness` wraps its parse errors in it.
-- **D4 (Q4).** The type is decided in Python from the fetched value. `MetricContext.type_probe(col)` is
-  `MAX(scoped col)`, a second role on min/max/avg/sum, deduped with `max`, so the scan stays one. A new
+- **D4 (Q4).** The type is decided in Python from the fetched value. `MetricContext.type_probes(col)` adds
+  `MIN` and `MAX` of the scoped column (deduped with `min`/`max`), so the scan stays one; `missing_*`/
+  `invalid_*` add them only when an option compares with numbers only (VERIFY: DuckDB's conversion
+  error quoted a row). A new
   `Metric.check_input(ctx, values)` hook (default no-op) runs before measure errors are reported, so
   DuckDB/Postgres bind errors on `avg(VARCHAR)` become S2's message. Postgres is covered by unit tests
   on `str`/`Decimal`/`bool`/`date`, and a DSN-gated test waits for I-14.
+- **D6 (VERIFY).** A database's conversion-error text (it quotes the value) is never stored for a measure;
+  it reads `a value in the column could not be converted: …`. An empty scope on DuckDB still shows
+  `avg(VARCHAR)`'s bind error (strict xfail; not added, freeze).
 - **D5 (Q5, Q6; data-steward).** A text column of numerals on SQLite errors. Today it returns a
   string-ordered wrong number, and rule 3 means the same check means the same thing. A steward who
   wants that casts in a `sql_metric`. S4 (a stray value in a numeric column) says `found a

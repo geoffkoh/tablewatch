@@ -31,7 +31,7 @@ from tablewatch.datasources import (
     timezone_of,
 )
 from tablewatch.engine.evaluate import evaluate, format_value
-from tablewatch.engine.executor import error_message, execute_plan
+from tablewatch.engine.executor import execute_plan
 from tablewatch.engine.planner import plan_dataset
 from tablewatch.metrics.base import MetricInputError
 
@@ -351,12 +351,3 @@ def _internal_error(
         f"internal error in {check.metric.name} ({type(exc).__name__})",
         duration_ms,
     )
-
-
-def _short_error(exc: BaseException) -> str:
-    """An exception's first line, capped: it is stored and served over the API."""
-    try:
-        text = error_message(exc)
-    except Exception:  # an exception whose str() itself raises
-        text = type(exc).__name__
-    return text if len(text) <= 500 else f"{text[:497]}..."

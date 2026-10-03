@@ -298,6 +298,49 @@ def numeric(value: Any, what: str) -> float | None:
     return float(value)
 
 
+def numbers_against_text(
+    metric: str, options: Mapping[str, Any], values: Mapping[str, Any]
+) -> None:
+    """`MetricInputError` when numeric options meet a text column.
+
+    DuckDB and Postgres then fail to convert a row (and quote it); SQLite
+    compares text to numbers and counts every row. Both read the same here.
+    `values` holds the `type_probes` roles; options without numbers pass.
+    """
+    numeric_options = [
+        name for name in NUMERIC_OPTIONS if has_number(options.get(name))
+    ]
+    if not numeric_options:
+        return
+    kinds = {
+        kind_of(values[role])
+        for role in ("probe_min", "probe_max")
+        if values.get(role) is not None
+    }
+    if "text" in kinds:
+        raise MetricInputError(
+            f"{metric}: {numeric_options[0]} holds numbers but the column holds text"
+        )
+
+
+NUMERIC_OPTIONS = ("missing_values", "valid_values", "valid_min", "valid_max")
+
+
+def has_number(value: Any) -> bool:
+    """Whether an option compares the column with numbers only.
+
+    A list that also holds text (`['', 'N/A', 7]`) is compared as text,
+    which every database accepts, so it does not count.
+    """
+    items = value if isinstance(value, list | tuple) else [value]
+    if any(isinstance(item, str) for item in items):
+        return False
+    return any(
+        isinstance(item, int | float | Decimal) and not isinstance(item, bool)
+        for item in items
+    )
+
+
 def as_float(value: Any) -> float | None:
     """A count or other number the SQL returned, as a float."""
     return numeric(value, "this metric")
