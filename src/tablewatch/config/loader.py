@@ -436,10 +436,11 @@ class _ChecksLoader:
     def _file_source(
         self, source: YAMLSource, node: CommentedMap, name: str
     ) -> FileSource | None:
-        """A files datasource's dataset: a local path inside its root.
+        """A files datasource's dataset: a local path or pattern inside its root.
 
         Normalised (`./orders.csv` is `orders.csv`) before it names the
-        dataset, so the check id does not depend on how it was written.
+        dataset, so the check id does not depend on how it was written, nor,
+        for a pattern, on what it matches.
         """
         at = source.of_value(node, "dataset")
         if any(ord(c) < 32 or ord(c) == 127 for c in name):
@@ -447,13 +448,11 @@ class _ChecksLoader:
                 error("a files dataset path cannot hold control characters", at)
             )
             return None
-        if set(name) & set("*?[]{}"):
-            # Globs come later: today a pattern could also take in a file
-            # that a single path would refuse (a symlink, say).
+        if set(name) & set("{}"):
             self.diagnostics.append(
                 error(
-                    "a files dataset is one file; patterns (*, ?, [ ], { }) are not "
-                    f"supported yet; got '{name}'",
+                    "a files dataset pattern may use *, ?, [ ] and **; braces ({ }) "
+                    f"are not supported; got '{name}'",
                     at,
                 )
             )

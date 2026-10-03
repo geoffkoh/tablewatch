@@ -6,9 +6,10 @@ An in-memory DuckDB, sandboxed before any check's SQL can run on it
 - only `realpath(root)` is readable (`allowed_directories`), nothing else on
   the file system or the network (`enable_external_access=false`), no
   extension is installed or loaded, and the configuration is locked;
-- the dataset's path reaches SQL as the relative bind parameter `tw_path`
-  and is swapped for the absolute path here, after checking it stays inside
-  root and passes through no symlink;
+- the dataset's path or pattern reaches SQL as the relative bind parameter
+  `tw_path`; here it is expanded in Python (DuckDB never globs) and swapped
+  for the list of absolute paths, every one checked to stay inside root and
+  pass through no symlink (spec 029);
 - every statement is exactly one SELECT, so nothing is ever written;
 - every DuckDB exception becomes fixed text: DuckDB's own messages quote
   absolute paths and lines of the file, i.e. row values (D7).
@@ -18,6 +19,8 @@ from __future__ import annotations
 
 import os
 import re
+import stat
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -26,7 +29,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.sql.elements import BindParameter
 from sqlalchemy.sql.visitors import iterate
 
-from tablewatch.checks.sources import PATH_PARAM, file_format
+from tablewatch.checks.sources import PATH_PARAM, file_format, is_pattern
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import ExceptionContext
@@ -48,6 +51,11 @@ SANDBOX_FAILED = "the files sandbox could not be set up"
 # than writing to disk (S4: no file is ever written).
 MEMORY_LIMIT = "2GB"
 THREADS = 4
+
+# Spec 029, R4: a pattern's walk is bounded before anything is read.
+MAX_MATCHES = 10_000
+MAX_DEPTH = 32
+MAX_ENTRIES = 100_000
 
 # Where the current statement's dataset is kept on the connection, for the
 # error mapping: (relative path, format).
@@ -120,6 +128,10 @@ def _sandbox(engine: Engine, root: str, name: str, duckdb: Any) -> None:
         except Exception:
             raise FilesError(SANDBOX_FAILED) from None
 
+    # Each dataset's matches, once per engine (a run): every statement on a
+    # dataset reads the same files. A failure is kept as its message.
+    expanded: dict[str, list[str] | str] = {}
+
     @event.listens_for(engine, "before_execute", retval=True)
     def swap_path(
         conn: Any,
@@ -134,8 +146,15 @@ def _sandbox(engine: Engine, root: str, name: str, duckdb: Any) -> None:
             return clauseelement, multiparams, params
         fmt = file_format(relative) or "csv"
         conn.info[_FILE_KEY] = (relative, fmt)
-        absolute = _inside(root, relative)
-        return clauseelement, multiparams, {**(params or {}), PATH_PARAM: absolute}
+        if relative not in expanded:
+            try:
+                expanded[relative] = expand(root, relative, name)
+            except FilesError as exc:
+                expanded[relative] = str(exc)
+        paths = expanded[relative]
+        if isinstance(paths, str):
+            raise FilesError(paths)
+        return clauseelement, multiparams, {**(params or {}), PATH_PARAM: paths}
 
     @event.listens_for(engine, "before_cursor_execute")
     def one_select(
@@ -180,6 +199,87 @@ def _path_of(element: Any) -> str | None:
     except Exception:  # an element that cannot be walked carries no path
         return None
     return None
+
+
+def expand(root: str, relative: str, name: str) -> list[str]:
+    """The absolute paths a dataset reads, sorted; FilesError otherwise.
+
+    A plain path is one file. A pattern (`*`, `?`, `[ ]`, `**` for any
+    depth) is walked with `os.scandir`, never `glob`: no symlink is
+    followed — one on the way or among the matches refuses the whole
+    dataset rather than silently changing its rows — hidden entries are
+    never matched or entered, only regular files match, and every match
+    passes `_inside`, which also refuses names DuckDB would re-expand.
+    """
+    if not is_pattern(relative):
+        return [_inside(root, relative)]
+    walk = _Walk(root, relative, name)
+    walk.visit(root, tuple(relative.split("/")), 0)
+    if not walk.matches:
+        raise FilesError(
+            f"no file matches '{relative}' in the files datasource '{name}'"
+        )
+    return sorted({_inside(root, os.path.relpath(m, root)) for m in walk.matches})
+
+
+class _Walk:
+    """One pattern's bounded walk below root (spec 029, R1–R4)."""
+
+    def __init__(self, root: str, pattern: str, name: str) -> None:
+        self.root = root
+        self.pattern = pattern
+        self.name = name
+        self.matches: list[str] = []
+        self.entries = 0
+
+    def _too_much(self, what: str) -> FilesError:
+        return FilesError(
+            f"'{self.pattern}' {what} in the files datasource '{self.name}'"
+        )
+
+    def visit(self, directory: str, parts: tuple[str, ...], depth: int) -> None:
+        if depth > MAX_DEPTH:
+            raise self._too_much(f"goes deeper than {MAX_DEPTH} folders")
+        head, rest = parts[0], parts[1:]
+        if head == "**":
+            if rest:
+                self.visit(directory, rest, depth)  # `**` matches no folder too
+            for entry in self._entries(directory):
+                if self._is_dir(entry):
+                    self.visit(entry.path, parts, depth + 1)
+            return
+        for entry in self._entries(directory):
+            if not fnmatchcase(entry.name, head):
+                continue
+            if entry.is_symlink():
+                raise FilesError(REFUSED)
+            if rest:
+                if self._is_dir(entry):
+                    self.visit(entry.path, rest, depth + 1)
+            elif stat.S_ISREG(entry.stat(follow_symlinks=False).st_mode):
+                self.matches.append(entry.path)
+                if len(self.matches) > MAX_MATCHES:
+                    raise self._too_much(f"matches more than {MAX_MATCHES:,} files")
+
+    def _entries(self, directory: str) -> list[os.DirEntry[str]]:
+        """A folder's visible entries; a symlink under `**` refuses."""
+        try:
+            with os.scandir(directory) as found:
+                entries = [e for e in found if not e.name.startswith(".")]
+        except (FileNotFoundError, NotADirectoryError):
+            return []
+        except OSError:
+            raise FilesError(REFUSED) from None
+        self.entries += len(entries)
+        if self.entries > MAX_ENTRIES:
+            raise self._too_much(f"scans more than {MAX_ENTRIES:,} entries")
+        return entries
+
+    @staticmethod
+    def _is_dir(entry: os.DirEntry[str]) -> bool:
+        if entry.is_symlink():  # a link to a folder would be entered
+            raise FilesError(REFUSED)
+        return entry.is_dir(follow_symlinks=False)
 
 
 def _inside(root: str, relative: str) -> str:

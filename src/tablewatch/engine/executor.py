@@ -89,7 +89,12 @@ def _scalar(conn: Connection, key: str, statement: Any, measured: Measured) -> N
 
 def _schema(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
     if isinstance(plan.dataset.source, FileSource):
-        measured.errors[SCHEMA_KEY] = "schema checks on files are not supported yet"
+        try:
+            rows = conn.execute(plan.dataset.source.schema_statement()).all()
+        except SQLAlchemyError as exc:  # the files engine's fixed text
+            measured.errors[SCHEMA_KEY] = error_message(exc)
+            return
+        measured.values[SCHEMA_KEY] = [(str(n), str(t)) for n, t in rows]
         return
     ref = plan.dataset.table
     columns: list[tuple[str, str]] | None

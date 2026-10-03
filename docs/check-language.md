@@ -185,10 +185,10 @@ timestamp, to judge it.
 A `type: files` datasource names a folder; each check file on it names a file
 in that folder as its `dataset:`. The file is read in place by an in-memory
 DuckDB, in the same single scan as a table: nothing is copied, cached or
-written. Every metric, `filter:` and `where:` works as on a table, with two
-exceptions for now: `schema` checks, and a `sql_metric` reading the file
-itself. Its query cannot name the file, because the sandbox below refuses
-relative paths. Both come in a later release.
+written. Every metric, `filter:`, `where:` and `schema` works as on a table,
+with one exception for now: a `sql_metric` reading the file itself. Its
+query cannot name the file, because the sandbox below refuses relative
+paths. It comes in a later release.
 
 ```yaml
 # tablewatch.yml                       # checks/landing/orders.yml
@@ -213,17 +213,38 @@ datasources:                           datasource: drop
 - **Dataset paths** are relative to `root` and use `/`: `orders.csv` and
   `./orders.csv` are the same dataset and the same check id, and moving `root`
   does not change ids. Absolute paths, `..` and URLs (`s3://`, `https://`) are
-  reported by `validate`, and so are patterns (`*`, `?`, `[ ]`, `{ }`): one
-  dataset is one file for now. SQL, `compile`, the results store and the web UI show
+  reported by `validate`. SQL, `compile`, the results store and the web UI show
   the relative path only.
+- **Patterns:** a dataset may be a pattern, `daily/orders_*.csv`, with `*`,
+  `?`, `[ ]`, and `**` for any depth (`**/*.csv` includes files at `root`
+  itself); braces (`{ }`) are reported by `validate`. One pattern is **one
+  dataset and one scan**: every check sees the rows of all matching files
+  together. tablewatch expands the pattern itself, at run time, and DuckDB
+  reads exactly that list. Hidden files and folders (a name starting with
+  `.`) are never matched or entered, and only regular files match. The check
+  id keys on the pattern, so a new day's file keeps the history. A pattern
+  matching more than 10,000 files, nothing at all, or a file whose name holds
+  `*`, `?`, `[ ]` or `{ }` makes every check on it `error`.
+- **Files are unified by column name** (`union_by_name`): a file with its
+  columns in another order reads the same, and a column missing from one
+  file reads NULL for that file's rows, so it counts as missing rather than
+  stopping the dataset. To catch a column a partner drops, pair the pattern
+  with a `schema` check: `required_columns: [email]`.
+- **`schema`** on a file or pattern checks DuckDB's column names and types
+  without reading rows beyond the sample DuckDB takes to detect them. For a
+  CSV the types are the ones DuckDB detects (`bigint`, `double`,
+  `timestamp`, `varchar`, ...), not declared ones.
 - **A read-only sandbox.** The DuckDB connection can read only files under
   `root`: no other folder, no URL, no extension install or load, and its
   configuration is locked before any check runs. Every statement must be a
   single `SELECT`, so a `sql_metric` cannot `COPY`, `SET` or `ATTACH`. A path
-  that goes through a **symlink is refused**, even one pointing inside `root`.
+  that goes through a **symlink is refused**, even one pointing inside `root`;
+  for a pattern, one symlink among the matches or on a folder the pattern
+  walks refuses the whole dataset rather than silently changing its rows.
   Memory is capped at 2 GB and 4 threads, with no spill to disk.
 - **Errors** are fixed text, never DuckDB's own (which quotes file paths and
-  lines of the file): `no file matches 'x.csv' in the files datasource 'drop'`,
+  lines of the file), and for a pattern they name the pattern, never one of
+  its files: `no file matches 'x.csv' in the files datasource 'drop'`,
   `could not read 'x.csv' as csv`, `'x.csv' is not valid UTF-8`, `the read was
   refused (outside root, a write, a URL or a setting)`, or the error type, such
   as `(BinderException)` for a column that does not exist.
