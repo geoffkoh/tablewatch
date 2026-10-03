@@ -58,3 +58,16 @@ def _strip_port(host: str) -> str | None:
     if colon and not port.isdigit():
         return None
     return name
+
+
+def startup_host(bound: str) -> tuple[str, str]:
+    """The host a client can use for a bound address, and a note on the bind.
+
+    `0.0.0.0` and `::` are not addresses a browser can open: the URL shows
+    loopback, and the note says which family is listening.
+    """
+    if bound == "0.0.0.0":
+        return "127.0.0.1", "listening on all IPv4 addresses; "
+    if bound in ("::", "[::]"):
+        return "[::1]", "listening on all IPv6 addresses; "
+    return (f"[{bound}]" if ":" in bound else bound), ""

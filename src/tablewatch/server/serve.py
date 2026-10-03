@@ -16,9 +16,11 @@ from typing import Any
 
 import uvicorn
 
-# A tablewatch server is for a handful of readers; beyond this, uvicorn
-# answers 503 rather than queueing without bound.
-MAX_CONNECTIONS = 64
+# A tablewatch server is for a handful of readers. The app answers a JSON 503
+# past 64 requests in flight (app.MAX_IN_FLIGHT); this is uvicorn's backstop
+# for connections the app never sees (idle sockets), and it answers in plain
+# text.
+MAX_CONNECTIONS = 256
 BACKLOG = 128
 
 
