@@ -251,7 +251,7 @@ def test_cli_records_dot_and_checks(
         assert json.loads(out)["run"]["selection"] == {"paths": [arg]}
     url = load_project(retail).config.results.url
     with ResultStore.open(url, retail) as store:
-        assert [r.selection for r in store.recent_runs(2)] == [
+        assert [r.selection for r in store.runs_page("retail-example", limit=2)] == [
             {"paths": ["checks"]},
             {"paths": ["."]},
         ]

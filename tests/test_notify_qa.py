@@ -65,9 +65,9 @@ def project(tmp_path: Path, hook: Hook) -> Path:
 
 
 def _runs(root: Path) -> int:
-    url = load_project(root).config.results.url
-    with ResultStore.open(url, root) as store:
-        return len(store.recent_runs(100))
+    config = load_project(root).config
+    with ResultStore.open(config.results.url, root) as store:
+        return len(store.runs_page(config.name, limit=100))
 
 
 def _names(hook: Hook) -> list[tuple[str, str]]:

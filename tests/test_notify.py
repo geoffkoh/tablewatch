@@ -351,7 +351,7 @@ def test_a_failed_send_warns_and_keeps_the_exit_code(
     assert "notifier 'data-alerts' could not send: HTTP 500" in caplog.text
     assert hook.url not in caplog.text
     with ResultStore.open(load_project(project).config.results.url, project) as store:
-        assert store.recent_runs(1)[0].id == result.id
+        assert store.runs_page("notify-test", limit=1)[0].id == result.id
 
 
 def test_a_timeout_warns(
@@ -554,7 +554,7 @@ def test_no_notify(project: Path, hook: Hook) -> None:  # N19
     assert code == 0
     assert hook.bodies == []
     with ResultStore.open(load_project(project).config.results.url, project) as store:
-        assert len(store.recent_runs(10)) == 3
+        assert len(store.runs_page("notify-test", limit=10)) == 3
 
 
 def test_two_notifiers_one_failing(

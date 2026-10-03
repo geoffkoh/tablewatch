@@ -170,4 +170,10 @@ def test_no_project_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.delenv("TABLEWATCH_PROJECT_DIR", raising=False)
     result = CliRunner().invoke(cli, ["validate"])
     assert result.exit_code == 3
-    assert "run `tablewatch init`" in result.output
+    assert result.output == (
+        f"tablewatch: no tablewatch.yml in {tmp_path.resolve()} or any parent "
+        'directory — run "tablewatch init"\n'
+    ) or result.output == (
+        f"tablewatch: no tablewatch.yml in {tmp_path} or any parent "
+        'directory — run "tablewatch init"\n'
+    )

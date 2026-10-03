@@ -6,6 +6,7 @@ upgrading tablewatch never needs a separate migration step on a server.
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
@@ -26,7 +27,7 @@ from sqlalchemy import (
     or_,
     select,
 )
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import NoSuchModuleError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from tablewatch.checks.model import Outcome
@@ -34,6 +35,8 @@ from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import ResultSink, RunResult
 from tablewatch.results.models import CheckResultRow, RunRow
 from tablewatch.results.state import Entry, State, current_state
+
+log = logging.getLogger(__name__)
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
@@ -44,13 +47,51 @@ MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 _MIGRATION_LOCK = threading.Lock()
 
 
+INVALID_URL = "results.url is not a valid database URL"
+UNREACHABLE = "could not connect to the results store — run with -v for details"
+
+
+def parse_store_url(url: str) -> URL:
+    """`url` parsed, or `StoreError` with a fixed reason.
+
+    The parser's own text can quote a misplaced password (in the port, say),
+    so it is never shown.
+    """
+    try:
+        return make_url(url)
+    except (SQLAlchemyError, ValueError) as exc:
+        raise StoreError(f"results store: {INVALID_URL}") from exc
+
+
+def store_problem(url: str, exc: BaseException) -> str:
+    """Why the store at `url` failed, in words that cannot leak a credential.
+
+    A SQLite store is a local file with no credentials, so its driver's text
+    is shown. Any other database's text can name its host and user — or, from
+    a mis-parsed URL, part of a password — so it goes to the log at INFO
+    (`-v`) and the user sees a fixed line.
+    """
+    try:
+        backend = make_url(url).get_backend_name()
+    except (SQLAlchemyError, ValueError):
+        return INVALID_URL
+    if isinstance(exc, ImportError | NoSuchModuleError):
+        from tablewatch.datasources import dialect_problem
+
+        return dialect_problem(url) or UNREACHABLE
+    if backend == "sqlite":
+        return error_message(exc)
+    log.info("results store: %s", error_message(exc))
+    return UNREACHABLE
+
+
 def resolve_store_url(url: str, project_root: Path, *, create: bool = True) -> URL:
     """Relative SQLite paths resolve against the project root, not the cwd.
 
     With `create` off, a SQLite store that does not exist yet raises
     `NoStoreError` rather than being created — for commands that only read.
     """
-    parsed = make_url(url)
+    parsed = parse_store_url(url)
     database = parsed.database
     if parsed.get_backend_name() == "sqlite" and database and database != ":memory:":
         path = Path(database).expanduser()
@@ -96,11 +137,13 @@ class PageKey(NamedTuple):
 
 
 @contextmanager
-def _reading() -> Iterator[None]:
+def _reading(engine: Engine) -> Iterator[None]:
     try:
         yield
     except SQLAlchemyError as exc:
-        raise StoreError(f"results store: {error_message(exc)}") from exc
+        # The rendered URL masks the password; only the backend is used.
+        reason = store_problem(engine.url.render_as_string(), exc)
+        raise StoreError(f"results store: {reason}") from exc
 
 
 class ResultStore:
@@ -175,34 +218,7 @@ class ResultStore:
         with Session(self.engine) as session, session.begin():
             session.add(row)
 
-    def recent_runs(self, limit: int = 20) -> list[RunRow]:
-        with Session(self.engine) as session:
-            statement = select(RunRow).order_by(RunRow.started_at.desc()).limit(limit)
-            return list(session.scalars(statement))
-
-    def matching_check_ids(self, prefix: str) -> list[str]:
-        with Session(self.engine) as session:
-            statement = (
-                select(CheckResultRow.check_id)
-                .where(CheckResultRow.check_id.startswith(prefix, autoescape=True))
-                .distinct()
-            )
-            return sorted(session.scalars(statement))
-
-    def history(
-        self, check_id: str, limit: int = 20
-    ) -> list[tuple[CheckResultRow, RunRow]]:
-        with Session(self.engine) as session:
-            statement = (
-                select(CheckResultRow, RunRow)
-                .join(RunRow, CheckResultRow.run_id == RunRow.id)
-                .where(CheckResultRow.check_id == check_id)
-                .order_by(RunRow.started_at.desc())
-                .limit(limit)
-            )
-            return [(result, run) for result, run in session.execute(statement)]
-
-    # --- reads scoped to one project (the server; I-19 moves the CLI here) ---
+    # --- reads, every one scoped to one project: a store can be shared ---
 
     def runs_page(
         self, project: str, *, limit: int, before: PageKey | None = None
@@ -214,7 +230,7 @@ class ResultStore:
             .order_by(RunRow.started_at.desc(), RunRow.id.desc())
             .limit(limit)
         )
-        with _reading(), Session(self.engine) as session:
+        with _reading(self.engine), Session(self.engine) as session:
             return list(session.scalars(statement))
 
     def run(self, project: str, run_id: str) -> RunRow | None:
@@ -224,7 +240,7 @@ class ResultStore:
             .where(RunRow.project == project, RunRow.id == run_id)
             .options(selectinload(RunRow.results))
         )
-        with _reading(), Session(self.engine) as session:
+        with _reading(self.engine), Session(self.engine) as session:
             return session.scalars(statement).one_or_none()
 
     def latest_results(
@@ -258,7 +274,7 @@ class ResultStore:
                 CheckResultRow.check_id, RunRow.started_at.desc(), RunRow.id.desc()
             )
         )
-        with _reading(), Session(self.engine) as session:
+        with _reading(self.engine), Session(self.engine) as session:
             histories: dict[str, list[Entry]] = {}
             heads: dict[int, str] = {}
             for check, outcome, started_at, result_id in session.execute(outcomes):
@@ -292,7 +308,7 @@ class ResultStore:
         wanted = list(dict.fromkeys(check_ids))
         found: dict[str, list[Entry]] = {}
         done: set[str] = set()
-        with _reading(), Session(self.engine) as session:
+        with _reading(self.engine), Session(self.engine) as session:
             # In chunks: a database caps the parameters in one statement.
             for start in range(0, len(wanted), _CHUNK):
                 statement = (
@@ -321,6 +337,27 @@ class ResultStore:
                         done.add(check)
         return found
 
+    def matching_check_ids(
+        self, project: str, prefix: str, limit: int = 10
+    ) -> list[str]:
+        """Up to `limit` check ids recorded in this project that start with `prefix`.
+
+        Case is kept: an explicit `id:` can be mixed-case.
+        """
+        statement = (
+            select(CheckResultRow.check_id)
+            .join(RunRow, CheckResultRow.run_id == RunRow.id)
+            .where(
+                RunRow.project == project,
+                CheckResultRow.check_id.startswith(prefix, autoescape=True),
+            )
+            .distinct()
+            .order_by(CheckResultRow.check_id)
+            .limit(limit)
+        )
+        with _reading(self.engine), Session(self.engine) as session:
+            return list(session.scalars(statement))
+
     def matching_run_ids(self, project: str, prefix: str, limit: int = 10) -> list[str]:
         """Up to `limit` of this project's run ids that start with `prefix`."""
         statement = (
@@ -332,7 +369,7 @@ class ResultStore:
             .order_by(RunRow.id)
             .limit(limit)
         )
-        with _reading(), Session(self.engine) as session:
+        with _reading(self.engine), Session(self.engine) as session:
             return list(session.scalars(statement))
 
     def history_page(
@@ -354,7 +391,7 @@ class ResultStore:
             .order_by(RunRow.started_at.desc(), RunRow.id.desc())
             .limit(limit)
         )
-        with _reading(), Session(self.engine) as session:
+        with _reading(self.engine), Session(self.engine) as session:
             return [(result, run) for result, run in session.execute(statement)]
 
 
@@ -391,11 +428,7 @@ def is_persistent(url: str) -> bool:
 
     Raises `StoreError` if `url` is not a database URL.
     """
-    try:
-        parsed = make_url(url)
-    except (SQLAlchemyError, ValueError) as exc:
-        # The text can quote a misplaced password: say only what failed.
-        raise StoreError("results store: the url is not a valid database URL") from exc
+    parsed = parse_store_url(url)
     return not (
         parsed.get_backend_name() == "sqlite"
         and parsed.database in (None, "", ":memory:")
@@ -409,8 +442,10 @@ def open_store(url: str, project_root: Path, *, create: bool = True) -> ResultSt
     """
     try:
         return ResultStore.open(url, project_root, create=create)
-    except (SQLAlchemyError, OSError, ValueError) as exc:
-        raise StoreError(f"results store: {error_message(exc)}") from exc
+    except StoreError:
+        raise
+    except (SQLAlchemyError, OSError, ValueError, ImportError) as exc:
+        raise StoreError(f"results store: {store_problem(url, exc)}") from exc
 
 
 def store_sink(url: str, project_root: Path) -> ResultSink:
@@ -422,11 +457,13 @@ def store_sink(url: str, project_root: Path) -> ResultSink:
 
     def record(run: RunResult) -> None:
         try:
-            with ResultStore.open(url, project_root) as store:
+            with open_store(url, project_root) as store:
                 store.save(run)
+        except StoreError as exc:
+            raise RecordError(str(exc)) from exc
         except Exception as exc:
             # Name the part that failed, but never the URL: it may hold a
             # password.
-            raise RecordError(f"results store: {error_message(exc)}") from exc
+            raise RecordError(f"results store: {store_problem(url, exc)}") from exc
 
     return record
