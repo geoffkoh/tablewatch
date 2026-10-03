@@ -194,7 +194,14 @@ class _Guard:
             if message["type"] == "http.response.start":
                 started = True
                 headers = list(message.get("headers", []))
-                if asset and message.get("status") == 200:
+                content_type = dict(headers).get(b"content-type", b"")
+                # Only a hashed file: an unknown /assets/ path falls back to
+                # index.html, which must never be cached for a year.
+                if (
+                    asset
+                    and message.get("status") == 200
+                    and not content_type.startswith(b"text/html")
+                ):
                     headers.append((b"cache-control", IMMUTABLE))
                 present = {name for name, _ in headers}
                 message["headers"] = [

@@ -31,7 +31,7 @@ def console(message: str, level: int = logging.INFO) -> None:
     """A line the CLI says on stderr: the message alone as text, or a JSON line.
 
     Output for people (a startup line, why nothing ran), not a diagnostic, so
-    it shows whatever `-v`/`-q` say. Falls back to plain stderr when the CLI
+    it is always shown, whatever `-v`/`-q` say. Falls back to plain stderr when the CLI
     has not configured logging (a library caller).
     """
     logger = logging.getLogger(CONSOLE)

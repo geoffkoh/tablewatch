@@ -22,7 +22,7 @@ _ABSOLUTE = re.compile(
     (?:
         file://[^\s"'`]+                      # file:///a/b
       |
-        (?<![\w.:/])/[^\s"'`/][^\s"'`]*     # /a/b  (not part of a URL or a/b)
+        (?<![\w.:/>])/[^\s"'`/][^\s"'`]*     # /a/b  (not part of a URL or a/b)
       | ~[\w.-]*/[^\s"'`]*                   # ~/a, ~user/a
       | \b[A-Za-z]:[\\/][^\s"'`]*            # C:\a, C:/a
       | \\\\[^\s"'`\\]+\\[^\s"'`]*           # \\host\share\a
@@ -43,6 +43,21 @@ def root_forms(root: Path) -> list[str]:
     return sorted(forms, key=len, reverse=True)
 
 
+# A quoted absolute path, which may hold spaces ("/Volumes/Team Drive/x.db").
+_QUOTED = re.compile(
+    r"""(?x)
+    (?P<q>["'`])
+    (?P<path>
+        (?:file://)?/[^"'`/][^"'`]*
+      | ~[\w.-]*/[^"'`]*
+      | [A-Za-z]:[\\/][^"'`]*
+      | \\\\[^"'`]+
+    )
+    (?P=q)
+    """
+)
+
+
 def scrub_paths(text: str, roots: Iterable[str]) -> str:
     """`text` with project paths made relative and every other absolute path cut.
 
@@ -54,10 +69,15 @@ def scrub_paths(text: str, roots: Iterable[str]) -> str:
         if not prefix:
             continue
         text = text.replace(prefix + "/", "").replace(prefix + os.sep, "")
+    text = _QUOTED.sub(lambda m: f"{m['q']}{_cut(m['path'])}{m['q']}", text)
     return _ABSOLUTE.sub(_outside, text)
 
 
 def _outside(match: re.Match[str]) -> str:
-    path = match.group(0).removeprefix("file://").rstrip("/\\")
+    return _cut(match.group(0))
+
+
+def _cut(path: str) -> str:
+    path = path.removeprefix("file://").rstrip("/\\")
     last = re.split(r"[\\/]", path)[-1]
     return f"{OUTSIDE}/{last}" if last and last != "~" else OUTSIDE
