@@ -439,6 +439,17 @@ class _ChecksLoader:
                 error("a files dataset path cannot hold control characters", at)
             )
             return None
+        if set(name) & set("*?[]{}"):
+            # Globs come later: today a pattern could also take in a file
+            # that a single path would refuse (a symlink, say).
+            self.diagnostics.append(
+                error(
+                    "a files dataset is one file; patterns (*, ?, [ ], { }) are not "
+                    f"supported yet; got '{name}'",
+                    at,
+                )
+            )
+            return None
         if "://" in name:
             self.diagnostics.append(
                 error(

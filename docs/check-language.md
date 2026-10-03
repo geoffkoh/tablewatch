@@ -185,8 +185,10 @@ timestamp, to judge it.
 A `type: files` datasource names a folder; each check file on it names a file
 in that folder as its `dataset:`. The file is read in place by an in-memory
 DuckDB, in the same single scan as a table: nothing is copied, cached or
-written. Every metric, `filter:` and `where:` works as on a table; `schema`
-checks on files come in a later release.
+written. Every metric, `filter:` and `where:` works as on a table, with two
+exceptions for now: `schema` checks, and a `sql_metric` reading the file
+itself. Its query cannot name the file, because the sandbox below refuses
+relative paths. Both come in a later release.
 
 ```yaml
 # tablewatch.yml                       # checks/landing/orders.yml
@@ -204,14 +206,15 @@ datasources:                           datasource: drop
   `.json` (an array or one object per line), `.jsonl` and `.ndjson`; a trailing
   `.gz` is read through. DuckDB detects delimiters, headers and types; there
   are no reader options.
-- **Root:** a relative path inside the project, without `..` and not an
-  `${env:}` reference. When tablewatch connects, the real path of `root`
+- **Root:** a folder inside the project, given relative to it: not the project
+  itself, not `.tablewatch`, without `..` and not an `${env:}` reference. When tablewatch connects, the real path of `root`
   (symlinks followed) must still be inside the project, or every check on the
   datasource is `error`.
 - **Dataset paths** are relative to `root` and use `/`: `orders.csv` and
   `./orders.csv` are the same dataset and the same check id, and moving `root`
   does not change ids. Absolute paths, `..` and URLs (`s3://`, `https://`) are
-  reported by `validate`. SQL, `compile`, the results store and the web UI show
+  reported by `validate`, and so are patterns (`*`, `?`, `[ ]`, `{ }`): one
+  dataset is one file for now. SQL, `compile`, the results store and the web UI show
   the relative path only.
 - **A read-only sandbox.** The DuckDB connection can read only files under
   `root`: no other folder, no URL, no extension install or load, and its

@@ -189,6 +189,7 @@ def _inside(root: str, relative: str) -> str:
         or Path(relative).is_absolute()
         or "\\" in relative
         or any(ord(c) < 32 or ord(c) == 127 for c in relative)
+        or set(relative) & set("*?[]{}")
     ):
         raise FilesError(REFUSED)
     candidate = os.path.normpath(Path(root) / relative)
