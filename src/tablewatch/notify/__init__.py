@@ -49,7 +49,7 @@ def _notify(project: Project, run: RunResult) -> None:
     results = [r for r in run.results if r.check.notify]
     if not notifiers or not results:
         return
-    with open_store(project.config.results.url, project.root) as store:
+    with open_store(project.config.results.url, project.root, migrate=False) as store:
         previous = store.previous_results(
             run.project,
             [r.check.id for r in results],

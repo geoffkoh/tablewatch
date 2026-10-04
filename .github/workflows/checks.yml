@@ -23,6 +23,44 @@ jobs:
       - run: uv run mypy .
       - run: uv run pytest
 
+  # The results store on Postgres (spec 031). The service container is test
+  # infrastructure: its password below is a throwaway for a database that
+  # lives for one job, NOT a secret. No repository secret is used here, so
+  # pull requests from forks run this job as they run the others.
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - postgres:15.19@sha256:724292da1f2e50bdccfc3302ce75bbba7f4a6076701b588cc795fcac65683550
+          - postgres:18.6@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    services:
+      postgres:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_USER: tablewatch
+          POSTGRES_PASSWORD: not-a-secret-031
+          POSTGRES_DB: tablewatch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tablewatch"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TABLEWATCH_TEST_POSTGRES_URL: postgresql+psycopg://tablewatch:not-a-secret-031@127.0.0.1:5432/tablewatch?connect_timeout=10
+      TABLEWATCH_TEST_POSTGRES_REQUIRED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run pytest tests/test_results.py tests/test_results_postgres.py
+
   # The web UI: the committed bundle and generated types must be exactly what
   # a fresh build of frontend/ produces. No secrets are available here.
   frontend:

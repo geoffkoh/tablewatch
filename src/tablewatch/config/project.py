@@ -151,8 +151,24 @@ class ResultsConfig(_Strict):
     url: str = "sqlite:///.tablewatch/results.db"
 
 
+# The results store keys every read on the project name and part 2 of spec
+# 031 indexes it, so it stays a bounded column: the cap is checked here, at
+# its line, rather than failing a recording later.
+MAX_PROJECT_NAME = 200
+
+
 class ProjectConfig(_Strict):
     name: str
+
+    @field_validator("name")
+    @classmethod
+    def _fits_the_store(cls, value: str) -> str:
+        if len(value) > MAX_PROJECT_NAME:
+            raise ValueError(
+                f"name is {len(value)} characters — at most {MAX_PROJECT_NAME}"
+            )
+        return value
+
     checks_path: str = "checks"
     datasources: dict[str, Datasource] = Field(default_factory=dict)
     results: ResultsConfig = Field(default_factory=ResultsConfig)

@@ -1,12 +1,15 @@
 """Reading and writing run history.
 
-Opening a store brings its schema up to date (Alembic `upgrade head`), so
-upgrading tablewatch never needs a separate migration step on a server.
+Opening a store to write brings its schema up to date (Alembic `upgrade
+head`), so upgrading tablewatch never needs a separate migration step on a
+server. Opening one only to read never changes it: a newer laptop running
+`runs` must not upgrade a shared store under the nightly jobs (spec 031).
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
@@ -22,21 +25,28 @@ from sqlalchemy import (
     URL,
     ColumnElement,
     Engine,
+    String,
     and_,
     create_engine,
     func,
     make_url,
     or_,
     select,
+    text,
 )
 from sqlalchemy.exc import NoSuchModuleError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from tablewatch.checks.model import Outcome
+from tablewatch.config.project import (
+    ENV_REFERENCE,
+    MissingEnvironmentVariableError,
+    resolve_env,
+)
 from tablewatch.engine.baselines import BaselineRequest, Sample
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import ResultSink, RunResult
-from tablewatch.results.models import CheckResultRow, RunRow
+from tablewatch.results.models import VERSION_TABLE, Base, CheckResultRow, RunRow
 from tablewatch.results.state import Entry, State, current_state
 
 log = logging.getLogger(__name__)
@@ -50,18 +60,86 @@ MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 _MIGRATION_LOCK = threading.Lock()
 
 
+# Every process that migrates a Postgres store takes this lock first, so N
+# servers opening one fresh store do not race inside Alembic (which does not
+# serialise itself). A fixed literal: changing it is a breaking change, since
+# an old and a new tablewatch would no longer wait for each other.
+MIGRATION_LOCK_KEY = 7_031_202_610_040_001
+MIGRATION_LOCK_TIMEOUT = "60s"
+
 INVALID_URL = "results.url is not a valid database URL"
 UNREACHABLE = "could not connect — run with -v for details"
+NEWER = "it was upgraded by a newer tablewatch — upgrade tablewatch to read it"
+OLDER = (
+    "it was written by an older tablewatch and is upgraded by the next "
+    "`tablewatch run` or `serve`; reading never upgrades it"
+)
+ENV_PLACEMENT = (
+    "results.url can use ${env:} as the whole URL, or in its user, password, "
+    "database or query — not in its scheme, host or port"
+)
+
+# SQLSTATE classes and codes a writer or reader can meet on Postgres; any
+# other text from the driver stays at -v (it can name host and user).
+_SQLSTATE_REASONS = (
+    ("42501", "not permitted — the database role lacks a privilege it needs"),
+    ("55P03", "another process is upgrading the store; try again shortly"),
+    ("22", "a value does not fit the store's column"),
+    ("08", UNREACHABLE),
+    ("28", UNREACHABLE),
+)
+
+_WHOLE_REFERENCE = re.compile(r"\s*\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}\s*")
+
+
+def resolve_url_env(url: str) -> str:
+    """`url` with its `${env:}` references resolved, or `StoreError`.
+
+    The whole URL may be one reference. Otherwise the URL is parsed as
+    written and only its user, password, database and query values are
+    resolved, then rebuilt: a password holding `@`, `:` or `/` needs no
+    escaping, and none of it can land in the host or port (spec 031, Q3).
+    """
+    try:
+        if _WHOLE_REFERENCE.fullmatch(url):
+            return resolve_env(url.strip())
+        if not ENV_REFERENCE.search(url):
+            return url
+        try:
+            parsed = make_url(url)
+        except (SQLAlchemyError, ValueError):
+            raise StoreError(f"results store: {ENV_PLACEMENT}") from None
+        fixed = (parsed.drivername, parsed.host or "", str(parsed.port or ""))
+        if any(ENV_REFERENCE.search(part) for part in fixed):
+            raise StoreError(f"results store: {ENV_PLACEMENT}")
+        query = {
+            key: (
+                tuple(resolve_env(v) for v in value)
+                if isinstance(value, tuple)
+                else resolve_env(value)
+            )
+            for key, value in parsed.query.items()
+        }
+        resolved = parsed.set(
+            username=resolve_env(parsed.username) if parsed.username else None,
+            password=resolve_env(str(parsed.password)) if parsed.password else None,
+            database=resolve_env(parsed.database) if parsed.database else None,
+            query=query,
+        )
+        return resolved.render_as_string(hide_password=False)
+    except MissingEnvironmentVariableError as exc:
+        raise StoreError(f"results store: {exc}") from None
 
 
 def parse_store_url(url: str) -> URL:
-    """`url` parsed, or `StoreError` with a fixed reason.
+    """`url` parsed, `${env:}` resolved, or `StoreError` with a fixed reason.
 
     The parser's own text can quote a misplaced password (in the port, say),
     so it is never shown.
     """
+    resolved = resolve_url_env(url)
     try:
-        return make_url(url)
+        return make_url(resolved)
     except (SQLAlchemyError, ValueError) as exc:
         raise StoreError(f"results store: {INVALID_URL}") from exc
 
@@ -72,12 +150,13 @@ def store_problem(url: str, exc: BaseException) -> str:
     A SQLite store is a local file with no credentials, so its driver's text
     is shown. Any other database's text can name its host and user — or, from
     a mis-parsed URL, part of a password — so it goes to the log at INFO
-    (`-v`) and the user sees a fixed line.
+    (`-v`) and the user sees a fixed line, chosen by the SQLSTATE where the
+    driver gives one.
     """
     try:
-        backend = make_url(url).get_backend_name()
-    except (SQLAlchemyError, ValueError):
-        return INVALID_URL
+        backend = parse_store_url(url).get_backend_name()
+    except StoreError as problem:
+        return str(problem).removeprefix("results store: ")
     if isinstance(exc, OSError):
         # Its text names the local path; the reason alone is enough.
         return exc.strerror or type(exc).__name__
@@ -88,6 +167,13 @@ def store_problem(url: str, exc: BaseException) -> str:
     if backend == "sqlite":
         return error_message(exc)
     log.info("results store: %s", error_message(exc))
+    state = getattr(getattr(exc, "orig", None), "sqlstate", None) or getattr(
+        getattr(exc, "orig", None), "pgcode", None
+    )
+    if isinstance(state, str):
+        for prefix, reason in _SQLSTATE_REASONS:
+            if state.startswith(prefix):
+                return reason
     return UNREACHABLE
 
 
@@ -128,6 +214,10 @@ class RecordError(StoreError):
     """A run could not be written to the results store."""
 
 
+class OlderStoreError(StoreError):
+    """A command that only reads found a store an older version wrote."""
+
+
 @dataclass(frozen=True)
 class Latest:
     """A check's newest recorded result, its run, and its current state."""
@@ -142,6 +232,35 @@ class PageKey(NamedTuple):
 
     started_at: datetime
     run_id: str
+
+
+def _alembic_config() -> Config:
+    config = Config()
+    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    return config
+
+
+def _fit(row: Base) -> None:
+    """Make a row storable the same way on every backend, or `RecordError`.
+
+    A NUL from the data (a message, a value) is replaced: Postgres refuses
+    it, SQLite keeps it. A value longer than a bounded column is an error
+    naming the column — Postgres counts characters and refuses, SQLite would
+    store it silently, so the length is checked here, in characters.
+    """
+    for column in row.__table__.columns:
+        value = getattr(row, column.key, None)
+        if not isinstance(value, str):
+            continue
+        if "\0" in value:
+            value = value.replace("\0", "\ufffd")
+            setattr(row, column.key, value)
+        limit = column.type.length if isinstance(column.type, String) else None
+        if limit is not None and len(value) > limit:
+            raise RecordError(
+                f"results store: {column.table.name}.{column.name} holds at most "
+                f"{limit} characters; this run has a value of {len(value)}"
+            )
 
 
 @contextmanager
@@ -174,27 +293,39 @@ class ResultStore:
         engine = create_engine(resolve_store_url(url, project_root, create=create))
         return cls(engine, migrate=migrate)
 
-    def schema(self) -> Literal["current", "older", "newer"]:
+    def schema(self) -> Literal["current", "empty", "older", "newer"]:
         """This store's schema against this version's, without migrating it.
 
-        `newer` is a revision this version does not know: a newer tablewatch
-        upgraded it. Raises `StoreError` when the store cannot be read.
+        `empty` has no tablewatch tables yet; `newer` is a revision this
+        version does not know: a newer tablewatch upgraded it. Raises
+        `StoreError` when the store cannot be read.
         """
         from alembic.runtime.migration import MigrationContext
         from alembic.script import ScriptDirectory
 
-        config = Config()
-        config.set_main_option("script_location", str(MIGRATIONS_DIR))
-        scripts = ScriptDirectory.from_config(config)
+        scripts = ScriptDirectory.from_config(_alembic_config())
         known = {revision.revision for revision in scripts.walk_revisions()}
         with _reading(self.engine), self.engine.connect() as connection:
             context = MigrationContext.configure(
-                connection, opts={"version_table": "tablewatch_alembic_version"}
+                connection, opts={"version_table": VERSION_TABLE}
             )
             current = context.get_current_revision()
         if current == scripts.get_current_head():
             return "current"
-        return "older" if current is None or current in known else "newer"
+        if current is None:
+            return "empty"
+        return "older" if current in known else "newer"
+
+    def require_current(self) -> None:
+        """For a read: `NoStoreError` if nothing was ever recorded,
+        `OlderStoreError` or the newer-store error if the schema differs."""
+        schema = self.schema()
+        if schema == "empty":
+            raise NoStoreError("results store: no store has been recorded yet")
+        if schema == "older":
+            raise OlderStoreError(f"results store: {OLDER}")
+        if schema == "newer":
+            raise StoreError(f"results store: {NEWER}")
 
     def close(self) -> None:
         self.engine.dispose()
@@ -206,9 +337,25 @@ class ResultStore:
         self.close()
 
     def _migrate(self) -> None:
-        config = Config()
-        config.set_main_option("script_location", str(MIGRATIONS_DIR))
+        # At head: no transaction, no lock, so a role that may only SELECT
+        # can still open it.
+        schema = self.schema()
+        if schema == "current":
+            return
+        if schema == "newer":
+            raise StoreError(f"results store: {NEWER}")
+        config = _alembic_config()
         with _MIGRATION_LOCK, self.engine.begin() as connection:
+            if connection.dialect.name == "postgresql":
+                # Held until the version row commits; Alembic re-reads the
+                # version after it, so a process that waited upgrades nothing.
+                connection.execute(
+                    text(f"SET LOCAL lock_timeout = '{MIGRATION_LOCK_TIMEOUT}'")
+                )
+                connection.execute(
+                    text("SELECT pg_advisory_xact_lock(:key)"),
+                    {"key": MIGRATION_LOCK_KEY},
+                )
             config.attributes["connection"] = connection
             command.upgrade(config, "head")
 
@@ -252,6 +399,9 @@ class ResultStore:
             )
             for r in run.results
         ]
+        _fit(row)
+        for result in row.results:
+            _fit(result)
         with Session(self.engine) as session, session.begin():
             session.add(row)
 
@@ -551,23 +701,29 @@ def is_persistent(url: str) -> bool:
 def open_store(
     url: str, project_root: Path, *, create: bool = True, migrate: bool = True
 ) -> ResultStore:
-    """Open and migrate the store, or raise `StoreError` without the URL.
+    """Open the store, or raise `StoreError` without the URL.
 
-    `create=False` raises `NoStoreError` for a SQLite store not yet on disk;
-    `migrate=False` leaves its schema as it is (a read that writes nothing).
+    `create=False` raises `NoStoreError` for a store not yet created;
+    `migrate=False` opens it only to read: its schema must be this version's
+    (`OlderStoreError`, or the newer-store error, otherwise), and it is
+    never changed.
     """
     try:
-        return ResultStore.open(url, project_root, create=create, migrate=migrate)
+        store = ResultStore.open(url, project_root, create=create, migrate=migrate)
     except StoreError:
         raise
     except AlembicCommandError as exc:
         # A revision this version does not know: a newer tablewatch migrated it.
-        raise StoreError(
-            "results store: it was upgraded by a newer tablewatch — "
-            "upgrade tablewatch to read it"
-        ) from exc
+        raise StoreError(f"results store: {NEWER}") from exc
     except Exception as exc:
         raise StoreError(f"results store: {store_problem(url, exc)}") from exc
+    if not migrate:
+        try:
+            store.require_current()
+        except BaseException:
+            store.close()
+            raise
+    return store
 
 
 def store_sink(url: str, project_root: Path) -> ResultSink:
