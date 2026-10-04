@@ -105,28 +105,44 @@ def resolve_url_env(url: str) -> str:
             return resolve_env(url.strip())
         if not ENV_REFERENCE.search(url):
             return url
+        # `${env:NAME}` holds a ":", which the URL parser would read as the
+        # user/password split: each reference is parsed as a plain token,
+        # then the parts are resolved and the URL rebuilt.
+        names: dict[str, str] = {}
+
+        def token(match: re.Match[str]) -> str:
+            key = f"twenvref{len(names)}x"
+            names[key] = match.group(1)
+            return key
+
         try:
-            parsed = make_url(url)
+            parsed = make_url(ENV_REFERENCE.sub(token, url))
         except (SQLAlchemyError, ValueError):
             raise StoreError(f"results store: {ENV_PLACEMENT}") from None
+
+        def resolved(part: str) -> str:
+            for key, name in names.items():
+                part = part.replace(key, resolve_env("${env:" + name + "}"))
+            return part
+
         fixed = (parsed.drivername, parsed.host or "", str(parsed.port or ""))
-        if any(ENV_REFERENCE.search(part) for part in fixed):
+        if any(key in part for part in fixed for key in names):
             raise StoreError(f"results store: {ENV_PLACEMENT}")
         query = {
             key: (
-                tuple(resolve_env(v) for v in value)
+                tuple(resolved(v) for v in value)
                 if isinstance(value, tuple)
-                else resolve_env(value)
+                else resolved(value)
             )
             for key, value in parsed.query.items()
         }
-        resolved = parsed.set(
-            username=resolve_env(parsed.username) if parsed.username else None,
-            password=resolve_env(str(parsed.password)) if parsed.password else None,
-            database=resolve_env(parsed.database) if parsed.database else None,
+        rebuilt = parsed.set(
+            username=resolved(parsed.username) if parsed.username else None,
+            password=resolved(str(parsed.password)) if parsed.password else None,
+            database=resolved(parsed.database) if parsed.database else None,
             query=query,
         )
-        return resolved.render_as_string(hide_password=False)
+        return rebuilt.render_as_string(hide_password=False)
     except MissingEnvironmentVariableError as exc:
         raise StoreError(f"results store: {exc}") from None
 
@@ -163,7 +179,7 @@ def store_problem(url: str, exc: BaseException) -> str:
     if isinstance(exc, ImportError | NoSuchModuleError):
         from tablewatch.datasources import dialect_problem
 
-        return dialect_problem(url) or UNREACHABLE
+        return dialect_problem(resolve_url_env(url)) or UNREACHABLE
     if backend == "sqlite":
         return error_message(exc)
     log.info("results store: %s", error_message(exc))

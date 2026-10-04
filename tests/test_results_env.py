@@ -180,3 +180,25 @@ def test_a_nul_from_the_data_is_replaced_and_a_bound_is_checked() -> None:
     assert row.trigger == "t�x"
     with pytest.raises(RecordError, match=r"tablewatch_runs.trigger holds at most 32"):
         _fit(RunRow(id="r", project="p", trigger="t" * 33))
+
+
+def test_the_user_from_a_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    # security VERIFY: `${env:U}` holds a ":", once read as the user/password split.
+    from sqlalchemy import make_url
+
+    monkeypatch.setenv("U", "reader")
+    monkeypatch.setenv("P", "p@ss:w")
+    url = make_url(resolve_url_env("postgresql+psycopg://${env:U}:${env:P}@h/db"))
+    assert (url.username, url.password, url.host) == ("reader", "p@ss:w", "h")
+    url = make_url(resolve_url_env("postgresql+psycopg://${env:U}@h/db"))
+    assert (url.username, url.password) == ("reader", None)
+
+
+def test_a_missing_driver_behind_a_whole_url_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tablewatch.results.store import store_problem
+
+    monkeypatch.setenv("TW_RESULTS_URL", "nosuchdb+nodriver://h/db")
+    reason = store_problem("${env:TW_RESULTS_URL}", ImportError("x"))
+    assert "${env:" not in reason
