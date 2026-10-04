@@ -62,6 +62,27 @@ checks:
   to checks with clauses. One scan per dataset is unchanged: clauses are
   measures in the dataset's single `SELECT`.
 
+### Then: resumable runs for external schedulers (E9)
+
+Scheduling stays external for now (cron, Airflow, a CronJob). Owner
+decisions, 2026-10-04:
+
+```bash
+tw run checks/sales --run-key "$AIRFLOW_RUN_ID"
+```
+
+- `--run-key` takes **any string** and names a logical run. Without it, every
+  invocation is a new run, as today.
+- **The resume unit is the dataset:** each dataset's results are recorded in
+  one transaction as it finishes, and re-running a key skips the datasets
+  already recorded under it.
+- **A completed key is a no-op** unless `--rerun`.
+- **Notifications are sent exactly once:** pending notifications are written
+  with the results (an outbox) and marked sent when delivered, so a retry
+  sends what is left and never resends.
+- `change()` never compares a run with its own key; one process per key at a
+  time (a database lock).
+
 ## Phase 2 — Visibility & alerting → `0.2.0`
 
 See your data quality without a terminal, and hear about it when it changes.

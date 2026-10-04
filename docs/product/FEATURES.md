@@ -161,6 +161,7 @@ contain row data. Every notification increment needs security review
 | E6 | Benchmarks guarding one-scan-per-dataset | Performance never silently regresses | Priya | 3 | S | catalogue |
 | E7 | Configurable result recording: `tablewatch.yml` → `_defaults.yml` → per-check `record:` → per-call/`--no-store` (strongest last); on by default | Keep the store and UI to what matters; in-pipeline checks don't flood history | Dana, Priya | 2 | S | backlog |
 | E8 | Retention policies and purge (results and samples) | Bounded storage; samples don't live forever | Priya, Ravi | 4 | S | catalogue |
+| E9 | Resumable, idempotent runs for external schedulers: `tw run --run-key <any string>` names a logical run; each dataset's results are recorded as it finishes; re-running a key resumes, skipping datasets already recorded under it; a completed key is a no-op unless `--rerun`; notifications exactly once through an outbox; `change()` never compares a run with its own key; one process per key | Retries from cron or an orchestrator are safe: no rescans, no lost or duplicate alerts, no fake baselines | Priya, Sam | 1b | M | planned — owner decision 2026-10-04: right after A20 |
 
 Notes:
 
