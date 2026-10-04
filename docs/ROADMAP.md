@@ -111,6 +111,15 @@ tw run checks/sales --run-key "$AIRFLOW_RUN_ID"
 - `change()` never compares a run with its own key; one process per key at a
   time (a database lock).
 
+### Then: the app shell (C9)
+
+A collapsible side navigation of **major sections only**, never the list of
+checks (owner, 2026-10-04): **Dashboard** (health and trend, failing now,
+changed since the last run, stale or missed runs, recent sync changes),
+**Checks** (the explorer, with lifecycle filters), **Datasets**, **Runs**
+(with run detail, C5), **Alerts** and **Settings** (read-only). It collapses
+to an icon rail, and to a drawer on narrow screens.
+
 ## Phase 2 — Visibility & alerting → `0.2.0`
 
 See your data quality without a terminal, and hear about it when it changes.

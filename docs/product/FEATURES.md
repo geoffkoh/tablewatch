@@ -123,6 +123,7 @@ Notes:
 | C5 | Run detail and diff against the previous run | "What broke since yesterday" | Sam | 2 | M | backlog |
 | C6 | Health scores and scorecards by domain, owner, tag; runbook links | A trust signal for consumers | Alex | 4 | M | catalogue |
 | C7 | Failed-rows viewer | See the bad rows (needs B6) | Sam | 2b | S | catalogue |
+| C9 | App shell with a collapsible side navigation of major sections only, never the check list (projects hold hundreds of checks): **Dashboard** (health and trend, failing now with "failing since", changed since the last run, stale or missed runs, recent sync changes; replaces the overview), **Checks** (the explorer, with lifecycle filters and "show retired"), **Datasets** (status rolled up per dataset, last scan, freshness, owner), **Runs** (list and detail, C5), **Alerts** (state changes and deliveries; the incident inbox in Phase 4), **Settings** (read-only project, datasources without credentials, notifiers, store version and `migrate`/`sync`). Collapses to an icon rail, a drawer on narrow screens, remembered per browser; failing counts beside Checks and Alerts; a project switcher once a server hosts several (F8); scorecards (C6) later as a Dashboard tab | Find any problem from any page without scrolling a tree of hundreds of checks | Sam, Alex | after 1b | M–L | catalogue — owner-approved 2026-10-04 |
 | C8 ★ | `tablewatch report`: static, emailable HTML | Visibility with no server to run | Sam, Ravi | 2 | S | backlog |
 
 ## D. Alerting & incidents
