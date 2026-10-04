@@ -84,6 +84,8 @@ ENV_PLACEMENT = (
 _SQLSTATE_REASONS = (
     ("42501", "not permitted — the database role lacks a privilege it needs"),
     ("55P03", "another process is upgrading the store; try again shortly"),
+    ("3F000", "its schema does not exist — check search_path in results.url"),
+    ("25006", "the database is read-only"),
     ("22", "a value does not fit the store's column"),
     ("08", UNREACHABLE),
     ("28", UNREACHABLE),
@@ -325,29 +327,41 @@ class ResultStore:
         version does not know: a newer tablewatch upgraded it. Raises
         `StoreError` when the store cannot be read.
         """
-        from alembic.runtime.migration import MigrationContext
-        from alembic.script import ScriptDirectory
-
-        scripts = ScriptDirectory.from_config(_alembic_config())
-        known = {revision.revision for revision in scripts.walk_revisions()}
-        with _reading(self.engine), self.engine.connect() as connection:
-            context = MigrationContext.configure(
-                connection, opts={"version_table": VERSION_TABLE}
-            )
-            current = context.get_current_revision()
-        if current == scripts.get_current_head():
+        current, known = self._revisions()
+        if current == known[-1]:
             return "current"
         if current is None:
             return "empty"
         return "older" if current in known else "newer"
 
-    def require_current(self) -> None:
+    def _revisions(self) -> tuple[str | None, list[str]]:
+        """The store's revision, and this version's, oldest first."""
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+
+        scripts = ScriptDirectory.from_config(_alembic_config())
+        known = [revision.revision for revision in scripts.walk_revisions()]
+        known.reverse()  # walk_revisions starts at head
+        with _reading(self.engine), self.engine.connect() as connection:
+            context = MigrationContext.configure(
+                connection, opts={"version_table": VERSION_TABLE}
+            )
+            return context.get_current_revision(), known
+
+    def require_current(self, oldest: str | None = None) -> None:
         """For a read: `NoStoreError` if nothing was ever recorded,
-        `OlderStoreError` or the newer-store error if the schema differs."""
+        `OlderStoreError` or `NewerStoreError` if the schema differs.
+
+        `oldest` accepts an older store from that revision on: a read that
+        needs only what that revision already holds.
+        """
         schema = self.schema()
         if schema == "empty":
             raise NoStoreError("results store: no store has been recorded yet")
         if schema == "older":
+            current, known = self._revisions()
+            if oldest is not None and known.index(str(current)) >= known.index(oldest):
+                return
             raise OlderStoreError(f"results store: {OLDER}")
         if schema == "newer":
             raise NewerStoreError(f"results store: {NEWER}")
@@ -727,14 +741,19 @@ def is_persistent(url: str) -> bool:
 
 
 def open_store(
-    url: str, project_root: Path, *, create: bool = True, migrate: bool = True
+    url: str,
+    project_root: Path,
+    *,
+    create: bool = True,
+    migrate: bool = True,
+    oldest: str | None = None,
 ) -> ResultStore:
     """Open the store, or raise `StoreError` without the URL.
 
     `create=False` raises `NoStoreError` for a store not yet created;
-    `migrate=False` opens it only to read: its schema must be this version's
-    (`OlderStoreError`, or the newer-store error, otherwise), and it is
-    never changed.
+    `migrate=False` opens it only to read: its schema must be this version's,
+    or at least `oldest` (`OlderStoreError`, or `NewerStoreError`,
+    otherwise), and it is never changed.
     """
     try:
         store = ResultStore.open(url, project_root, create=create, migrate=migrate)
@@ -747,7 +766,7 @@ def open_store(
         raise StoreError(f"results store: {store_problem(url, exc)}") from exc
     if not migrate:
         try:
-            store.require_current()
+            store.require_current(oldest)
         except BaseException:
             store.close()
             raise

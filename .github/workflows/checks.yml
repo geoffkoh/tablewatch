@@ -59,7 +59,11 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - run: uv run pytest tests/test_results.py tests/test_results_postgres.py
+      # REQUIRED=1: an unset or unreachable server fails the session rather
+      # than skipping every Postgres test (P1, P3).
+      - run: >-
+          uv run pytest tests/test_results.py tests/test_results_postgres.py
+          tests/test_results_env.py tests/test_results_qa.py
 
   # The web UI: the committed bundle and generated types must be exactly what
   # a fresh build of frontend/ produces. No secrets are available here.

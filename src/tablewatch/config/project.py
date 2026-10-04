@@ -168,6 +168,9 @@ class ProjectConfig(_Strict):
     @field_validator("name")
     @classmethod
     def _fits_the_store(cls, value: str) -> str:
+        if any(ord(c) < 32 or ord(c) == 127 for c in value):
+            # Postgres refuses a NUL, and every read keys on the name as typed.
+            raise ValueError("name cannot hold control characters")
         if len(value) > MAX_PROJECT_NAME:
             raise ValueError(
                 f"name is {len(value)} characters — at most {MAX_PROJECT_NAME}"

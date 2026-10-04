@@ -190,15 +190,22 @@ def read_baselines(
         if not is_persistent(url):
             return Baselines()
         # Never migrate here: a run that records migrates when it saves, and
-        # `--no-store` must leave a shared store as it found it. A store from
-        # before change() holds no measured values, so no baselines anyway.
-        with open_store(url, project.root, create=False, migrate=False) as store:
+        # `--no-store` must leave a shared store as it found it. Every store
+        # since 0002 holds the measured values; one from before change() has
+        # none, so it gives no baselines.
+        with open_store(
+            url, project.root, create=False, migrate=False, oldest=BASELINES_SINCE
+        ) as store:
             samples = store.baselines(project.config.name, changes, now)
     except (NoStoreError, OlderStoreError):
         return Baselines()
     except StoreError as exc:
         return Baselines(problem=str(exc).removeprefix("results store: "))
     return Baselines(samples=samples)
+
+
+# The first revision whose results carry `measured` (spec 026).
+BASELINES_SINCE = "0002"
 
 
 def default_sinks(
