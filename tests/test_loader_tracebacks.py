@@ -117,7 +117,12 @@ def test_inside_a_value(project: Path) -> None:  # T3
     _file(
         project, b'dataset: orders\nchecks:\n  - row_count > 0:\n      name: "a\\fb"\n'
     )
-    assert _validate(project) == (0, [])
+    # An escaped control character is valid YAML, but not a check name the
+    # results store keeps the same on every database (spec 031, Q7).
+    assert _validate(project) == (
+        3,
+        ["checks/orders.yml:4:13: error: a check name cannot hold control characters"],
+    )
 
 
 def test_u_fffe(project: Path) -> None:  # T4
