@@ -68,4 +68,41 @@ Research: Airflow serialises concurrent `db migrate` with a Postgres advisory lo
 
 ## Decisions
 
-(Left empty; the tech lead records them after REFINE.)
+- **Q1–Q2, CI (security R1, R3, R4).** A throwaway `POSTGRES_PASSWORD` in the workflow, commented as
+  not a secret (under `trust` any password passes, so P11–P14 would prove nothing; service ports bind
+  0.0.0.0, not loopback). Official images pinned `postgres:<x.y>@sha256:…`; `pg_isready` health check;
+  `timeout-minutes`; `connect_timeout` in the test URL. Workflow keeps `permissions: contents: read`;
+  runs on `pull_request` as today; no `secrets.*`, no `pull_request_target`.
+- **Q3, `${env:}` in the URL (security R5–R7, architect).** Either the whole URL is one reference
+  (`url: ${env:TW_RESULTS_URL}`), resolved whole; or the URL is parsed as written and each of user,
+  password, database and query values is resolved separately and rebuilt with `URL.set` — the
+  variable holds the raw password, no encoding rule. A reference in the scheme, host or port is a
+  fixed-text refusal. Resolution happens once, when the store is opened; `is_persistent` works on
+  the unresolved URL. P13 holds for projects without `change()`; with one, an unset variable is an
+  `error` outcome on those checks naming only the variable (rule 7).
+- **Q4, the lock (architect).** `_migrate` first reads the version: at head, no transaction and no
+  lock (a SELECT-only role works, P19); newer, the NEWER error (one copy, in store.py); older, in one
+  transaction on Postgres `SET LOCAL lock_timeout = '60s'`, `pg_advisory_xact_lock(MIGRATION_LOCK_KEY)`
+  (a fixed literal; changing it is breaking), then `upgrade head`, which re-reads the version.
+- **Q5, widths (architect, data-steward).** Revision 0003 widens to `Text` every bounded column part
+  2 will not index: `dataset`, `datasource`, `owner`, `display_value`, `source`, `hostname`,
+  `username`, `version`. `check_id` keeps `MAX_ID_LENGTH`; the project `name:` gets a load
+  Diagnostic `name is 250 characters — at most 200` at its line (one global setting: blocking setup
+  is right). No clipping. `save()` checks each remaining `String(n)` by Python `len()` and raises
+  `RecordError` naming the column — identical on both backends.
+- **Q6, reads (architect, security R8).** `runs`, `history`, `report`, notifications and
+  `read_baselines` open with `migrate=False`: no version table is `NoStoreError`, older is a new
+  `OlderStoreError` (baselines: none), newer the NEWER error. `run` (recording) and `serve` migrate.
+- **Q7, words (data-steward).** A control character (NUL included) in a check's `name:` is a load
+  error, `a check name cannot hold control characters`, at the value. A NUL from the data (a
+  `message`, a `display_value`) is replaced with U+FFFD at save on both backends.
+- **Errors (architect).** `store_problem` classifies by SQLSTATE: 08/28 could not connect, 22 a
+  value does not fit, 42501 not permitted to write, 55P03 another process is upgrading the store.
+  `serve` shows a store reason that holds no secret (an unset variable) without `-v`. `_when` uses
+  `jsonvalues.utc` (P9).
+- **Tests (architect, security R2, R8).** P1's "store tests" are `tests/test_results.py`, a new
+  `tests/test_results_postgres.py` and P8's parity test, parametrised `sqlite`/`postgres`. One schema
+  per test (`tw_<uuid>`, `options=-c search_path=…`, dropped after every store is closed). The
+  fixture creates a role whose password holds `@ : / % # ?` and a space. URL/REQUIRED checked once
+  in a session hook: `pytest.exit` naming the variable, never the URL or the driver text.
+  Concurrency tests use the `spawn` context. Messages never name the URL.
