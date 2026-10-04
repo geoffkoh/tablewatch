@@ -13,7 +13,7 @@ lead and through files.
 
 | Agent | Kind | Writes |
 | --- | --- | --- |
-| `product-manager` | judge / planner | `docs/product/**`, `CHANGELOG.md` |
+| `product-manager` | planner (PLAN only) | `docs/product/**` |
 | `data-steward` | judge / domain expert | `examples/**`, fixtures, user docs |
 | `qa-engineer` | judge | `tests/**` |
 | `security-reviewer` | judge, read-only | nothing |
@@ -46,8 +46,8 @@ dependency, or a new seam.
 | 2 REFINE | only the reviewers the spec's open questions name (architect for a seam/API, security for a trigger, data-steward for semantics, ui-engineer for UI) — run in parallel | Answer the open questions; the data-steward may edit the spec, others report | Answers |
 |  | tech lead | Records the decisions in the spec's "Decisions" section (no separate settle session); resolves disagreements, security wins on security | Ready spec |
 | 3 BUILD | tech lead, ui-engineer, platform-engineer | Scenarios become tests first | Commits |
-| 4 VERIFY | qa-engineer, data-steward, plus architect/security **if they did not review in REFINE or the build departs from REFINE** | Adversarial review, acceptance, design/security check | Verdicts; blocking findings fixed |
-| 5 REVIEW | product-manager (`model: sonnet`) | Log, CHANGELOG, backlog, next item | Docs on the branch |
+| 4 VERIFY | qa-engineer, data-steward, plus architect/security **only if they did not review in REFINE**; if they did, a **targeted re-check** when the build departs from REFINE (below) | Adversarial review, acceptance, design/security check | Verdicts; blocking findings fixed |
+| 5 REVIEW | tech lead (no PM session) | Log entry, CHANGELOG, backlog status, next item | Docs on the branch |
 | 6 SHIP | tech lead | PR, merge under the policy below | Merged PR |
 
 **Light track** — everything else: wording, UI polish, small fixes, docs,
@@ -58,7 +58,7 @@ hardening that changes no contract.
 | 1 PLAN | product-manager | Spec ≤ 80 lines: problem, scenarios table, non-goals |
 | 2 BUILD | builder | Scenarios become tests |
 | 3 VERIFY | qa-engineer + **one** domain reviewer (data-steward for language/messages, ui-engineer's work judged by the data-steward for UI) | Verdicts; blocking findings fixed |
-| 4 REVIEW + SHIP | tech lead writes the ITERATIONS entry and CHANGELOG line itself (no PM session); PR; merge | Merged PR |
+| 4 REVIEW + SHIP | tech lead writes the ITERATIONS entry, CHANGELOG line and backlog status itself; PR; merge | Merged PR |
 
 No REFINE on the light track: open questions are answered by the tech lead
 in the spec, or the item moves to the full track.
@@ -78,23 +78,44 @@ and the code every time; the cost is per session, not per line changed.
   measured" narrative beyond one line per scenario; no restated rationale;
   research is one line with links.
 - **One review per role per iteration.** A reviewer who settled the design
-  in REFINE does not re-review the build unless the build departs from it.
+  in REFINE does not review the build again. If the build departs from
+  REFINE, or the tech lead wants a second look at a risky part, it is a
+  **targeted re-check**: the reviewer gets the diff of the named functions and
+  the requirements to confirm (e.g. "R1–R8 against `store.py:resolve_url_env`"),
+  not the spec and the whole branch. The tech lead says in the iteration entry
+  when a re-check ran and why.
 - **Reports are ≤ 15 lines:** verdict, blocking findings, non-blocking
   findings (each one line, with file:line), files changed. No list of what
   holds. Every brief says so.
-- **Briefs point at files.** Hand-offs go through files (the spec's
-  Decisions section, a short notes file), not long pasted prompts.
-- **A fresh session per iteration** (or `/compact` between iterations). All
-  state is in `ITERATIONS.md`, `BACKLOG.md` and the specs; the main session
-  should not carry earlier iterations.
+- **Briefs point at files and functions.** Hand-offs go through files (the
+  spec's Decisions section, a short notes file), not long pasted prompts. A
+  VERIFY brief names the commit, the changed files and functions, and the
+  scenarios to cover, so the reviewer does not explore the repository.
+- **Agents do not re-read what they already have.** `CLAUDE.md` is loaded
+  into every session; reading it again is waste. Each agent reads only its
+  own list, and only the part of a long file it needs.
+- **Acceptance is bounded.** The data-steward runs the spec's `must`
+  scenarios through the CLI, in one scratch project, and stops: no open-ended
+  exploration. Anything beyond the scenarios is one line in the report.
+- **A fresh session per iteration — enforced.** The tech lead's own
+  context is the largest cost of the loop: a session that carries earlier
+  iterations re-sends them on every turn. One iteration per session (or
+  `/compact` between iterations); all state is in `ITERATIONS.md`,
+  `BACKLOG.md`, the specs and memory.
 - **Hand browser checks** (several engines, sizes, schemes) only when the
   change alters copy, selection, layout or rendering; otherwise vitest.
 - **Gates run once per step**, one pytest process at a time (two concurrent
   runs deadlock on the example's DuckDB file). Agents use targeted test
   files; the tech lead runs the full suite before commit and before the PR.
-- **Model per role.** Opus for qa-engineer, security-reviewer, architect,
-  builders and PLAN; Sonnet for the data-steward and for REVIEW (the tech
-  lead passes `model: sonnet` when launching the product-manager for REVIEW).
+- **Model per role** (set in each agent's frontmatter). Opus for
+  qa-engineer, security-reviewer and architect, whose findings carry the
+  merge decision. Sonnet for the product-manager (PLAN), the data-steward,
+  the platform-engineer and the ui-engineer; `effort: medium` for the
+  product-manager and platform-engineer.
+- **Files stay short.** `BACKLOG.md` holds the open items and a short
+  header; done items and the running log live in `docs/product/archive/`.
+  `ITERATIONS.md` holds the latest entries; older ones are archived there
+  too. Agents never read the archive unless a brief points at it.
 - **Stalls.** A stalled agent is resumed once with "continue from the files
   you wrote"; a second stall means the tech lead finishes that step itself.
 
@@ -142,7 +163,7 @@ no seam and changes no contract does not need it.
 - No open **blocking** finding from any required reviewer.
 - User docs updated **where the change affects them** (`docs/check-language.md`,
   README, `docs/ROADMAP.md`).
-- The REVIEW step is done on the branch: `ITERATIONS.md` entry (≤ 30
+- The REVIEW step (the tech lead's) is done on the branch: `ITERATIONS.md` entry (≤ 30
   lines), `CHANGELOG.md` entry under `Unreleased`, backlog updated.
 - The PR is open and CI is green.
 

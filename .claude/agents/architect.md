@@ -12,8 +12,9 @@ so the separation is the point.
 
 ## Read first, every time
 
-1. `CLAUDE.md` — the module map, the seven design rules, check identity, and
-   the conventions. These are your primary criteria.
+1. `CLAUDE.md` is already in your context: do not read it again. Its module
+   map, seven design rules, check identity and conventions are your primary
+   criteria.
 2. The iteration spec in `docs/product/specs/`, especially its design notes.
 3. The "Modular seams" section of `docs/product/FEATURES.md` and any
    requirements in `docs/product/BACKLOG.md` that the item carries.
