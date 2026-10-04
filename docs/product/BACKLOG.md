@@ -43,6 +43,8 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 | Rank | ID | Increment | Features | Depends on | Size | R | I | C | Score | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | I-46 | Named checks with clauses (A20, Phase 1b): every check named, unique per dataset, the name its identity with a surrogate id assigned by the results store; a check is a set of clauses (today's expressions with their options and triggers), all must hold, the check takes its worst clause's outcome; renaming starts a new history; no unnamed shorthand; results per check and per clause; check files, store, reports, API, UI and notifications move to it | A20 | — | L | — | — | — | owner | proposed — **owner priority (2026-10-04): first, before every other item**; split into parts at PLAN |
+| 0a | I-47 | Runs open the datasource read-only by default: `run`, `tw.run()` and `serve`'s reads use the read-only connections `validate --connect` already has (SQLite `mode=ro`, DuckDB `read_only`, Postgres `default_transaction_read_only` with lock and statement timeouts), so a check's SQL cannot write even when its role was granted too much | E0, F (hardening) | I-46 | S | — | — | — | owner | proposed — **owner-approved 2026-10-04**, after I-46 |
+| 0b | I-48 | `validate` rejects write SQL in check files, with a Diagnostic at `file:line:col` and no credentials: `filter:`, `where:` and `condition:` must parse as one boolean expression; `query:` as one `SELECT` (or `WITH … SELECT` with only `SELECT` parts) — no DML, DDL, `COPY`, `SELECT … INTO`, writable CTEs or second statements. Needs a SQL parser (likely `sqlglot`: a new dependency, so security review). A guard against mistakes, not the guarantee: a function with side effects is invisible to a parser, so the read-only role and I-47 stay the guarantee. May ride with I-13 part 2 | H6, E0 (hardening) | I-46 | M | — | — | — | owner | proposed — **owner-approved 2026-10-04**, after I-46 |
 | — | I-01 | Python API: `tablewatch.run()` / `load()` returning typed results; per-call `record=`; establishes the result-sink seam — [spec 001](specs/001-python-api.md) | B1, E7 (per call) | — | S | 2 | 2 | 1.0 | 5.0 | done (iteration 1) |
 | — | I-02 | Read-only REST API: runs, results, checks, history; `tablewatch serve` (API only) — [spec 002](specs/002-read-only-api.md) | C1 | I-01 ✓ | M | 3 | 1 | 0.8 | 1.5 | done (iteration 2) |
 | — | I-03 | UI shell + overview page, bundle shipped in the wheel — [spec 003](specs/003-ui-shell-overview.md) | C2 | I-02 ✓ | M | 4 | 2 | 0.8 | 4.0 | done (iteration 3) |
@@ -152,6 +154,9 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
   decisions: clauses combine as "all must hold" (no `any` or `at least
   N`); names are unique per dataset; a rename starts a new history; every
   check is named; the surrogate id is assigned by the results store.
+  Then I-47 and I-48 (owner, 2026-10-04): no write may come from a
+  check's SQL — the database role is the guarantee, I-47 makes runs
+  read-only by default, I-48 catches write SQL at `validate`.
 - **Owner priority (2026-09-26): UI first.** The UI chain (I-03, I-05,
   I-26, I-29, I-04) comes before alerting. So I-27 (1.0), I-35 (1.0),
   I-39 (1.0) and I-04 (0.8) rank above I-06 (4.5), I-16, I-17, I-10 and
