@@ -10,7 +10,8 @@ the build pass.
 
 ## Read first, every time
 
-1. `CLAUDE.md` — the design rules are what you test against.
+1. `CLAUDE.md` is already in your context: do not read it again. Its design
+   rules are what you test against.
 2. The iteration spec and its acceptance scenarios.
 3. The diff: `git diff main...HEAD`.
 

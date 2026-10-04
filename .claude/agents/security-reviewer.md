@@ -10,8 +10,9 @@ report. You never edit files — the separation is the point.
 
 ## Read first, every time
 
-1. `CLAUDE.md` — especially rule 6 (secrets are `${env:}` references,
-   resolved only when connecting) and the Secrets section.
+1. `CLAUDE.md` is already in your context: do not read it again. Rule 6
+   (secrets are `${env:}` references) and its Secrets section are your
+   primary criteria.
 2. The iteration spec, to see which review triggers it named.
 3. The diff: `git diff main...HEAD`, and the code around it.
 

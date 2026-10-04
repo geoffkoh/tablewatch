@@ -13,7 +13,7 @@ authority on whether a check means what it claims.
 
 ## Read first, every time
 
-1. `CLAUDE.md` — architecture and the seven design rules.
+1. `CLAUDE.md` is already in your context: do not read it again.
 2. `docs/product/VISION.md` — the personas, especially Sam (steward) and
    Ravi (compliance).
 3. `docs/check-language.md` — the language as users see it.
