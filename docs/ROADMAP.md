@@ -22,6 +22,46 @@ Runs from cron on a server, and the exit code can be trusted.
 - Output as a console table, JSON, or JUnit XML; JSON logs
 - JSON Schema for editor completion
 
+## Phase 1b — Named checks: the foundation → next, before everything else
+
+Decided by the owner on 2026-10-04: this goes in **before any remaining
+work in Phases 2–5**. A check stops being one atomic expression whose
+identity is a hash of its file and text; it becomes a **named set of
+clauses**, and its name is its identity (A20).
+
+```yaml
+dataset: sales.orders
+
+checks:
+  orders_usable:                       # the name is the identity
+    clauses:
+      - row_count > 0
+      - missing_count(customer_id) = 0
+      - invalid_percent(status) < 1%:
+          valid_values: [pending, shipped, delivered, cancelled]
+      - freshness(created_at):
+          warn: when > 6h
+          fail: when > 24h
+```
+
+- **Every check is named.** The name is unique per dataset; a YAML mapping
+  keyed by name makes a duplicate an error. There is no unnamed shorthand.
+- **A check is a set of clauses**, each one of today's expressions with its
+  own options and `warn`/`fail` triggers. All clauses must hold: the check's
+  outcome is its worst clause's (`error` above `fail` above `warn` above
+  `pass`). `any` and `at least N` are not planned.
+- **Identity is the name.** The natural key is project, datasource, dataset
+  and name; the results store assigns each check a surrogate id. Moving a
+  check file, or editing a clause, keeps its history. **Renaming a check
+  starts a new history**; there is no rename mapping.
+- **Results per check and per clause**: a multi-clause check has no single
+  value, so values, charts and `change()` are per clause, while outcome,
+  state and notifications are per check.
+- **Breaking, before the first release:** check files, the results store,
+  the JSON/JUnit/HTML reports, the API, the web UI and notifications move
+  to checks with clauses. One scan per dataset is unchanged: clauses are
+  measures in the dataset's single `SELECT`.
+
 ## Phase 2 — Visibility & alerting → `0.2.0`
 
 See your data quality without a terminal, and hear about it when it changes.

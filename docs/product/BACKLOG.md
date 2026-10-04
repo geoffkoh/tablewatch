@@ -42,6 +42,7 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
 
 | Rank | ID | Increment | Features | Depends on | Size | R | I | C | Score | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | I-46 | Named checks with clauses (A20, Phase 1b): every check named, unique per dataset, the name its identity with a surrogate id assigned by the results store; a check is a set of clauses (today's expressions with their options and triggers), all must hold, the check takes its worst clause's outcome; renaming starts a new history; no unnamed shorthand; results per check and per clause; check files, store, reports, API, UI and notifications move to it | A20 | — | L | — | — | — | owner | proposed — **owner priority (2026-10-04): first, before every other item**; split into parts at PLAN |
 | — | I-01 | Python API: `tablewatch.run()` / `load()` returning typed results; per-call `record=`; establishes the result-sink seam — [spec 001](specs/001-python-api.md) | B1, E7 (per call) | — | S | 2 | 2 | 1.0 | 5.0 | done (iteration 1) |
 | — | I-02 | Read-only REST API: runs, results, checks, history; `tablewatch serve` (API only) — [spec 002](specs/002-read-only-api.md) | C1 | I-01 ✓ | M | 3 | 1 | 0.8 | 1.5 | done (iteration 2) |
 | — | I-03 | UI shell + overview page, bundle shipped in the wheel — [spec 003](specs/003-ui-shell-overview.md) | C2 | I-02 ✓ | M | 4 | 2 | 0.8 | 4.0 | done (iteration 3) |
@@ -146,6 +147,11 @@ definition of ready) → `in-progress` → `done`; or `dropped` with a reason.
   change to its score or size); the rest are listed in ITERATIONS.md,
   iteration 11, under "Not added".
 
+- **Owner priority (2026-10-04): named checks first.** I-46 (A20, Phase
+  1b) goes in before every other item, whatever the scores. The owner's
+  decisions: clauses combine as "all must hold" (no `any` or `at least
+  N`); names are unique per dataset; a rename starts a new history; every
+  check is named; the surrogate id is assigned by the results store.
 - **Owner priority (2026-09-26): UI first.** The UI chain (I-03, I-05,
   I-26, I-29, I-04) comes before alerting. So I-27 (1.0), I-35 (1.0),
   I-39 (1.0) and I-04 (0.8) rank above I-06 (4.5), I-16, I-17, I-10 and

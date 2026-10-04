@@ -36,6 +36,7 @@ backlog item until the existing backlog is finished; see BACKLOG.md.
 | A17 | Checks on streams (e.g. Kafka) over micro-batch windows, possibly as a sidecar | Quality at ingestion for streaming data | Dana, Priya | 5 | L | catalogue |
 | A18 | Row-level diff across datasources: which rows are missing or different between two tables (hash-bucketed on each side, compared in Python) | "Show me the rows the warehouse lost", not just "the counts differ" | Sam, Ravi | 5 | L | catalogue |
 | A19 | Aggregate reconciliation between two datasets, in the same or different datasources: `row_count = dataset(staging.orders_raw).row_count` | Staging vs target, header vs line totals, source vs warehouse — without hand-written joins | Sam, Ravi | 2b | M | catalogue |
+| A20 | Named checks: every check has a name, unique per dataset, which is its identity (the results store assigns a surrogate id); a check is a set of clauses, each a current expression with its own options and triggers, and all must hold (the check takes its worst clause's outcome); renaming starts a new history; results per check and per clause | A check names what a steward means ("orders are usable"); history survives moving files and editing a clause | Dana, Sam | 1b | L | planned — owner decision 2026-10-04: before all remaining roadmap work |
 
 Notes:
 
