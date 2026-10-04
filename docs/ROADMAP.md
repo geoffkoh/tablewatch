@@ -62,6 +62,34 @@ checks:
   to checks with clauses. One scan per dataset is unchanged: clauses are
   measures in the dataset's single `SELECT`.
 
+### With it: the check registry and its lifecycle
+
+The surrogate ids live in a **check registry** in the results store, one
+row per named check, which is also where the UI reads its list and state
+from (owner decisions, 2026-10-04):
+
+- **Lifecycle:** `active`; `disabled` (`enabled: false` in the YAML: kept,
+  not run); `retired` (no longer in any YAML: nothing deleted, history
+  readable, hidden by default, out of totals and alerts until purged). A
+  retired name that comes back resumes as `active` with the same id and its
+  history continues, marked "returned".
+- **Definition history:** each change of a check's clauses or options is
+  recorded, so a chart can mark where the definition changed.
+- **Current state** (`state`, `state_since`) is updated when results are
+  recorded, so the UI stops reading the whole history per request (I-23).
+- **Sync is configurable:** `tablewatch sync` reads every YAML file and
+  updates the registry; `run` can sync too. Reads never write.
+- **Schema changes for DBAs:** `tablewatch store sql` emits the DDL (for
+  Flyway or Liquibase), and a `migrate: never` setting makes tablewatch
+  refuse a store at the wrong version instead of migrating it.
+
+```yaml
+results:
+  url: ${env:TW_RESULTS_URL}
+  migrate: auto      # auto | never
+  sync: on_run       # on_run | manual (tablewatch sync only)
+```
+
 ### Then: resumable runs for external schedulers (E9)
 
 Scheduling stays external for now (cron, Airflow, a CronJob). Owner
