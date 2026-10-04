@@ -167,14 +167,19 @@ def store_problem(url: str, exc: BaseException) -> str:
     if backend == "sqlite":
         return error_message(exc)
     log.info("results store: %s", error_message(exc))
-    state = getattr(getattr(exc, "orig", None), "sqlstate", None) or getattr(
-        getattr(exc, "orig", None), "pgcode", None
-    )
-    if isinstance(state, str):
+    state = _sqlstate(exc)
+    if state is not None:
         for prefix, reason in _SQLSTATE_REASONS:
             if state.startswith(prefix):
                 return reason
     return UNREACHABLE
+
+
+def _sqlstate(exc: BaseException) -> str | None:
+    """The driver's SQLSTATE, if it gives one (psycopg 3, or psycopg 2)."""
+    orig = getattr(exc, "orig", None)
+    state = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+    return state if isinstance(state, str) else None
 
 
 def resolve_store_url(url: str, project_root: Path, *, create: bool = True) -> URL:
@@ -216,6 +221,10 @@ class RecordError(StoreError):
 
 class OlderStoreError(StoreError):
     """A command that only reads found a store an older version wrote."""
+
+
+class NewerStoreError(StoreError):
+    """The store was upgraded by a newer tablewatch than this one."""
 
 
 @dataclass(frozen=True)
@@ -325,7 +334,7 @@ class ResultStore:
         if schema == "older":
             raise OlderStoreError(f"results store: {OLDER}")
         if schema == "newer":
-            raise StoreError(f"results store: {NEWER}")
+            raise NewerStoreError(f"results store: {NEWER}")
 
     def close(self) -> None:
         self.engine.dispose()
@@ -343,7 +352,7 @@ class ResultStore:
         if schema == "current":
             return
         if schema == "newer":
-            raise StoreError(f"results store: {NEWER}")
+            raise NewerStoreError(f"results store: {NEWER}")
         config = _alembic_config()
         with _MIGRATION_LOCK, self.engine.begin() as connection:
             if connection.dialect.name == "postgresql":
@@ -717,7 +726,7 @@ def open_store(
         raise
     except AlembicCommandError as exc:
         # A revision this version does not know: a newer tablewatch migrated it.
-        raise StoreError(f"results store: {NEWER}") from exc
+        raise NewerStoreError(f"results store: {NEWER}") from exc
     except Exception as exc:
         raise StoreError(f"results store: {store_problem(url, exc)}") from exc
     if not migrate:

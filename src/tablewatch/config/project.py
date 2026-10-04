@@ -160,6 +160,11 @@ MAX_PROJECT_NAME = 200
 class ProjectConfig(_Strict):
     name: str
 
+    checks_path: str = "checks"
+    datasources: dict[str, Datasource] = Field(default_factory=dict)
+    results: ResultsConfig = Field(default_factory=ResultsConfig)
+    notifiers: dict[str, NotifierConfig] = Field(default_factory=dict)
+
     @field_validator("name")
     @classmethod
     def _fits_the_store(cls, value: str) -> str:
@@ -168,8 +173,3 @@ class ProjectConfig(_Strict):
                 f"name is {len(value)} characters — at most {MAX_PROJECT_NAME}"
             )
         return value
-
-    checks_path: str = "checks"
-    datasources: dict[str, Datasource] = Field(default_factory=dict)
-    results: ResultsConfig = Field(default_factory=ResultsConfig)
-    notifiers: dict[str, NotifierConfig] = Field(default_factory=dict)

@@ -14,6 +14,8 @@ from typing import Any
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from tablewatch.config.project import MAX_PROJECT_NAME
+
 # Alembic's bookkeeping table, under its own name so a shared database's
 # existing `alembic_version` is left untouched.
 VERSION_TABLE = "tablewatch_alembic_version"
@@ -27,7 +29,7 @@ class RunRow(Base):
     __tablename__ = "tablewatch_runs"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
-    project: Mapped[str] = mapped_column(String(200))
+    project: Mapped[str] = mapped_column(String(MAX_PROJECT_NAME))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     outcome: Mapped[str] = mapped_column(String(16))

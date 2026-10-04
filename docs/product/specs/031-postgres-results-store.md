@@ -77,8 +77,8 @@ Research: Airflow serialises concurrent `db migrate` with a Postgres advisory lo
   (`url: ${env:TW_RESULTS_URL}`), resolved whole; or the URL is parsed as written and each of user,
   password, database and query values is resolved separately and rebuilt with `URL.set` — the
   variable holds the raw password, no encoding rule. A reference in the scheme, host or port is a
-  fixed-text refusal. Resolution happens once, when the store is opened; `is_persistent` works on
-  the unresolved URL. P13 holds for projects without `change()`; with one, an unset variable is an
+  fixed-text refusal. Resolution happens only on store paths (opening, `is_persistent`, the error
+  reason), never in `validate`, `list` or `compile`. P13 holds for projects without `change()`; with one, an unset variable is an
   `error` outcome on those checks naming only the variable (rule 7).
 - **Q4, the lock (architect).** `_migrate` first reads the version: at head, no transaction and no
   lock (a SELECT-only role works, P19); newer, the NEWER error (one copy, in store.py); older, in one
