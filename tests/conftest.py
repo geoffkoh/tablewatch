@@ -24,6 +24,8 @@ from click.testing import CliRunner
 from tablewatch.cli.main import cli
 from tablewatch.config import Project, load_project
 from tablewatch.engine.runner import CheckResult, run_checks
+from tests import postgres
+from tests.postgres import pg_admin, pg_schema  # noqa: F401  (fixtures)
 
 NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 BACKENDS = ("duck", "lite")
@@ -44,6 +46,38 @@ datasources:
   duck: {type: duckdb, path: data.duckdb}
   lite: {type: sqlite, path: data.sqlite}
 """
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        f"db_postgres: needs Postgres ({postgres.URL_VARIABLE}); see tests/postgres.py",
+    )
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    # Once per session, so a required Postgres that is missing ends the run
+    # before any test, naming the variable and never its value (spec 031 P3).
+    problem = postgres.check_server()
+    if problem is not None:
+        pytest.exit(problem, returncode=pytest.ExitCode.USAGE_ERROR)
+
+
+@pytest.fixture(
+    params=[
+        pytest.param("sqlite"),
+        pytest.param("postgres", marks=pytest.mark.db_postgres),
+    ]
+)
+def store_url(request: pytest.FixtureRequest, tmp_path: Path) -> str:
+    """An empty results store's URL: a SQLite file, then a Postgres schema.
+
+    The Postgres case is skipped unless TABLEWATCH_TEST_POSTGRES_URL is set.
+    """
+    if request.param == "sqlite":
+        return postgres.sqlite_url(tmp_path)
+    schema: postgres.PgSchema = request.getfixturevalue("pg_schema")
+    return schema.url()
 
 
 def _naive(row: tuple[Any, ...]) -> tuple[Any, ...]:

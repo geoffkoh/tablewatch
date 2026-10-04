@@ -613,6 +613,9 @@ class ResultStore:
             .where(
                 RunRow.project == project,
                 CheckResultRow.check_id.startswith(prefix, autoescape=True),
+                # SQLite's LIKE ignores ASCII case, Postgres's does not: the
+                # exact comparison makes both keep it (spec 031, P18).
+                func.substr(CheckResultRow.check_id, 1, len(prefix)) == prefix,
             )
             .distinct()
             .order_by(CheckResultRow.check_id)

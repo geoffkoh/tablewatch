@@ -176,6 +176,86 @@ traceback goes to stderr only, where it can hold row values, so treat logs
 with the same care as the warehouse. History recorded before this release
 is not scrubbed.
 
+## A shared results store
+
+The default store is a SQLite file in the project, which is right for one
+host. To let several hosts (two `serve` hosts and the nightly `run` jobs,
+say) share one history, point every one of them at the same Postgres
+database:
+
+```bash
+pip install 'tablewatch[postgres]'
+```
+
+```yaml
+# tablewatch.yml
+results:
+  url: postgresql+psycopg://tw_writer:${env:TW_STORE_PASSWORD}@db.internal:5432/dq?options=-c%20search_path%3Dtablewatch
+```
+
+**Tested:** Postgres 15 and 18, on every change, in CI. Versions in between
+are expected to work. No other database (MySQL, SQL Server, Oracle, …) is
+tested as a store.
+
+**The password is a reference.** A `${env:NAME}` in `results.url` is read
+only when the store is opened, never by `validate`, `list`, `compile` or
+`run --no-store`. (A `change()` check reads history under `--no-store` too;
+if the variable is unset, only those checks are `error`, naming the
+variable.) Use it in one of two ways:
+
+- **In parts:** in the user, password, database or query values, as above.
+  The variable holds the raw password: no URL encoding, even with `@`, `:`,
+  `/`, `%`, `#`, `?` or a space in it.
+- **Whole:** `url: ${env:TW_RESULTS_URL}`. The variable holds a complete
+  URL, so a password in it must be URL-encoded (`@` as `%40`, and so on).
+
+A reference in the scheme, host or port is refused. An unset variable stops
+the command with `environment variable TW_STORE_PASSWORD is not set`, exit 2.
+
+**One schema for tablewatch.** Its three tables are prefixed `tablewatch_`,
+so they can share a schema, but a dedicated one keeps grants simple. Create
+it, then name it in the URL's `options` (URL-encoded, as above):
+`?options=-c search_path=tablewatch`. The session's time zone does not
+matter: tablewatch reads and shows every time in UTC.
+
+**Roles.** Give each kind of host only what it needs:
+
+| Who | Needs |
+| --- | --- |
+| The **upgrading process**: the first `run` or `serve` after the store is created or tablewatch is upgraded | `CREATE` on the schema, and to own the `tablewatch_` tables |
+| A **writer**: `run` | `USAGE` on the schema; `SELECT, INSERT` on its tables; `USAGE` on its sequences |
+| A **reader**: `runs`, `history`, `report`, `serve` | `USAGE` on the schema; `SELECT` on its tables |
+
+```sql
+-- as the role that owns the schema, after the store is at the current version
+GRANT USAGE ON SCHEMA tablewatch TO tw_writer, tw_reader;
+GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA tablewatch TO tw_writer;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA tablewatch TO tw_writer;
+GRANT SELECT ON ALL TABLES IN SCHEMA tablewatch TO tw_reader;
+```
+
+`runs`, `history`, `report` and notifications never change the store.
+`run` and `serve` bring it up to date when they open it; if their role may
+not, they stop with `not permitted — the database role lacks a privilege it
+needs` (`run` exits 2; `serve` does not start), and the store is left as it
+was. A reader's `run` cannot
+record either, with the same words. When several hosts open a store that
+needs upgrading at once, one upgrades and the others wait for it (up to a
+minute: `another process is upgrading the store; try again shortly`).
+
+**Upgrade every host together.** A store upgraded by a newer tablewatch
+cannot be read by an older one: it says `results store: it was upgraded by a
+newer tablewatch — upgrade tablewatch to read it` (exit 2; `serve` does not
+start). A store older
+than the reading tablewatch is not upgraded by a read, and says so until a
+`run` or `serve` upgrades it. So upgrade the host that runs as the
+upgrading role first, then the others, in one change window.
+
+**What errors show.** A store failure is one line naming the reason
+(`could not connect`, `a value does not fit the store's column`, `not
+permitted …`), never the URL. The driver's own text can name the host and
+the user, so it is logged only at INFO: run with `-v` to see it.
+
 ## Notifications
 
 Name a webhook in `tablewatch.yml` and a `notify:` in a check file or
@@ -735,6 +815,17 @@ uv sync
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
 uv run mypy .
+```
+
+The results-store tests also run on Postgres when you point them at a
+server whose role may create schemas and roles; each test gets its own
+schema and drops it. Without the variable they are skipped. With
+`TABLEWATCH_TEST_POSTGRES_REQUIRED=1` (as in CI) a missing or unreachable
+server fails the run instead:
+
+```bash
+TABLEWATCH_TEST_POSTGRES_URL='postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/DB?connect_timeout=5' \
+  uv run pytest tests/test_results.py tests/test_results_postgres.py
 ```
 
 ## License
