@@ -202,3 +202,15 @@ def test_a_missing_driver_behind_a_whole_url_variable(
     monkeypatch.setenv("TW_RESULTS_URL", "nosuchdb+nodriver://h/db")
     reason = store_problem("${env:TW_RESULTS_URL}", ImportError("x"))
     assert "${env:" not in reason
+
+
+def test_an_unmatched_sqlstate_is_not_a_connection_problem() -> None:
+    from sqlalchemy.exc import ProgrammingError
+
+    from tablewatch.results.store import REFUSED, store_problem
+
+    class DuplicateTableError(Exception):
+        sqlstate = "42P07"  # duplicate table: the server answered
+
+    exc = ProgrammingError("stmt", {}, DuplicateTableError("x"))
+    assert store_problem("postgresql+psycopg://tw@h/db", exc) == REFUSED

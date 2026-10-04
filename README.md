@@ -238,8 +238,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA tablewatch TO tw_reader;
 `run` and `serve` bring it up to date when they open it; if their role may
 not, they stop with `not permitted — the database role lacks a privilege it
 needs` (`run` exits 2; `serve` does not start), and the store is left as it
-was. A reader's `run` cannot
-record either, with the same words. When several hosts open a store that
+was. `tablewatch run` with the read-only role cannot record a run either,
+and says the same. When several hosts open a store that
 needs upgrading at once, one upgrades and the others wait for it (up to a
 minute: `another process is upgrading the store; try again shortly`).
 

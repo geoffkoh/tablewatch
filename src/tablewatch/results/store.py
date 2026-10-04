@@ -69,6 +69,7 @@ MIGRATION_LOCK_TIMEOUT = "60s"
 
 INVALID_URL = "results.url is not a valid database URL"
 UNREACHABLE = "could not connect — run with -v for details"
+REFUSED = "the database refused the request — run with -v for details"
 NEWER = "it was upgraded by a newer tablewatch — upgrade tablewatch to read it"
 OLDER = (
     "it was written by an older tablewatch and is upgraded by the next "
@@ -190,6 +191,8 @@ def store_problem(url: str, exc: BaseException) -> str:
         for prefix, reason in _SQLSTATE_REASONS:
             if state.startswith(prefix):
                 return reason
+        # The database answered, so it was reached: not a connection problem.
+        return REFUSED
     return UNREACHABLE
 
 
