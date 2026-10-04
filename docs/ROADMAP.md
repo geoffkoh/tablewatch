@@ -22,6 +22,104 @@ Runs from cron on a server, and the exit code can be trusted.
 - Output as a console table, JSON, or JUnit XML; JSON logs
 - JSON Schema for editor completion
 
+## Phase 1b — Named checks: the foundation → next, before everything else
+
+Decided by the owner on 2026-10-04: this goes in **before any remaining
+work in Phases 2–5**. A check stops being one atomic expression whose
+identity is a hash of its file and text; it becomes a **named set of
+clauses**, and its name is its identity (A20).
+
+```yaml
+dataset: sales.orders
+
+checks:
+  orders_usable:                       # the name is the identity
+    clauses:
+      - row_count > 0
+      - missing_count(customer_id) = 0
+      - invalid_percent(status) < 1%:
+          valid_values: [pending, shipped, delivered, cancelled]
+      - freshness(created_at):
+          warn: when > 6h
+          fail: when > 24h
+```
+
+- **Every check is named.** The name is unique per dataset; a YAML mapping
+  keyed by name makes a duplicate an error. There is no unnamed shorthand.
+- **A check is a set of clauses**, each one of today's expressions with its
+  own options and `warn`/`fail` triggers. All clauses must hold: the check's
+  outcome is its worst clause's (`error` above `fail` above `warn` above
+  `pass`). `any` and `at least N` are not planned.
+- **Identity is the name.** The natural key is project, datasource, dataset
+  and name; the results store assigns each check a surrogate id. Moving a
+  check file, or editing a clause, keeps its history. **Renaming a check
+  starts a new history**; there is no rename mapping.
+- **Results per check and per clause**: a multi-clause check has no single
+  value, so values, charts and `change()` are per clause, while outcome,
+  state and notifications are per check.
+- **Breaking, before the first release:** check files, the results store,
+  the JSON/JUnit/HTML reports, the API, the web UI and notifications move
+  to checks with clauses. One scan per dataset is unchanged: clauses are
+  measures in the dataset's single `SELECT`.
+
+### With it: the check registry and its lifecycle
+
+The surrogate ids live in a **check registry** in the results store, one
+row per named check, which is also where the UI reads its list and state
+from (owner decisions, 2026-10-04):
+
+- **Lifecycle:** `active`; `disabled` (`enabled: false` in the YAML: kept,
+  not run); `retired` (no longer in any YAML: nothing deleted, history
+  readable, hidden by default, out of totals and alerts until purged). A
+  retired name that comes back resumes as `active` with the same id and its
+  history continues, marked "returned".
+- **Definition history:** each change of a check's clauses or options is
+  recorded, so a chart can mark where the definition changed.
+- **Current state** (`state`, `state_since`) is updated when results are
+  recorded, so the UI stops reading the whole history per request (I-23).
+- **Sync is configurable:** `tablewatch sync` reads every YAML file and
+  updates the registry; `run` can sync too. Reads never write.
+- **Schema changes for DBAs:** `tablewatch store sql` emits the DDL (for
+  Flyway or Liquibase), and a `migrate: never` setting makes tablewatch
+  refuse a store at the wrong version instead of migrating it.
+
+```yaml
+results:
+  url: ${env:TW_RESULTS_URL}
+  migrate: auto      # auto | never
+  sync: on_run       # on_run | manual (tablewatch sync only)
+```
+
+### Then: resumable runs for external schedulers (E9)
+
+Scheduling stays external for now (cron, Airflow, a CronJob). Owner
+decisions, 2026-10-04:
+
+```bash
+tw run checks/sales --run-key "$AIRFLOW_RUN_ID"
+```
+
+- `--run-key` takes **any string** and names a logical run. Without it, every
+  invocation is a new run, as today.
+- **The resume unit is the dataset:** each dataset's results are recorded in
+  one transaction as it finishes, and re-running a key skips the datasets
+  already recorded under it.
+- **A completed key is a no-op** unless `--rerun`.
+- **Notifications are sent exactly once:** pending notifications are written
+  with the results (an outbox) and marked sent when delivered, so a retry
+  sends what is left and never resends.
+- `change()` never compares a run with its own key; one process per key at a
+  time (a database lock).
+
+### Then: the app shell (C9)
+
+A collapsible side navigation of **major sections only**, never the list of
+checks (owner, 2026-10-04): **Dashboard** (health and trend, failing now,
+changed since the last run, stale or missed runs, recent sync changes),
+**Checks** (the explorer, with lifecycle filters), **Datasets**, **Runs**
+(with run detail, C5), **Alerts** and **Settings** (read-only). It collapses
+to an icon rail, and to a drawer on narrow screens.
+
 ## Phase 2 — Visibility & alerting → `0.2.0`
 
 See your data quality without a terminal, and hear about it when it changes.
