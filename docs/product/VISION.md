@@ -44,7 +44,11 @@ as plain YAML and run inside the database:
 3. **Every number is explainable.** A user can see the SQL behind any value
    (`tablewatch compile`) and the reason behind any outcome.
 4. **Safe by default.** No row data is stored unless asked for; secrets are
-   references; tablewatch needs only read access.
+   references; tablewatch needs only read access. Caching and incremental
+   runs keep **numbers, never rows**: tablewatch does not extract or cache
+   table data on disk (owner, 2026-10-04). The one opt-in exception is
+   failed-row samples (B6), off by default, masked, and stored in the results
+   store with retention.
 5. **Small, vertical, shippable.** Each increment is usable end to end.
 6. **Same meaning everywhere.** A check gives the same answer on every
    database it supports.
