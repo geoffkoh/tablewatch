@@ -719,6 +719,17 @@ class _ChecksLoader:
             # Reported by _string; without its scope this check would also
             # collide with the same check unscoped — a second, phantom error.
             return None
+        name = self._string(source, options_node, "name")
+        if name is not None and any(ord(c) < 32 or ord(c) == 127 for c in name):
+            # Postgres refuses a NUL outright; stripping it would change the
+            # name the steward wrote without saying so.
+            self.diagnostics.append(
+                error(
+                    "a check name cannot hold control characters",
+                    source.of_value(options_node, "name"),
+                )
+            )
+            return None
         own_notify = self._notify(source, options_node)
         check_id = check_id or derive_check_id(
             dataset.path,
@@ -753,7 +764,7 @@ class _ChecksLoader:
 
         return Check(
             id=check_id,
-            name=self._string(source, options_node, "name") or canonical,
+            name=name or canonical,
             dataset=dataset,
             metric=metric,
             expression=expression,

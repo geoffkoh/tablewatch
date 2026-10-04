@@ -1107,7 +1107,8 @@ def test_an_unopenable_store_prints_the_fixed_line(
     )
     started = start(retail, monkeypatch)
     assert started.code == 3
-    assert started.stderr.splitlines()[-1] == (
-        "tablewatch: results store: could not be opened — run with -v for details"
+    # Spec 031: the store's own reason, which never holds the URL or a path.
+    assert (
+        started.stderr.splitlines()[-1] == "tablewatch: results store: Not a directory"
     )
     assert "/dev/null" not in started.stderr

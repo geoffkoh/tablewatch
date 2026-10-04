@@ -15,10 +15,13 @@ from tablewatch.results.store import resolve_store_url
 from tests.conftest import NOW, Workspace
 
 
-def test_migrations_match_the_models(tmp_path: Path) -> None:
-    """Fails when a model changes without a migration (or vice versa)."""
+def test_migrations_match_the_models(store_url: str) -> None:
+    """Fails when a model changes without a migration (or vice versa).
+
+    On SQLite and Postgres (spec 031 P4): types differ most between them.
+    """
     with (
-        ResultStore(create_engine(f"sqlite:///{tmp_path / 'r.db'}")) as store,
+        ResultStore(create_engine(store_url)) as store,
         store.engine.connect() as conn,
     ):
         context = MigrationContext.configure(
@@ -28,16 +31,15 @@ def test_migrations_match_the_models(tmp_path: Path) -> None:
     assert diff == []
 
 
-def test_store_uses_its_own_version_table(tmp_path: Path) -> None:
-    with ResultStore(create_engine(f"sqlite:///{tmp_path / 'r.db'}")) as store:
+def test_store_uses_its_own_version_table(store_url: str) -> None:
+    with ResultStore(create_engine(store_url)) as store:
         tables = set(inspect(store.engine).get_table_names())
     assert tables == {VERSION_TABLE, "tablewatch_runs", "tablewatch_check_results"}
 
 
-def test_opening_twice_is_idempotent(tmp_path: Path) -> None:
-    url = f"sqlite:///{tmp_path / 'r.db'}"
+def test_opening_twice_is_idempotent(store_url: str) -> None:
     for _ in range(2):
-        with ResultStore(create_engine(url)):
+        with ResultStore(create_engine(store_url)):
             pass
 
 
@@ -49,14 +51,14 @@ def test_relative_sqlite_paths_resolve_against_the_project(tmp_path: Path) -> No
     assert resolve_store_url("postgresql://h/db", tmp_path).database == "db"
 
 
-def test_save_and_read_history(workspace: Workspace) -> None:
+def test_save_and_read_history(workspace: Workspace, store_url: str) -> None:
     workspace.write(
         "checks/t.yml",
         "dataset: t\ndatasource: lite\nowner: o@x\ntags: [a]\nchecks:\n"
         "  - row_count = 5\n  - missing_count(email) = 0\n",
     )
     project = workspace.load()
-    with ResultStore.open("sqlite:///.tablewatch/results.db", project.root) as store:
+    with ResultStore.open(store_url, project.root) as store:
         for _ in range(3):
             run = run_checks(project, project.checks, trigger="test", now=NOW)
             store.save(run)

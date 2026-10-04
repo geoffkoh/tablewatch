@@ -202,6 +202,13 @@ All notable changes to tablewatch. The format follows
   enough earlier runs exist (`N` from 2 to 100). The JSON report's `previous` gains `baseline`
   (`"previous run"`, `"same weekday"` or `"last N runs"`) and `runs` (how many results it averaged)
   for every `change()` check. See "Change over time" in `docs/check-language.md`.
+- A results store can now be shared safely from more than one host: `results.url` accepts
+  `${env:NAME}` as the whole URL, or in its user, password, database or query (not its scheme,
+  host or port), resolved only when the store is opened, so the password no longer has to be written in `tablewatch.yml`. The store is now
+  tested in CI on PostgreSQL 15 and 18 as well as SQLite — migrations, two processes opening a
+  fresh store at once, and concurrent writers from two hosts. See "A shared results store" in the
+  README for the roles a writer, a reader and the upgrading process need, and why every server
+  sharing one store must be upgraded together.
 
 ### Changed (breaking)
 
@@ -587,6 +594,19 @@ All notable changes to tablewatch. The format follows
   the path.
 - A non-ASCII digit in a check, such as `last ² runs` or `row_count > ²`, is now a diagnostic at
   its `file:line:col`, not a Python traceback. The lexer now reads ASCII digits (`0`–`9`) only.
+- On a PostgreSQL results store, a value too wide for its column (an unusually long dataset,
+  datasource or owner name) used to fail recording the whole run with "could not connect" — the
+  wrong reason. Most of those columns no longer have a width limit; the few that still do report
+  what went wrong.
+- Reading results (`runs`, `history`, `report`, notifications, and `change()`'s baselines) no
+  longer upgrades the store; only `run` (when it records) and `serve` do, and only when the store
+  is older — so a database role that can only read a shared store now works for everything
+  except recording a new run.
+- A results store case-sensitivity inconsistency is fixed: matching a check id by prefix (`history`,
+  `report`) now keeps case on every supported database; before, it ignored
+  case on SQLite but not PostgreSQL.
+- A check name or project name containing a control character is now refused at load, with a
+  diagnostic at its `file:line:col`, instead of reaching the results store.
 
 ## 0.1.0 — not yet published
 

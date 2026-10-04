@@ -6,6 +6,37 @@ REVIEW step; proposals needing the user's decision are also recorded here.
 Each entry records: the spec, the PR, acceptance results, reviewer findings
 and how they were resolved, what was deferred, and what was learned.
 
+## Iteration 31 — Postgres results store, part 1: verified in CI, shared safely (I-14 part 1), 2026-10-04
+
+- **Spec:** [031-postgres-results-store](specs/031-postgres-results-store.md). **Branch:**
+  `iter/031`. Full track. No items added (freeze). The owner chose this iteration directly
+  ("Lets do I-14", 2026-10-04); the run stops after it.
+- **REFINE.** Security Q1–Q3: a throwaway CI password, not `trust`; digest-pinned images; `${env:}`
+  resolved per URL part. Architect Q4–Q6: check-first migrate (a read-only role can still read);
+  an advisory lock bounded by a 60s `lock_timeout`; revision 0003 widens unindexed columns to
+  `Text`. Data-steward Q7: control characters refused at load, a data NUL becomes U+FFFD at save.
+- **Shipped:** a `postgres` CI job (15.19, 18.6, digest-pinned) runs every store test; `${env:}`
+  in `results.url`, resolved only on open; a cross-process advisory lock around `upgrade head`;
+  reads never migrate; SQLSTATE-classified store errors; a README "shared results store" section.
+  One BUILD defect fixed: a check-id prefix matched case-insensitively on SQLite only.
+- **Reviewer findings and resolution:**
+  - *architect — approve*; 6 follow-ups fixed (`49990b9`): a project-name cap, `NewerStoreError`,
+    a shared `_sqlstate` helper, `notify` reading without creating a store.
+  - *security — approve*; 2 fixed (`daedbd3`): `${env:}` in a URL's user part was split at its
+    own `:`, fixed by parsing references as tokens; a driver hint behind a whole-URL variable.
+  - *qa-engineer — fail, then fixed; 31 tests.* Blocker (`bb88540`): an upgrade's first run
+    skipped every `change()` check (reads refused any older store); now accepted since 0002.
+    Also fixed: project-name control characters; two SQLSTATE reasons; every store test file now
+    runs on Postgres.
+  - *data-steward — accept*, 20/21 must + 2/2 should, live on Postgres 18. 2 fixed (`90d1267`): an
+    unmatched SQLSTATE no longer says "could not connect"; README wording.
+- **Not added (backlog freeze):** none beyond I-14's own remaining scope.
+- **Lesson:** refusing any store the code does not fully recognise sounds safe, but it silently
+  broke a working feature the first run after an upgrade — check a safety rule against every reader.
+- **Backlog:** I-14 stays in progress — part 1 done; part 2 (the two indexes, the 1M-result
+  `/checks` measurement gating I-23) is next, but needs the owner: this was a direct pick, not a
+  continued run, alongside I-07 part 3, I-13 part 2 and I-08's `sql_metric`.
+
 ## Iteration 30 — Loader wording, a percent written as a fraction, console rows told apart (I-28, I-45), 2026-10-04
 
 - **Spec:** [030-loader-wording-console-datasource](specs/030-loader-wording-console-datasource.md).

@@ -241,8 +241,6 @@ def test_serve_on_an_unreadable_store_exits_3(retail: Path) -> None:  # S9
     finally:
         folder.chmod(0o755)
     assert code == 3
-    assert (
-        err
-        == "tablewatch: results store: could not be opened — run with -v for details\n"
-    )
+    # Spec 031: the store's own reason, which never holds the URL or a path.
+    assert err == "tablewatch: results store: unable to open database file\n"
     assert re.search(r"/(Users|home|private|var)/", err) is None

@@ -35,6 +35,7 @@ import sys
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
@@ -53,6 +54,7 @@ from tablewatch.diagnostics import Diagnostic, ProjectError, Severity, error
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import FAIL_ON_CHOICES, MAX_CONCURRENCY, FailOn
+from tablewatch.jsonvalues import utc
 from tablewatch.output import REPORTERS, console
 from tablewatch.results import ResultStore
 from tablewatch.results.store import NoStoreError, StoreError, open_store
@@ -186,7 +188,7 @@ def _reading_store(project: Project) -> Iterator[ResultStore | None]:
     """
     try:
         with open_store(
-            project.config.results.url, project.root, create=False
+            project.config.results.url, project.root, create=False, migrate=False
         ) as store:
             yield store
     except NoStoreError:
@@ -614,8 +616,9 @@ def serve(
             _fail("serve needs a results store on disk, not an in-memory database")
         store = open_store(project.config.results.url, project.root)
     except StoreError as exc:
-        log.info("%s", exc)  # driver detail can name hosts and users: not by default
-        _fail("results store: could not be opened — run with -v for details")
+        # The store module's reasons never hold the URL or driver text (that
+        # goes to -v), so they are shown as they are.
+        _fail(f"{exc}")
 
     with store:
         try:
@@ -838,11 +841,11 @@ def _table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> None:
 
 
 def _when(moment: object) -> str:
-    return (
-        moment.strftime("%Y-%m-%d %H:%M:%S")
-        if hasattr(moment, "strftime")
-        else str(moment)
-    )
+    # Shown under "STARTED (UTC)": a Postgres session in another zone hands
+    # back the same instant in its own offset.
+    if isinstance(moment, datetime):
+        return utc(moment).strftime("%Y-%m-%d %H:%M:%S")
+    return str(moment)
 
 
 if __name__ == "__main__":  # pragma: no cover
