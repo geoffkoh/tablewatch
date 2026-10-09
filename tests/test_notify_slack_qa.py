@@ -273,14 +273,19 @@ def test_a_timeout_warns(
     assert hook.url not in caplog.text
 
 
-def test_the_body_is_valid_json_with_hostile_names(
+def test_the_body_is_valid_json_with_a_hostile_owner(
     project: Path,  # noqa: F811
     hook: Hook,  # noqa: F811
 ) -> None:  # S4/S5 end to end: through YAML, the runner and the wire
+    # Check and clause names are ASCII-only now (D6); `owner:` is still free
+    # text written by whoever owns the dataset, so it carries the attack.
     checks = project / "checks/sales/orders.yml"
     text = checks.read_text(encoding="utf-8")
     checks.write_text(
-        text.replace("has a", "<!channel> & has a\u2066"), encoding="utf-8"
+        text.replace(
+            "datasource: lite", 'datasource: lite\nowner: "<!channel> & owner a\u2066"'
+        ),
+        encoding="utf-8",
     )
     tw.run(project)
     set_rows(project, "b", "c")
@@ -288,7 +293,7 @@ def test_the_body_is_valid_json_with_hostile_names(
     assert len(hook.bodies) == 1
     raw = json.dumps(hook.bodies[0], ensure_ascii=False)
     assert "<" not in raw.replace(header(hook.bodies[0]), "")
-    assert "&lt;!channel&gt; &amp; has a " in sections(hook.bodies[0])[0]
+    assert "&lt;!channel&gt; &amp; owner a " in sections(hook.bodies[0])[0]
 
 
 def test_docs_describe_slack() -> None:  # S21

@@ -15,6 +15,7 @@ from typing import Any
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.constructor import DuplicateKeyError
 from ruamel.yaml.error import MarkedYAMLError
 from ruamel.yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 from ruamel.yaml.reader import ReaderError
@@ -76,6 +77,18 @@ class YAMLSource:
                     self._at_offset(text, exc.position),
                 )
             ]
+        except DuplicateKeyError as exc:
+            mark = exc.problem_mark
+            where = self.at(mark.line, mark.column) if mark else self.at(0, 0)
+            name = _check_name_at(text, mark) if mark else None
+            if name is not None:
+                message = (
+                    f'duplicate check name "{name}" — names must be unique within '
+                    "a dataset"
+                )
+            else:
+                message = f"invalid YAML: {exc.problem}"
+            return None, [error(message, where)]
         except MarkedYAMLError as exc:
             mark = exc.problem_mark or exc.context_mark
             where = self.at(mark.line, mark.column) if mark else self.at(0, 0)
@@ -346,4 +359,27 @@ def _wide_encoding(raw: bytes) -> str | None:
         return "UTF-32"
     if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
         return "UTF-16"
+    return None
+
+
+def _check_name_at(text: str, mark: Any) -> str | None:
+    """The check name a duplicate-key error points at, if it is one.
+
+    A check name is a key of the top-level `checks:` mapping; any other
+    duplicate key keeps YAML's own message.
+    """
+    try:
+        root = YAML(typ="rt").compose(text)
+    except Exception:
+        return None
+    if not isinstance(root, MappingNode):
+        return None
+    for key, value in root.value:
+        if isinstance(key, ScalarNode) and key.value == "checks":
+            if not isinstance(value, MappingNode):
+                return None
+            for name, _ in value.value:
+                start = name.start_mark
+                if (start.line, start.column) == (mark.line, mark.column):
+                    return str(name.value)
     return None

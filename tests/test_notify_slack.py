@@ -279,7 +279,7 @@ def test_a_failure_reaches_slack(project: Path, hook: Hook) -> None:  # noqa: F8
     body = hook.bodies[0]
     assert set(body) == {"text", "blocks", "unfurl_links", "unfurl_media"}
     assert sections(body) == [
-        "*Failing (1)*\n• orders · has a: 0 rows — expected &gt; 0"
+        "*Failing (1)*\n• orders · has_a: 0 rows — expected &gt; 0"
     ]
 
 

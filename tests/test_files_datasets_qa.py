@@ -22,6 +22,7 @@ import tablewatch as tw
 from tablewatch.checks.model import derive_check_id
 from tablewatch.engine.runner import run_checks
 from tests.conftest import invoke
+from tests.named import named_checks
 from tests.test_files_datasets import (
     F1_CHECKS,
     F4_CHECKS,
@@ -63,28 +64,22 @@ def assert_f1(code: int, report: dict[str, Any]) -> None:
 
 # --- I3: no table dataset's id moved -------------------------------------------
 
-# Every derived id in examples/retail, computed on `main` (803581f) before
-# files existed. A table dataset's id must not move.
+# Every derived id in examples/retail. Recomputed for spec 032:
+# derive_check_id(datasource, dataset, name) keys on the check's name, one id
+# per named check (not per clause) — a smaller set than before named checks.
 RETAIL_IDS_ON_MAIN = {
-    "000f8d0048744bfb",
-    "11c20dd55fb97fa9",
-    "32867fbe86f483f3",
-    "32c8f939b90f6367",
-    "366d9254d889c910",
-    "41e58afff9c48a46",
-    "4532ee2fca0acfd9",
-    "8b9c5af854ba2a5f",
-    "a30dacf7316eef07",
-    "a81b0374b0b04f06",
-    "ace45b91cd324084",
-    "af0289a72fedd946",
-    "b1ceb8262d8b5441",
-    "b6ecae522c1d4aaf",
-    "cd3e8103b4318809",
-    "e2948c41d4b15c10",
-    "f81f9ff5edea8887",
-    "fbc3aa0b93b66eee",
-    "fc9cc3088acaf77a",
+    "000a5dec27131233",
+    "0636fb49233028f0",
+    "09eb696a21e8885b",
+    "2532c1f31d28bf94",
+    "47bf919485ea6f14",
+    "4a420be887e8984a",
+    "813017ce91016d84",
+    "a7bb2434f4ec6da4",
+    "abd72d1cb20bf7ed",
+    "b0a39f0d9284fa3e",
+    "f1bf8649135ba3ab",
+    "fb0015b3eb35e125",
 }
 
 
@@ -101,9 +96,7 @@ def test_i3_a_table_named_like_a_file_keeps_its_id(landing: Path) -> None:
     on_duck = [c for c in project.checks if c.dataset.datasource == "duck"]
     assert on_duck[0].dataset.source is None
     assert on_duck[0].dataset.name == "./orders.csv"
-    assert on_duck[0].id == derive_check_id(
-        Path("checks/landing/t.yml"), "./orders.csv", "row_count = 5", None
-    )
+    assert on_duck[0].id == derive_check_id("duck", "./orders.csv", "c1")
 
 
 # --- odd paths ------------------------------------------------------------------
@@ -131,8 +124,7 @@ def test_odd_file_names_read_and_stay_relative(
     assert {r["dataset"] for r in report["results"]} == {on_disk}
     ids = {c.id for c in tw.load(landing).checks}
     assert ids == {
-        derive_check_id(Path("checks/landing/orders.yml"), on_disk, name, None)
-        for name in ("row_count = 5", "missing_count(email) = 0")
+        derive_check_id("drop", on_disk, name) for name in ("c1", "c2")
     }
     compiled = invoke(landing, "compile")[1]
     assert_no_leak(
@@ -225,12 +217,13 @@ def test_an_empty_parquet_is_an_error_not_a_crash(landing: Path) -> None:
 QUOTED = (
     "datasource: {ds}\ndataset: {dataset}\n"
     "filter: \"coalesce(email, '') <> 'it''s:x' AND coalesce(email, '') NOT LIKE '%:%'\"\n"
-    "checks:\n"
-    "  - row_count = 5\n"
-    "  - missing_count(email) = 0:\n"
-    "      where: \"email IS NULL OR email <> 'a@x.io'\"\n"
-    "  - row_count = 1:\n"
-    "      where: \"email = 'a@x.io'\"\n"
+    + named_checks(
+        "  - row_count = 5\n"
+        "  - missing_count(email) = 0:\n"
+        "      where: \"email IS NULL OR email <> 'a@x.io'\"\n"
+        "  - row_count = 1:\n"
+        "      where: \"email = 'a@x.io'\"\n"
+    )
 )
 
 
@@ -253,7 +246,7 @@ def test_quotes_percent_and_colons_in_filter_and_where(landing: Path) -> None:
     by_source: dict[str, list[tuple[str, Any, Any]]] = {}
     for r in report["results"]:
         by_source.setdefault(r["datasource"], []).append(
-            (r["name"], r["outcome"], r["value"])
+            (r["expression"], r["outcome"], r["value"])
         )
     assert by_source["drop"] == by_source["duck"]
     assert ("row_count = 1", "pass", 1) in by_source["drop"]
@@ -325,7 +318,9 @@ def two_files_project(landing: Path) -> None:
 def test_two_files_datasources_and_a_table_in_one_run(landing: Path) -> None:
     two_files_project(landing)
     code, report, err = run_json(landing)
-    seen = {(r["datasource"], r["dataset"], r["name"]): r for r in report["results"]}
+    seen = {
+        (r["datasource"], r["dataset"], r["expression"]): r for r in report["results"]
+    }
     assert seen[("drop", "orders.csv", "row_count = 5")]["outcome"] == "pass"
     assert seen[("drop", "orders.csv", "missing_count(email) = 0")]["value"] == 1
     assert seen[("drop2", "orders.csv", "row_count = 3")]["outcome"] == "pass"

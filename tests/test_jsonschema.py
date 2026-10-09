@@ -38,7 +38,8 @@ def test_example_check_files_are_valid(path: Path) -> None:
 
 
 def test_every_metric_has_an_options_definition() -> None:
-    assert set(check_file_schema()["$defs"]) == {m.name for m in all_metrics()}
+    defs = set(check_file_schema()["$defs"]) - {"_expression", "_clause"}
+    assert defs == {m.name for m in all_metrics()}
 
 
 @pytest.mark.parametrize(

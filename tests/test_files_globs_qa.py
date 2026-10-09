@@ -217,7 +217,7 @@ def test_duplicates_are_counted_across_files(landing: Path) -> None:
 def test_failed_rows_samples_across_files(landing: Path) -> None:
     write_checks(
         landing,
-        "  - failed_rows:\n      name: no email\n      condition: email IS NULL\n",
+        "  - failed_rows:\n      name: no_email\n      condition: email IS NULL\n",
         PATTERN,
     )
     code, report, err = run_json(landing)
@@ -517,8 +517,17 @@ def test_schema_and_aggregates_on_a_pattern_share_one_expansion(
         "  - row_count = 5\n  - schema:\n      required_columns: [id]\n",
         PATTERN,
     )
-    write_checks(
-        landing, "  - row_count = 3:\n      where: amount > 15\n", PATTERN, name="b.yml"
+    # A distinct name from the other file's "c1" (same dataset, names unique
+    # across files per dataset): written directly, skipping named_checks'
+    # list-item conversion so the nesting under "checks:" is exact.
+    (landing / "checks" / "landing" / "b.yml").write_text(
+        f"datasource: drop\ndataset: {PATTERN}\n"
+        "checks:\n"
+        "  narrow:\n"
+        "    clauses:\n"
+        "      - row_count = 3:\n"
+        "          where: amount > 15\n",
+        encoding="utf-8",
     )
     code, report, _ = run_json(landing)
     assert code == 0, report["results"]
@@ -593,14 +602,15 @@ def test_spellings_of_one_pattern_share_an_id_and_read_the_same(
 
 # --- I5: single-file ids are main's ---------------------------------------------
 
-# Derived on `main` (3ad2749) by loading this project with these check files.
+# Recomputed for spec 032: derive_check_id(datasource, dataset, name) keys
+# on the check's name (c1, c2, … here), not the clause's expression.
 I5_IDS_ON_MAIN = {
-    ("orders.csv", "row_count = 5"): "b1ce06be5c93342f",
-    ("orders.csv", "missing_count(email) = 0"): "5fb26e06b0ff5c7c",
-    ("orders.csv", "schema"): "9be72c82e18238a6",
-    ("orders.parquet", "row_count = 5"): "daab1802f3b1da35",
-    ("a/ördérs ü.csv", "row_count > 0"): "e8901edce288ed9f",
-    ("orders.csv.gz", "row_count = 5"): "b77a2560f943807b",
+    ("orders.csv", "c1"): "5c43623402d006b6",
+    ("orders.csv", "c2"): "77c7a45ada501bea",
+    ("orders.csv", "c3"): "6e28681e1b243e9e",
+    ("orders.parquet", "c1"): "bab679d942ae0ba4",
+    ("a/ördérs ü.csv", "c1"): "8b4ecbe28e8bcc8c",
+    ("orders.csv.gz", "c1"): "2d0053944d53d0a1",
 }
 
 
