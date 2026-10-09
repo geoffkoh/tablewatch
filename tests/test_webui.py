@@ -42,8 +42,7 @@ REPO = Path(__file__).parent.parent
 STATIC = REPO / "src" / "tablewatch" / "webapp" / "static"
 LOCKFILE = REPO / "frontend" / "package-lock.json"
 
-ORDERS_MISSING = "fc9cc3088acaf77a"
-CUSTOMERS_ROWS = "32c8f939b90f6367"
+CUSTOMERS_ROWS = "f1bf8649135ba3ab"  # customers_present
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+00:00$")
 
 
@@ -54,7 +53,7 @@ def started_at(root: Path, run_id: str) -> str:
 
 
 def run_e(root: Path) -> str:
-    """Record run E: customers checks with the database moved aside (5 errors)."""
+    """Record run E: customers checks with the database moved aside (4 errors)."""
     database = root / "retail.duckdb"
     aside = root / "aside.duckdb"
     database.rename(aside)
@@ -196,7 +195,7 @@ def test_an_error_does_not_end_a_streak(
         f,
     )
     assert checks[CUSTOMERS_EMAIL]["since"] == a
-    assert checks[ORDERS_MISSING]["since"] == a
+    assert checks[ORDER_VOLUME]["since"] == a
     assert checks[CUSTOMERS_ROWS]["outcome"] == "pass"
     assert checks[CUSTOMERS_ROWS]["since"] == a
 
@@ -328,23 +327,22 @@ def test_since_costs_no_query_per_check(recorded: Recorded) -> None:  # P5
     assert len(statements) <= 3, statements
 
 
-def test_an_explicit_id_keeps_its_streak(
+def test_editing_a_threshold_keeps_its_streak(
     retail: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # P6 (should)
+) -> None:  # P6: D4 — a clause's threshold isn't part of its identity
     monkeypatch.chdir(retail)
     customers = retail / "checks" / "sales" / "customers.yml"
-    text = customers.read_text(encoding="utf-8").replace(
-        "missing_percent(email) < 5%:\n",
-        "missing_percent(email) < 5%:\n      id: customer-email-completeness\n",
-    )
-    customers.write_text(text, encoding="utf-8")
+    text = customers.read_text(encoding="utf-8")
     invoke(retail, "run")
     a = run_ids(retail)[-1]
-    customers.write_text(text.replace("< 5%", "< 15%"), encoding="utf-8")
+    customers.write_text(
+        text.replace("missing_percent(email) < 5%", "missing_percent(email) < 15%"),
+        encoding="utf-8",
+    )
     invoke(retail, "run")
     c = run_ids(retail)[-1]
     with served(retail) as client:
-        latest = get(client, "/api/v1/checks/customer-email-completeness")["latest"]
+        latest = get(client, f"/api/v1/checks/{CUSTOMERS_EMAIL}")["latest"]
         a_start = get(client, f"/api/v1/runs/{a}")["started_at"]
     assert latest["run_id"] == c
     assert latest["since"] == a_start

@@ -55,7 +55,7 @@ def test_save_and_read_history(workspace: Workspace, store_url: str) -> None:
     workspace.write(
         "checks/t.yml",
         "dataset: t\ndatasource: lite\nowner: o@x\ntags: [a]\nchecks:\n"
-        "  - row_count = 5\n  - missing_count(email) = 0\n",
+        "  total: row_count = 5\n  missing: missing_count(email) = 0\n",
     )
     project = workspace.load()
     with ResultStore.open(store_url, project.root) as store:
@@ -63,7 +63,7 @@ def test_save_and_read_history(workspace: Workspace, store_url: str) -> None:
             run = run_checks(project, project.checks, trigger="test", now=NOW)
             store.save(run)
         [latest, *_] = store.runs_page(project.config.name, limit=5)
-        failing = project.checks[1]
+        failing = next(c for c in project.checks if c.name == "missing")
         matches = store.matching_check_ids(project.config.name, failing.id[:6])
         entries = store.history_page(project.config.name, failing.id, limit=20)
 
@@ -82,4 +82,4 @@ def test_save_and_read_history(workspace: Workspace, store_url: str) -> None:
         "o@x",
         ["a"],
     )
-    assert result.source == "checks/t.yml:7:5"
+    assert result.source == "checks/t.yml:7:3"

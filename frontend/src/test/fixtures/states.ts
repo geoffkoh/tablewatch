@@ -60,6 +60,7 @@ export const recorded: OverviewResponses = {
           "line": 5,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -92,6 +93,7 @@ export const recorded: OverviewResponses = {
           "line": 6,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -124,6 +126,7 @@ export const recorded: OverviewResponses = {
           "line": 7,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -156,6 +159,7 @@ export const recorded: OverviewResponses = {
           "line": 8,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -189,6 +193,7 @@ export const recorded: OverviewResponses = {
           "line": 4,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -222,6 +227,7 @@ export const recorded: OverviewResponses = {
           "line": 5,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -255,6 +261,7 @@ export const recorded: OverviewResponses = {
           "line": 6,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -288,6 +295,7 @@ export const recorded: OverviewResponses = {
           "line": 8,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -321,6 +329,7 @@ export const recorded: OverviewResponses = {
           "line": 10,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -354,6 +363,7 @@ export const recorded: OverviewResponses = {
           "line": 4,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -387,6 +397,7 @@ export const recorded: OverviewResponses = {
           "line": 5,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -420,6 +431,7 @@ export const recorded: OverviewResponses = {
           "line": 9,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -453,6 +465,7 @@ export const recorded: OverviewResponses = {
           "line": 10,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -486,6 +499,7 @@ export const recorded: OverviewResponses = {
           "line": 11,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -519,6 +533,7 @@ export const recorded: OverviewResponses = {
           "line": 13,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -552,6 +567,7 @@ export const recorded: OverviewResponses = {
           "line": 14,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -585,6 +601,7 @@ export const recorded: OverviewResponses = {
           "line": 15,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -618,6 +635,7 @@ export const recorded: OverviewResponses = {
           "line": 18,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -704,6 +722,7 @@ export const beforeF: OverviewResponses = {
           "line": 5,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -736,6 +755,7 @@ export const beforeF: OverviewResponses = {
           "line": 6,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -768,6 +788,7 @@ export const beforeF: OverviewResponses = {
           "line": 7,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -800,6 +821,7 @@ export const beforeF: OverviewResponses = {
           "line": 8,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -833,6 +855,7 @@ export const beforeF: OverviewResponses = {
           "line": 4,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -870,6 +893,7 @@ export const beforeF: OverviewResponses = {
           "line": 5,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -907,6 +931,7 @@ export const beforeF: OverviewResponses = {
           "line": 6,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -944,6 +969,7 @@ export const beforeF: OverviewResponses = {
           "line": 8,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -981,6 +1007,7 @@ export const beforeF: OverviewResponses = {
           "line": 10,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -1018,6 +1045,7 @@ export const beforeF: OverviewResponses = {
           "line": 4,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1051,6 +1079,7 @@ export const beforeF: OverviewResponses = {
           "line": 5,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1084,6 +1113,7 @@ export const beforeF: OverviewResponses = {
           "line": 9,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1117,6 +1147,7 @@ export const beforeF: OverviewResponses = {
           "line": 10,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1150,6 +1181,7 @@ export const beforeF: OverviewResponses = {
           "line": 11,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1183,6 +1215,7 @@ export const beforeF: OverviewResponses = {
           "line": 13,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1216,6 +1249,7 @@ export const beforeF: OverviewResponses = {
           "line": 14,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1249,6 +1283,7 @@ export const beforeF: OverviewResponses = {
           "line": 15,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1282,6 +1317,7 @@ export const beforeF: OverviewResponses = {
           "line": 18,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1368,6 +1404,7 @@ export const interrupted: OverviewResponses = {
           "line": 5,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1400,6 +1437,7 @@ export const interrupted: OverviewResponses = {
           "line": 6,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1432,6 +1470,7 @@ export const interrupted: OverviewResponses = {
           "line": 7,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1464,6 +1503,7 @@ export const interrupted: OverviewResponses = {
           "line": 8,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1497,6 +1537,7 @@ export const interrupted: OverviewResponses = {
           "line": 4,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1530,6 +1571,7 @@ export const interrupted: OverviewResponses = {
           "line": 5,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1563,6 +1605,7 @@ export const interrupted: OverviewResponses = {
           "line": 6,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1596,6 +1639,7 @@ export const interrupted: OverviewResponses = {
           "line": 8,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1629,6 +1673,7 @@ export const interrupted: OverviewResponses = {
           "line": 10,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1662,6 +1707,7 @@ export const interrupted: OverviewResponses = {
           "line": 4,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1695,6 +1741,7 @@ export const interrupted: OverviewResponses = {
           "line": 5,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1728,6 +1775,7 @@ export const interrupted: OverviewResponses = {
           "line": 9,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1761,6 +1809,7 @@ export const interrupted: OverviewResponses = {
           "line": 10,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1794,6 +1843,7 @@ export const interrupted: OverviewResponses = {
           "line": 11,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1827,6 +1877,7 @@ export const interrupted: OverviewResponses = {
           "line": 13,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1860,6 +1911,7 @@ export const interrupted: OverviewResponses = {
           "line": 14,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1893,6 +1945,7 @@ export const interrupted: OverviewResponses = {
           "line": 15,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1926,6 +1979,7 @@ export const interrupted: OverviewResponses = {
           "line": 18,
           "column": 5
         },
+        "clauses": [],
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",

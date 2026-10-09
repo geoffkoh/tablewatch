@@ -61,7 +61,8 @@ def test_every_surface_reads_the_same_with_the_contract_exit_codes(
         ]
     finally:
         db.close()
-    assert stored == [P + reason]
+    # D5: a summary row per check, plus one row per clause.
+    assert stored == [P + reason, P + reason]
 
     code, out, err = invoke(root, "test-connection")
     assert code == 2, out + err

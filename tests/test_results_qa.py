@@ -100,13 +100,15 @@ def test_upgrading_from_0002_keeps_measured_and_unit(
     with open_store(store_url, root, create=False, migrate=False) as store:
         before = store.run("pg", run.id)
     assert before is not None
-    [kept] = before.results
+    # D5: a summary row (always measured=None) plus one row per clause —
+    # `measured` only ever lives on the clause row.
+    [kept] = [r for r in before.results if r.metric != "check"]
     assert kept.measured == 1000.0
     _alembic(store_url, "downgrade", "0002")
     with open_store(store_url, root) as store:
         after = store.run("pg", run.id)
     assert after is not None
-    [result] = after.results
+    [result] = [r for r in after.results if r.metric != "check"]
     assert (result.measured, result.unit) == (kept.measured, kept.unit)
 
 
@@ -233,7 +235,8 @@ def test_a_nul_in_owner_is_replaced_the_same_on_both(
     with open_store(store_url, root, create=False, migrate=False) as store:
         row = store.run("pg", run.id)
     assert row is not None
-    assert [r.owner for r in row.results] == ["a\ufffdb"]
+    # D5: a summary row plus one clause row, both carrying the dataset's owner.
+    assert [r.owner for r in row.results] == ["a\ufffdb", "a\ufffdb"]
 
 
 def test_a_nul_in_a_tag_records_the_same_on_both(
@@ -252,7 +255,8 @@ def test_a_nul_in_a_tag_records_the_same_on_both(
         row = store.run("pg", run.id)
     assert row is not None
     # JSON keeps it on both (Postgres `json`, not `jsonb`, accepts \u0000).
-    assert [r.tags for r in row.results] == [["x\0y"]]
+    # D5: a summary row plus one clause row, both carrying the dataset's tags.
+    assert [r.tags for r in row.results] == [["x\0y"], ["x\0y"]]
 
 
 def test_a_control_character_in_the_project_name_is_a_load_error(

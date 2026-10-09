@@ -104,7 +104,7 @@ def test_run_cannot_record(retail: Path) -> None:  # E8
     _set_url(retail, BAD)
     code, out, err = invoke(retail, "run", "--output", "json")
     assert code == 2
-    assert len(json.loads(out)["results"]) == 19
+    assert len(json.loads(out)["results"]) == 12
     assert (
         "tablewatch: could not record the run: results.url is not a valid database URL"
     ) in err
@@ -174,18 +174,18 @@ def test_a_check_only_another_project_recorded(shared: tuple[Path, Path]) -> Non
     config = other / "checks" / "inventory" / "products.yml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
-            "checks:\n",
-            "checks:\n  c1:\n    clauses:\n      - row_count > 1:\n          id: only-in-other\n",
-            1,
+            "checks:\n", "checks:\n  only_in_other: row_count > 1\n", 1
         ),
         encoding="utf-8",
     )
     tw.run(other)
-    code, _, err = invoke(retail, "history", "only-in")
+    [check] = [c for c in tw.load(other).checks if c.name == "only_in_other"]
+    prefix = check.id[:8]
+    code, _, err = invoke(retail, "history", prefix)
     assert code == 3
     assert (
-        err
-        == "tablewatch: no recorded results for check only-in in project retail-example\n"
+        err == f"tablewatch: no recorded results for check {prefix} in project "
+        "retail-example\n"
     )
 
 
@@ -193,27 +193,14 @@ def test_a_prefix_shared_with_another_project_is_not_ambiguous(
     shared: tuple[Path, Path],
 ) -> None:  # P4
     retail, other = shared
-    config = other / "checks" / "inventory" / "products.yml"
-    config.write_text(
-        config.read_text(encoding="utf-8").replace(
-            "checks:\n",
-            "checks:\n  c1:\n    clauses:\n      - row_count > 1:\n          id: zz-other\n",
-            1,
-        ),
-        encoding="utf-8",
-    )
-    mine = retail / "checks" / "inventory" / "products.yml"
-    mine.write_text(
-        mine.read_text(encoding="utf-8").replace(
-            "checks:\n",
-            "checks:\n  c1:\n    clauses:\n      - row_count > 1:\n          id: zz-mine\n",
-            1,
-        ),
-        encoding="utf-8",
-    )
+    # `retail` and `other` are structural copies (the `shared` fixture): an
+    # unedited check's id is identical in both — ids depend on datasource,
+    # dataset and name, never the project — which is exactly the prefix
+    # collision this guards against, with no custom `id:` needed.
     tw.run(retail)
     tw.run(other)
-    code, out, _ = invoke(retail, "history", "zz")
+    [check] = [c for c in tw.load(retail).checks if c.name == "catalogue_sane"]
+    code, out, _ = invoke(retail, "history", check.id[:8])
     assert code == 0
     assert "ambiguous" not in out
 
@@ -222,7 +209,9 @@ def test_a_blank_check_id(retail: Path) -> None:  # P5
     tw.run(retail)
     code, _, err = invoke(retail, "history", "  ")
     assert code == 3
-    assert err == "tablewatch: history needs the first characters of a check id\n"
+    assert err == (
+        "tablewatch: history needs a check name or the first characters of a check id\n"
+    )
 
 
 # --- run --output-file ---------------------------------------------------------------
@@ -234,7 +223,7 @@ def test_an_unwritable_output_file(retail: Path, tmp_path: Path) -> None:  # O1
         retail, "run", "--output", "json", "--output-file", str(target)
     )
     assert code == 2
-    assert "19 checks" in out
+    assert "12 checks" in out
     assert err.endswith(
         f"tablewatch: could not write {target}: No such file or directory\n"
     )
@@ -286,15 +275,15 @@ def test_a_writable_output_file(retail: Path) -> None:  # O5
         retail, "run", "--output", "json", "--output-file", str(out_file)
     )
     assert code == 1
-    assert "19 checks" in out
-    assert len(json.loads(out_file.read_text(encoding="utf-8"))["results"]) == 19
+    assert "12 checks" in out
+    assert len(json.loads(out_file.read_text(encoding="utf-8"))["results"]) == 12
 
 
 def test_dash_is_stdout(retail: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # O6
     monkeypatch.chdir(retail)
     code, out, _ = invoke(retail, "run", "--output", "json", "--output-file", "-")
     assert code == 1
-    assert len(json.loads(out)["results"]) == 19
+    assert len(json.loads(out)["results"]) == 12
     code, out, _ = invoke(retail, "report", "--output-file", "-")
     assert code == 0
     assert out.startswith("<!doctype html>")
@@ -325,7 +314,7 @@ def test_no_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  #
 def test_project_dir_may_name_the_file(retail: Path) -> None:  # R2
     code, out, _ = invoke(retail / "tablewatch.yml", "list")
     assert code == 0
-    assert "19 checks" in out
+    assert "12 checks" in out
 
 
 def test_a_missing_project_dir(

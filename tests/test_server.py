@@ -154,7 +154,7 @@ def test_serve_prints_where_it_listens(
     assert started.stdout == ""
     assert re.fullmatch(
         r"tablewatch serve: http://127\.0\.0\.1:\d+/ "
-        r"\(project retail-example, 19 checks; API at /api/v1\)\n",
+        r"\(project retail-example, 12 checks; API at /api/v1\)\n",
         started.stderr,
     )
 
@@ -526,8 +526,14 @@ def test_every_check_with_its_latest_result(recorded: Recorded) -> None:  # C1
     assert item["unit"] == "percent"
     latest = item["latest"]
     assert latest["run_id"] == recorded.run_b
-    assert (latest["outcome"], latest["value"]) == ("fail", 20.0)
-    assert (latest["display_value"], latest["message"]) == ("20.00%", "expected < 5%")
+    # `contactable` has two clauses (spec 032): the check-level `value` is
+    # None (no single number across clauses); `message` tallies the ones
+    # that did not pass.
+    assert (latest["outcome"], latest["value"]) == ("fail", None)
+    assert (latest["display_value"], latest["message"]) == (
+        "",
+        "missing_percent(email): expected < 5%",
+    )
     freshness = {c["id"]: c for c in body["items"]}[PRICE_FRESHNESS]["latest"]
     assert (freshness["run_id"], freshness["outcome"]) == (recorded.run_a, "warn")
     # list --output json's keys are a subset of the API's
@@ -600,8 +606,10 @@ def test_a_check_that_errored_last_time_shows_error(recorded: Recorded) -> None:
         assert latest["run_id"] == run_e
         assert latest["outcome"] == "error"
         assert latest["value"] is None
-        assert latest["display_value"] == "—"
-        assert latest["message"].startswith("IO Error: Cannot open database")
+        assert latest["display_value"] == ""
+        assert latest["message"].startswith(
+            "missing_percent(email): IO Error: Cannot open database"
+        )
         assert get(client, "/api/v1/checks?outcome=fail")["total"] == 2
         assert get(client, "/api/v1/checks?outcome=error")["total"] == 4
         assert (
@@ -669,7 +677,7 @@ def test_an_id_key_is_rejected_not_a_server_crash(
     customers.write_text(
         customers.read_text(encoding="utf-8").replace(
             "missing_percent(email) < 5%:\n",
-            "missing_percent(email) < 5%:\n      id: customers-email-missing\n",
+            "missing_percent(email) < 5%:\n          id: customers-email-missing\n",
         ),
         encoding="utf-8",
     )
@@ -765,7 +773,10 @@ def test_equal_start_times_break_by_run_id(recorded: Recorded) -> None:  # L3
 def test_units_of_value(recorded: Recorded) -> None:  # U1
     with served(recorded.root) as client:
         checks = checks_by_id(client)
-    assert checks[CUSTOMERS_EMAIL]["latest"]["value"] == 20.0
+    # `contactable` has two clauses (spec 032): the check's `unit` is still
+    # its first clause's, but there is no single `value` across clauses.
+    assert checks[CUSTOMERS_EMAIL]["unit"] == "percent"
+    assert checks[CUSTOMERS_EMAIL]["latest"]["value"] is None
     freshness = checks[PRICE_FRESHNESS]
     assert freshness["unit"] == "duration"
     assert 259200 <= freshness["latest"]["value"] < 259200 + 600
@@ -982,11 +993,11 @@ def test_history_of_a_check(recorded: Recorded) -> None:  # H1
         for entry in history["items"]:
             assert (entry["outcome"], entry["value"], entry["display_value"]) == (
                 "fail",
-                20.0,
-                "20.00%",
+                None,
+                "",
             )
             assert entry["trigger"] == "cli"
-            assert entry["source"] == "checks/sales/customers.yml:6:5"
+            assert entry["source"] == "checks/sales/customers.yml:6:3"
         assert (
             len(get(client, f"/api/v1/checks/{PRICE_FRESHNESS}/history")["items"]) == 1
         )
@@ -1005,14 +1016,14 @@ def test_history_of_a_check(recorded: Recorded) -> None:  # H1
 def test_history_of_new_and_deleted_checks(recorded: Recorded) -> None:  # H2
     products = recorded.root / "checks" / "inventory" / "products.yml"
     products.write_text(
-        products.read_text(encoding="utf-8") + "  - max(price) < 100000\n",
+        products.read_text(encoding="utf-8") + "  price_cap: max(price) < 100000\n",
         encoding="utf-8",
     )
     orders = recorded.root / "checks" / "sales" / "orders.yml"
     orders.write_text(
         orders.read_text(encoding="utf-8").replace(
-            "  - row_count:\n      name: Order volume\n      warn: when < 100\n"
-            "      fail: when = 0\n",
+            "  order_volume:\n    clauses:\n      - row_count:\n"
+            "          warn: when < 100\n          fail: when = 0\n",
             "",
         ),
         encoding="utf-8",
@@ -1024,13 +1035,14 @@ def test_history_of_new_and_deleted_checks(recorded: Recorded) -> None:  # H2
             if c["expression"].startswith("max(")
         ]
         [check] = new
+        assert check["name"] == "price_cap"
         assert get(client, f"/api/v1/checks/{check['id']}/history") == {
             "items": [],
             "next_cursor": None,
         }
         assert_error(client.get(f"/api/v1/checks/{ORDER_VOLUME}"), 404, "not_found")
         gone = get(client, f"/api/v1/checks/{ORDER_VOLUME}/history")["items"]
-        assert [h["name"] for h in gone] == ["Order volume", "Order volume"]
+        assert [h["name"] for h in gone] == ["order_volume", "order_volume"]
         assert_error(
             client.get("/api/v1/checks/0000000000000000/history"), 404, "not_found"
         )
@@ -1254,8 +1266,15 @@ def test_the_checked_in_openapi_matches(recorded: Recorded) -> None:  # X4
 def test_run_items_match_the_json_report(recorded: Recorded) -> None:
     fields = set(schemas.RunResultItem.model_fields)
     result = tw.run(recorded.root, record=False)
-    # `previous` is the run's own context (spec 026), not a stored field.
-    assert fields == set(as_dict(result)["results"][0]) - {"previous"}
+    report_check = set(as_dict(result)["results"][0])
+    # Part 1 (D5): run detail is still a flat, one-metric row (`metric`,
+    # `measured`, `unit`); the JSON report nests a check's clauses instead
+    # (`clauses`, with `previous` moved inside each). Everything else at
+    # check level must still agree.
+    assert fields - {"metric", "measured", "unit"} == report_check - {
+        "previous",
+        "clauses",
+    }
 
 
 def test_wire_enums_match_the_engine() -> None:

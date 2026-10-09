@@ -165,6 +165,8 @@ export interface components {
          * @description One check with its rule: what `GET /checks/{id}` serves.
          */
         CheckDetail: {
+            /** Clauses */
+            clauses: components["schemas"]["ClauseSummary"][];
             /** Dataset */
             dataset: string;
             /** Datasource */
@@ -254,8 +256,14 @@ export interface components {
             /** Statements */
             statements: (components["schemas"]["ScanStatement"] | components["schemas"]["QueryStatement"])[];
         };
-        /** CheckSummary */
+        /**
+         * CheckSummary
+         * @description A named check. `metric`, `unit` and `rule` are its clause's when it has
+         *     one clause; with several, `metric` is `"check"` and `clauses` lists them.
+         */
         CheckSummary: {
+            /** Clauses */
+            clauses: components["schemas"]["ClauseSummary"][];
             /** Dataset */
             dataset: string;
             /** Datasource */
@@ -281,6 +289,24 @@ export interface components {
             source: string;
             /** Tags */
             tags: string[];
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "count" | "percent" | "duration" | "number";
+        };
+        /**
+         * ClauseSummary
+         * @description One clause of a named check, as loaded.
+         */
+        ClauseSummary: {
+            /** Expression */
+            expression: string;
+            /** Key */
+            key: string;
+            location: components["schemas"]["Location"];
+            /** Metric */
+            metric: string;
             /**
              * Unit
              * @enum {string}

@@ -47,12 +47,12 @@ def test_a_report_of_the_newest_run(retail: Path, run_a: str) -> None:  # R1, R2
     assert err == ""
     assert out.startswith("<!doctype html>")
     assert run_a in out
-    assert "19 checks: 11 passed, 2 warned, 6 failed, 0 errors" in out
+    assert "12 checks: 6 passed, 2 warned, 4 failed, 0 errors" in out
     assert "<th>Selected</th><td>all checks</td>" in out
     rows = _rows(out)
-    assert len(rows) == 19
+    assert len(rows) == 12
     assert all(len(r) == 11 for r in rows)
-    assert [r[0] for r in rows] == ["fail"] * 6 + ["warn"] * 2 + ["pass"] * 11
+    assert [r[0] for r in rows] == ["fail"] * 4 + ["warn"] * 2 + ["pass"] * 6
 
 
 def test_since_wording(retail: Path, run_a: str) -> None:  # R2a
@@ -187,7 +187,7 @@ def test_hostile_strings_are_text(retail: Path, run_a: str) -> None:  # R8, D2
     assert "<img" not in out
     assert '<tr class="unknown">' not in out  # unknown outcomes read as errors
     assert all(len(r) == 11 for r in _rows(out))
-    assert len(_rows(out)) == 19
+    assert len(_rows(out)) == 12
 
 
 def test_nothing_external(retail: Path, run_a: str) -> None:  # R9, D3
@@ -218,23 +218,30 @@ def test_since_follows_history(retail: Path, run_a: str) -> None:  # R10
         assert first is not None
         moved = first.started_at - timedelta(days=3)
         first.started_at = moved
+        # D5: only a summary row (metric = "check") is a check's own outcome.
         failing = session.scalars(
             CheckResultRow.__table__.select()
-            .where(CheckResultRow.run_id == second, CheckResultRow.outcome == "fail")
+            .where(
+                CheckResultRow.run_id == second,
+                CheckResultRow.outcome == "fail",
+                CheckResultRow.metric == "check",
+            )
             .with_only_columns(CheckResultRow.check_id)
         ).all()
         session.execute(
             update(CheckResultRow)
             .where(
-                CheckResultRow.run_id == second, CheckResultRow.check_id == failing[0]
+                CheckResultRow.run_id == second,
+                CheckResultRow.check_id == failing[0],
+                CheckResultRow.metric == "check",
             )
             .values(outcome="pass")
         )
     _, out, _ = _report(retail)
     when = moved.replace(tzinfo=UTC).strftime("%Y-%m-%d %H:%M UTC")
     rows = _rows(out)
-    assert sum(r[7] == f"Failing since {when}" for r in rows) == 5
-    assert [r[0] for r in rows].count("fail") == 5
+    assert sum(r[7] == f"Failing since {when}" for r in rows) == 3
+    assert [r[0] for r in rows].count("fail") == 3
 
 
 def test_no_credentials_needed(

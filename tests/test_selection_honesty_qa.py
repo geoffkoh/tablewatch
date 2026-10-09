@@ -20,8 +20,8 @@ from tests.conftest import invoke
 from tests.test_server import get, served
 
 NOTHING = " — nothing ran"
-TOTAL = 19
-INVENTORY = 5
+TOTAL = 12
+INVENTORY = 3
 
 
 def _listed(project: Path, *args: str) -> tuple[int, list[str], str]:
@@ -127,7 +127,7 @@ def test_a_blank_value_is_unmatched_for_every_selector(
     assert code == 3
     q = f"'{blank}'"
     assert (
-        f"no checks match path {q}, tag {q}, check id {q}, datasource {q}, exclude {q}"
+        f"no checks match path {q}, tag {q}, check {q}, datasource {q}, exclude {q}"
         + NOTHING
     ) in err
 
@@ -136,7 +136,7 @@ def test_python_names_every_unmatched_selector_type(retail: Path) -> None:  # S2
     with pytest.raises(
         tw.SelectionError,
         match=(
-            "^no checks match path 'checks/nope', tag 'nope', check id 'zzzz', "
+            "^no checks match path 'checks/nope', tag 'nope', check 'zzzz', "
             f"exclude 'checks/zz\\*'{NOTHING}$"
         ),
     ):
@@ -153,13 +153,15 @@ def test_python_names_every_unmatched_selector_type(retail: Path) -> None:  # S2
 
 
 def test_python_with_every_selector_type_records_it_normalised(retail: Path) -> None:
+    orders_prefix = "b0a39f"  # orders_usable, in orders.yml (excluded below)
+    customers_prefix = "f1bf86"  # customers_present
     result = tw.run(
         retail,
         paths=["./checks/sales/", Path("checks/sales"), str(retail / "checks")],
         tags=["sales", "sales"],
         datasources=["lake"],
         excludes=["checks/sales/orders.yml/", "checks/inventory/p*"],
-        check_ids=["f81f9f", "32c8f9", "f81f9f"],
+        check_ids=[orders_prefix, customers_prefix, orders_prefix],
         record=False,
     )
     assert result.selection == {
@@ -167,10 +169,10 @@ def test_python_with_every_selector_type_records_it_normalised(retail: Path) -> 
         "tags": ["sales"],
         "datasources": ["lake"],
         "excludes": ["checks/sales/orders.yml", "checks/inventory/p*"],
-        "check_ids": ["f81f9f", "32c8f9"],
+        "check_ids": [orders_prefix, customers_prefix],
     }
-    # f81f9f is in orders.yml, excluded; 32c8f9 is customers' row_count.
-    assert [r.check.id[:6] for r in result.results] == ["32c8f9"]
+    # orders_usable is in orders.yml, excluded; customers_present survives.
+    assert [r.check.id[:6] for r in result.results] == [customers_prefix]
 
 
 def test_python_tags_alone(retail: Path) -> None:

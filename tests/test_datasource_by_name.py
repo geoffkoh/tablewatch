@@ -45,7 +45,7 @@ def _project(tmp_path: Path, *files: tuple[str, str]) -> Path:
 
 def _checks(datasource: str | None) -> str:
     line = f"datasource: {json.dumps(datasource)}\n" if datasource is not None else ""
-    return f"dataset: orders\n{line}checks:\n  - row_count > 0\n"
+    return f"dataset: orders\n{line}checks:\n  c1: row_count > 0\n"
 
 
 FIXTURE = (

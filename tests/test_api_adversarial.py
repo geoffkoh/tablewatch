@@ -111,13 +111,15 @@ def test_check_id_prefix_selection_matches_the_cli(retail: Path) -> None:  # R3 
 def test_the_api_gives_the_same_answers_on_both_backends(workspace: Workspace) -> None:
     body = (
         "checks:\n"
-        "  - row_count = 5\n"
-        "  - missing_count(email) = 1\n"
-        "  - duplicate_count(id) = 0\n"
-        "  - invalid_count(status):\n"
-        "      valid_values: [ok]\n"
-        "      fail: when > 0\n"
-        "  - avg(amount) > 0\n"
+        "  c1: row_count = 5\n"
+        "  c2: missing_count(email) = 1\n"
+        "  c3: duplicate_count(id) = 0\n"
+        "  c4:\n"
+        "    clauses:\n"
+        "      - invalid_count(status):\n"
+        "          valid_values: [ok]\n"
+        "          fail: when > 0\n"
+        "  c5: avg(amount) > 0\n"
     )
     for backend in BACKENDS:
         workspace.write(
@@ -158,7 +160,7 @@ def test_relative_path_spellings_select_the_same_checks(
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
-    assert len(tw.run(retail, paths=[arg], record=False).results) == 14
+    assert len(tw.run(retail, paths=[arg], record=False).results) == 9
 
 
 def test_a_path_escaping_the_project_by_dotdot_is_refused(retail: Path) -> None:
@@ -210,7 +212,7 @@ def test_an_invalid_loaded_project_runs_nothing(retail: Path) -> None:  # R5
     with pytest.raises(tw.ProjectError) as caught:
         tw.run(project)
     assert [str(d) for d in caught.value.diagnostics] == [
-        "checks/bad.yml:4:5: error: unknown metric 'row_cnt' — did you mean 'row_count'?"
+        "checks/bad.yml:4:7: error: unknown metric 'row_cnt' — did you mean 'row_count'?"
     ]
     assert not (retail / ".tablewatch").exists()
 
@@ -221,7 +223,7 @@ def test_warning_diagnostics_are_logged_and_do_not_stop_the_run(
     (retail / "checks" / "empty.yml").write_text("", encoding="utf-8")
     with caplog.at_level(logging.WARNING, logger="tablewatch"):
         result = tw.run(retail, record=False)
-    assert len(result.results) == 19
+    assert len(result.results) == 12
     warned = [
         r
         for r in caplog.records
@@ -260,7 +262,7 @@ def test_a_store_failing_mid_save_leaves_no_partial_run(retail: Path) -> None:
         db.close()
 
     second = tw.run(retail, tags=["catalogue"])
-    assert second.count(tw.Outcome.PASS) == 4
+    assert second.count(tw.Outcome.PASS) == 2
     assert second.exit_code() == 2
     assert len(second.record_errors) == 1
     assert "disk said no" in second.record_errors[0]
@@ -404,7 +406,7 @@ def test_cli_quiet_with_a_broken_store(retail: Path) -> None:
     break_store(retail)
     code, out, err = _cli(retail, "-q", "run", "checks/inventory")
     assert code == 2
-    assert out.startswith("5 checks · 4 pass · 1 warn")
+    assert out.startswith("3 checks · 2 pass · 1 warn")
     assert out.count("\n") == 1
     assert err.count("tablewatch: could not record the run: ") == 1
     assert "Traceback" not in err
@@ -415,9 +417,9 @@ def test_cli_json_with_a_broken_store_is_still_a_valid_report(retail: Path) -> N
     code, out, err = _cli(retail, "run", "checks/inventory", "--output", "json")
     assert code == 2
     report = json.loads(out)
-    assert report["schema_version"] == 1
+    assert report["schema_version"] == 2
     assert report["run"]["trigger"] == "cli"
-    assert len(report["results"]) == 5
+    assert len(report["results"]) == 3
     assert "could not record the run" in err
 
 
@@ -445,11 +447,13 @@ def test_cli_fail_on_warn_is_recorded_as_the_exit_code(retail: Path) -> None:  #
 
 
 def test_json_report_shape_is_unchanged(retail: Path) -> None:
+    # Spec 032 bumped schema_version to 2 (a check's clauses, D8): the
+    # per-check shape changed, so this is the new shape, not the old one.
     code, out, _ = _cli(retail, "run", "--output", "json", "--no-store")
     assert code == 1
     report = json.loads(out)
     assert set(report) == {"schema_version", "run", "results"}
-    assert report["schema_version"] == 1
+    assert report["schema_version"] == 2
     assert set(report["run"]) == {
         "id",
         "project",
@@ -467,7 +471,6 @@ def test_json_report_shape_is_unchanged(retail: Path) -> None:
         "check_id",
         "name",
         "expression",
-        "metric",
         "dataset",
         "datasource",
         "outcome",
@@ -478,12 +481,23 @@ def test_json_report_shape_is_unchanged(retail: Path) -> None:
         "owner",
         "tags",
         "duration_ms",
-        # Added by spec 026 (additive: schema_version stays 1).
+        "clauses",
+    }
+    assert set(report["results"][0]["clauses"][0]) == {
+        "clause_id",
+        "key",
+        "expression",
+        "metric",
+        "outcome",
+        "value",
+        "display_value",
+        "message",
+        "source",
         "measured",
         "unit",
         "previous",
     }
-    assert report["run"]["counts"] == {"fail": 6, "pass": 11, "warn": 2}
+    assert report["run"]["counts"] == {"fail": 4, "pass": 6, "warn": 2}
 
 
 def test_python_and_cli_agree_check_by_check(retail: Path) -> None:

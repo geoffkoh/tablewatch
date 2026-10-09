@@ -73,7 +73,7 @@ def test_s2_list_shows_one_named_check(workspace: Workspace) -> None:
     assert code == 0
     [row] = json.loads(out)
     assert row["name"] == "t_usable"
-    assert [c["key"] for c in row["clauses"]][0] == "row_count"
+    assert next(c["key"] for c in row["clauses"]) == "row_count"
     code, out, _ = invoke(workspace.root, "list")
     assert "t_usable" in out and out.rstrip().endswith("1 checks")
 
@@ -83,8 +83,10 @@ def test_s3_the_old_list_shape_is_a_diagnostic(workspace: Workspace) -> None:
         workspace, "dataset: t\ndatasource: duck\nchecks:\n  - row_count > 0\n"
     )
     assert _errors(project) == [
-        'checks/t.yml:3:1: error: "checks:" is a mapping of name to clauses — a '
-        "list is the old unnamed shorthand, no longer supported"
+        (
+            'checks/t.yml:3:1: error: "checks:" is a mapping of name to clauses — a '
+            "list is the old unnamed shorthand, no longer supported"
+        )
     ]
     code, _, err = invoke(workspace.root, "validate")
     assert code == 3 and "old unnamed shorthand" in err
@@ -97,8 +99,10 @@ def test_s4_a_duplicate_name_in_one_file(workspace: Workspace) -> None:
         "  t_usable: row_count > 0\n  t_usable: row_count > 1\n",
     )
     assert _errors(project) == [
-        'checks/t.yml:5:3: error: duplicate check name "t_usable" — names must be '
-        "unique within a dataset"
+        (
+            'checks/t.yml:5:3: error: duplicate check name "t_usable" — names must be '
+            "unique within a dataset"
+        )
     ]
 
 
@@ -110,8 +114,10 @@ def test_s4_a_duplicate_name_across_files_of_one_dataset(workspace: Workspace) -
         "checks/b.yml", "dataset: t\ndatasource: duck\nchecks:\n  n: row_count > 1\n"
     )
     assert _errors(workspace.load()) == [
-        'checks/b.yml:4:3: error: duplicate check name "n" — names must be unique '
-        "within a dataset (first at checks/a.yml:4:3)"
+        (
+            'checks/b.yml:4:3: error: duplicate check name "n" — names must be unique '
+            "within a dataset (first at checks/a.yml:4:3)"
+        )
     ]
 
 
@@ -209,8 +215,10 @@ def test_s10_id_is_not_used_anywhere(workspace: Workspace, clause: str) -> None:
     )
     line, col = (5, 5) if check_level else (7, 11)
     assert _errors(_load(workspace, text)) == [
-        f'checks/t.yml:{line}:{col}: error: "id:" is not used here — a check\'s '
-        "name is its identity"
+        (
+            f'checks/t.yml:{line}:{col}: error: "id:" is not used here — a check\'s '
+            "name is its identity"
+        )
     ]
 
 
@@ -222,8 +230,10 @@ def test_s11_names_keep_reference_characters_out(
 ) -> None:
     text = f"dataset: t\ndatasource: duck\nchecks:\n  {name}: row_count > 0\n"
     assert _errors(_load(workspace, text)) == [
-        f'checks/t.yml:4:3: error: check name "{name}" is not valid — use letters, '
-        'digits, "_" and "-", starting with a letter'
+        (
+            f'checks/t.yml:4:3: error: check name "{name}" is not valid — use letters, '
+            'digits, "_" and "-", starting with a letter'
+        )
     ]
 
 
@@ -233,8 +243,10 @@ def test_s11_a_clause_name_follows_the_same_rule(workspace: Workspace) -> None:
         "      - row_count > 0:\n          name: Order volume\n"
     )
     assert _errors(_load(workspace, text)) == [
-        'checks/t.yml:7:17: error: clause name "Order volume" is not valid — use '
-        'letters, digits, "_" and "-", starting with a letter'
+        (
+            'checks/t.yml:7:17: error: clause name "Order volume" is not valid — use '
+            'letters, digits, "_" and "-", starting with a letter'
+        )
     ]
 
 
@@ -320,8 +332,10 @@ def test_a_duplicate_clause_key_names_the_fix(workspace: Workspace) -> None:
         "      - row_count > 0\n      - row_count < 10\n"
     )
     assert _errors(_load(workspace, text)) == [
-        'checks/t.yml:7:9: error: duplicate clause "row_count" in check "n" — give '
-        "one of them a name:"
+        (
+            'checks/t.yml:7:9: error: duplicate clause "row_count" in check "n" — give '
+            "one of them a name:"
+        )
     ]
     named = text.replace(
         "      - row_count < 10\n",
@@ -336,8 +350,10 @@ def test_a_check_without_an_expression_or_clauses(workspace: Workspace) -> None:
         "      warn: when < 1\n"
     )
     assert _errors(_load(workspace, text)) == [
-        'checks/t.yml:5:5: error: check "n" needs an expression, or `clauses:` with '
-        "a list of them"
+        (
+            'checks/t.yml:5:5: error: check "n" needs an expression, or `clauses:` with '
+            "a list of them"
+        )
     ]
 
 

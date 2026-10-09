@@ -526,7 +526,7 @@ def test_serve_on_all_addresses_writes_only_json(recorded: Recorded) -> None:  #
     by_message = {r["message"]: r for r in records}
     started = (
         f"tablewatch serve: http://127.0.0.1:{port}/ (listening on all IPv4 "
-        "addresses; project retail-example, 19 checks; API at /api/v1)"
+        "addresses; project retail-example, 12 checks; API at /api/v1)"
     )
     assert by_message[started]["level"] == "info"
     [warning] = [r for r in records if "no authentication" in r["message"]]

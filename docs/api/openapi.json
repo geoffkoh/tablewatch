@@ -38,6 +38,13 @@
       "CheckDetail": {
         "description": "One check with its rule: what `GET /checks/{id}` serves.",
         "properties": {
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/ClauseSummary"
+            },
+            "title": "Clauses",
+            "type": "array"
+          },
           "dataset": {
             "title": "Dataset",
             "type": "string"
@@ -135,6 +142,7 @@
           "source",
           "location",
           "latest",
+          "clauses",
           "rule"
         ],
         "title": "CheckDetail",
@@ -310,7 +318,15 @@
         "type": "object"
       },
       "CheckSummary": {
+        "description": "A named check. `metric`, `unit` and `rule` are its clause's when it has\none clause; with several, `metric` is `\"check\"` and `clauses` lists them.",
         "properties": {
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/ClauseSummary"
+            },
+            "title": "Clauses",
+            "type": "array"
+          },
           "dataset": {
             "title": "Dataset",
             "type": "string"
@@ -404,9 +420,49 @@
           "tags",
           "source",
           "location",
-          "latest"
+          "latest",
+          "clauses"
         ],
         "title": "CheckSummary",
+        "type": "object"
+      },
+      "ClauseSummary": {
+        "description": "One clause of a named check, as loaded.",
+        "properties": {
+          "expression": {
+            "title": "Expression",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "percent",
+              "duration",
+              "number"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "expression",
+          "metric",
+          "unit",
+          "location"
+        ],
+        "title": "ClauseSummary",
         "type": "object"
       },
       "CompareCondition": {

@@ -49,7 +49,7 @@ def test_an_unmatched_check_id(retail: Path) -> None:  # S4
     real = _prefix(retail, "inventory.products")
     code, text = _err(retail, "run", "--no-store", "--check", real, "--check", "zzzz")
     assert code == 3
-    assert f"no checks match check id 'zzzz'{NOTHING}" in text
+    assert f"no checks match check 'zzzz'{NOTHING}" in text
 
 
 def test_every_unmatched_selector_is_named_in_order(retail: Path) -> None:  # S5
@@ -65,7 +65,7 @@ def test_every_unmatched_selector_is_named_in_order(retail: Path) -> None:  # S5
     )
     assert code == 3
     assert (
-        "no checks match path 'checks/inventry', tag 'sails', check id 'zzzz'" + NOTHING
+        "no checks match path 'checks/inventry', tag 'sails', check 'zzzz'" + NOTHING
     ) in text
 
 
@@ -211,7 +211,7 @@ def test_a_folder_with_no_checks(retail: Path) -> None:  # S19
 def test_a_blank_path_never_widens(retail: Path) -> None:  # S21, D4
     with pytest.raises(tw.SelectionError, match=f"^no checks match path ''{NOTHING}$"):
         tw.run(retail, paths=[""], record=False)
-    with pytest.raises(tw.SelectionError, match="check id ''"):
+    with pytest.raises(tw.SelectionError, match="check ''"):
         tw.run(retail, check_ids=[""], record=False)
 
 

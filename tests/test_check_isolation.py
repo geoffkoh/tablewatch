@@ -83,7 +83,9 @@ def _checks(root: Path, ds: str, body: str) -> None:
 
 def _results(root: Path) -> list[tuple[str, str, float | None, str | None]]:
     run = tw.run(root, record=False)
-    return [(r.check.name, r.outcome.value, r.value, r.message) for r in run.results]
+    return [
+        (r.check.canonical, r.outcome.value, r.value, r.message) for r in run.results
+    ]
 
 
 THREE = "  - explodes(id) > 0\n  - row_count > 0\n  - missing_count(id) = 0\n"
@@ -187,7 +189,7 @@ def test_the_dataset_safety_net_still_catches_planning(
 
     monkeypatch.setattr(runner, "plan_dataset", planted)
     results = {
-        (r.check.dataset.datasource, r.check.name): (r.outcome.value, r.message)
+        (r.check.dataset.datasource, r.check.canonical): (r.outcome.value, r.message)
         for r in tw.run(project, record=False).results
     }
     assert results[("duck", "row_count > 0")][0] == "error"
