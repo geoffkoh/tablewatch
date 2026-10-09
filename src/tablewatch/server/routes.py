@@ -18,7 +18,6 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from tablewatch._version import __version__
 from tablewatch.checks.model import Check
-from tablewatch.config.loader import ID_PATTERN, MAX_ID_LENGTH
 from tablewatch.config.loader import Project as LoadedProject
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.jsonvalues import utc
@@ -27,6 +26,7 @@ from tablewatch.server import schemas
 
 OutcomeFilter = Literal["pass", "warn", "fail", "error", "skipped", "not_run"]
 RUN_ID = re.compile(r"^[0-9a-f]{32}$")
+CHECK_ID = re.compile(r"^[0-9a-f]{16}$")  # derive_check_id
 MAX_CURSOR = 256
 
 # Every error the API answers, in one table: the codes the envelope carries,
@@ -201,7 +201,7 @@ def get_run(context: Context, run_id: str) -> schemas.RunDetail:
 
 
 def _is_check_id(value: str) -> bool:
-    return len(value) <= MAX_ID_LENGTH and ID_PATTERN.match(value) is not None
+    return CHECK_ID.match(value) is not None
 
 
 def _not_found(what: str) -> ApiError:

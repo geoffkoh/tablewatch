@@ -197,7 +197,7 @@ def test_every_body_names_no_directory(retail: Path, tmp_path: Path) -> None:
     )
     for name in ("far", "home"):
         (retail / "checks" / f"{name}.yml").write_text(
-            f"datasource: {name}\ndataset: t\nchecks:\n  - row_count > 0\n",
+            f"datasource: {name}\ndataset: t\nchecks:\n  c1: row_count > 0\n",
             encoding="utf-8",
         )
     tw.run(retail)
@@ -212,11 +212,11 @@ def test_every_body_names_no_directory(retail: Path, tmp_path: Path) -> None:
     )
     (retail / "checks" / "drop.yml").write_text(
         f"datasource: drop\ndataset: '{tmp_path / 'x.csv'}'\n"
-        "checks:\n  - row_count > 0\n",
+        "checks:\n  c1: row_count > 0\n",
         encoding="utf-8",
     )
     (retail / "checks" / "broken.yml").write_text(
-        f"dataset: t\nchecks:\n  - nosuchmetric({tmp_path}) > 0\n", encoding="utf-8"
+        f"dataset: t\nchecks:\n  c1: nosuchmetric({tmp_path}) > 0\n", encoding="utf-8"
     )
     text = _every_body(retail)
     for found in _machine_dirs(retail, tmp_path):
@@ -446,7 +446,7 @@ def _json_lines(err: str) -> list[dict[str, Any]]:
 
 def _break(root: Path) -> None:
     (root / "checks" / "broken.yml").write_text(
-        "dataset: t\nchecks:\n  - nosuchmetric > 0\n", encoding="utf-8"
+        "dataset: t\nchecks:\n  c1: nosuchmetric > 0\n", encoding="utf-8"
     )
 
 

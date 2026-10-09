@@ -191,7 +191,7 @@ def test_an_unused_datasource(tmp_path: Path) -> None:  # S18
         encoding="utf-8",
     )
     (root / "checks" / "t.yml").write_text(
-        "dataset: t\ndatasource: a\nchecks:\n  - row_count > 0\n", encoding="utf-8"
+        "dataset: t\ndatasource: a\nchecks:\n  c1: row_count > 0\n", encoding="utf-8"
     )
     code, text = _err(root, "list", "--datasource", "b")
     assert code == 3

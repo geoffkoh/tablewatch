@@ -120,7 +120,7 @@ def test_an_empty_table_and_an_all_null_column_fail_not_error(
     )
     run = _project(tmp_path, ds, checks)
     (tmp_path / "checks" / "n.yml").write_text(
-        "dataset: nulls\ndatasource: d\nchecks:\n  - freshness(loaded_at) < 6h\n",
+        "dataset: nulls\ndatasource: d\nchecks:\n  c1: freshness(loaded_at) < 6h\n",
         encoding="utf-8",
     )
     project = load_project(tmp_path)
@@ -182,7 +182,7 @@ def test_duckdb_infinity_is_a_placeholder_not_an_error(tmp_path: Path) -> None:
     run = _project(
         tmp_path,
         "  d: {type: duckdb, path: i.duckdb, timezone: America/New_York}\n",
-        "dataset: t\ndatasource: d\nchecks:\n  - row_count > 0\n"
+        "dataset: t\ndatasource: d\nchecks:\n  c1: row_count > 0\n"
         "  - freshness(ts) < 6h\n  - freshness(d) < 6h\n",
     )
     results = _by_name(run)
@@ -479,7 +479,7 @@ def test_a_mixed_sqlite_column_orders_as_text(tmp_path: Path) -> None:
     run = _project(
         tmp_path,
         "  d: {type: sqlite, path: m.db}\n",
-        "dataset: t\ndatasource: d\nchecks:\n  - freshness(at) < 2d\n",
+        "dataset: t\ndatasource: d\nchecks:\n  c1: freshness(at) < 2d\n",
     )
     [result] = run.results
     assert result.message == "newest row at 2026-09-26 08:00:00 UTC"

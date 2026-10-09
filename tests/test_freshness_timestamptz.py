@@ -12,6 +12,7 @@ import pytest
 from tablewatch.config.loader import load_project
 from tablewatch.engine.runner import CheckResult, run_checks
 from tests.conftest import invoke
+from tests.named import named_checks
 
 NOW = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
 PYPROJECT = Path(__file__).parents[1] / "pyproject.toml"
@@ -45,7 +46,8 @@ def tz(tmp_path: Path) -> Path:
 
 def _run(root: Path, datasource: str, body: str) -> list[CheckResult]:
     (root / "checks" / "events.yml").write_text(
-        f"dataset: events\ndatasource: {datasource}\nchecks:\n{body}", encoding="utf-8"
+        f"dataset: events\ndatasource: {datasource}\n{named_checks(body)}",
+        encoding="utf-8",
     )
     project = load_project(root)
     assert project.ok, project.diagnostics
@@ -70,7 +72,7 @@ def test_the_cli_exits_0_on_a_fresh_zoned_column(
     db.execute("INSERT INTO events (id, loaded_at) VALUES (1, now() - INTERVAL 2 HOUR)")
     db.close()
     (tz / "checks" / "events.yml").write_text(
-        "dataset: events\ndatasource: wh\nchecks:\n  - freshness(loaded_at) < 3h\n",
+        "dataset: events\ndatasource: wh\nchecks:\n  c1: freshness(loaded_at) < 3h\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(tz)
@@ -149,7 +151,7 @@ def test_the_edges_match_timestamp(tz: Path) -> None:  # F8
     db.close()
     [zoned] = _run(tz, "wh", "  - freshness(loaded_at) < 6h\n")
     (tz / "checks" / "plain.yml").write_text(
-        "dataset: plain\ndatasource: wh\nchecks:\n  - freshness(loaded_at) < 6h\n",
+        "dataset: plain\ndatasource: wh\nchecks:\n  c1: freshness(loaded_at) < 6h\n",
         encoding="utf-8",
     )
     project = load_project(tz)

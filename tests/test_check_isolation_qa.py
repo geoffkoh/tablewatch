@@ -152,7 +152,7 @@ def test_the_safety_net_message_is_the_first_line_and_other_datasets_run(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # I4
     (project / "checks" / "other.yml").write_text(
-        "dataset: t\ndatasource: lite\nchecks:\n  - row_count > 0\n", encoding="utf-8"
+        "dataset: t\ndatasource: lite\nchecks:\n  c1: row_count > 0\n", encoding="utf-8"
     )
     _checks(project, "duck", "  - row_count > 0\n")
 

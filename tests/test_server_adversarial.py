@@ -456,7 +456,7 @@ def test_serve_never_exits_1_or_2_with_failing_checks_or_broken_files(
     # The recorded runs failed (exit 1), and a broken file is an error
     # diagnostic: serve still exits 0 on a clean stop.
     (recorded.root / "checks" / "broken.yml").write_text(
-        "dataset: nope\nchecks:\n  - row_count >>> 1\n", encoding="utf-8"
+        "dataset: nope\nchecks:\n  c1: row_count >>> 1\n", encoding="utf-8"
     )
     started = start(recorded.root, monkeypatch)
     assert started.code == 0, started.stderr
@@ -1062,7 +1062,7 @@ def test_serve_never_creates_a_datasource_engine(
     root = demo(
         tmp_path / "demo",
         **{
-            "orders.yml": "dataset: orders\ndatasource: wh\nchecks:\n  - row_count > 0\n"
+            "orders.yml": "dataset: orders\ndatasource: wh\nchecks:\n  c1: row_count > 0\n"
         },
     )
     calls: list[object] = []

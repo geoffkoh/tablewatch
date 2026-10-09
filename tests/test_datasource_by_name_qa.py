@@ -13,6 +13,7 @@ import pytest
 
 import tablewatch as tw
 from tests.conftest import invoke
+from tests.named import named_checks
 from tests.test_server import served
 
 LEAKS = ("Pa55w0rd", "admin", "db.prod", "\x1b", "[2J")
@@ -148,7 +149,7 @@ def test_a_block_scalar_name_with_a_newline_is_not_a_name(tmp_path: Path) -> Non
         tmp_path,
         (
             "orders.yml",
-            "dataset: orders\ndatasource: |\n  warehous\nchecks:\n  - row_count > 0\n",
+            "dataset: orders\ndatasource: |\n  warehous\nchecks:\n  c1: row_count > 0\n",
         ),
     )
     assert _state(root) == ("", "not_a_name")
@@ -219,7 +220,7 @@ def empty(request: pytest.FixtureRequest, tmp_path: Path) -> Path:
 
 def _write(root: Path, checks: str) -> None:
     (root / "checks" / "t.yml").write_text(
-        f"dataset: t\nchecks:\n{checks}", encoding="utf-8"
+        f"dataset: t\n{named_checks(checks)}", encoding="utf-8"
     )
 
 

@@ -39,6 +39,7 @@ from tablewatch.results.store import (
 )
 from tests import postgres
 from tests.conftest import invoke
+from tests.named import named_checks
 from tests.postgres import (
     AWKWARD_PASSWORD,
     NOT_SET,
@@ -101,7 +102,7 @@ def _project(root: Path, url: str, checks: str, *, name: str = "pg") -> Path:
         encoding="utf-8",
     )
     (root / "checks" / "orders.yml").write_text(
-        f"dataset: orders\ndatasource: duck\nchecks:\n{checks}", encoding="utf-8"
+        f"dataset: orders\ndatasource: duck\n{named_checks(checks)}", encoding="utf-8"
     )
     set_rows(root, 1000)
     return root

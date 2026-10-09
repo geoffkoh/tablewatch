@@ -44,11 +44,11 @@ def test_every_metric_has_an_options_definition() -> None:
 @pytest.mark.parametrize(
     "document",
     [
-        "checks:\n  - row_count > 0\n",  # no dataset
-        "dataset: t\nchecks:\n  - row_cont > 0\n",  # unknown metric
-        "dataset: t\nchecks:\n  - avg(a) > 0:\n      whre: x\n",  # unknown option
-        "dataset: t\nchecks:\n  - row_count:\n      warn: < 5\n",  # trigger without when
-        "dataset: t\nchecks:\n  - schema:\n      where: a > 0\n",  # schema is not scoped
+        "checks:\n  c1: row_count > 0\n",  # no dataset
+        "dataset: t\nchecks:\n  c1: row_cont > 0\n",  # unknown metric
+        "dataset: t\nchecks:\n  c1:\n    clauses:\n      - avg(a) > 0:\n          whre: x\n",  # unknown option
+        "dataset: t\nchecks:\n  c1:\n    clauses:\n      - row_count:\n          warn: < 5\n",  # trigger without when
+        "dataset: t\nchecks:\n  c1:\n    clauses:\n      - schema:\n          where: a > 0\n",  # schema is not scoped
         "dataset: t\nsurprise: 1\nchecks: []\n",
     ],
 )

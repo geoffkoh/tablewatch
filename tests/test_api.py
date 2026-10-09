@@ -87,15 +87,15 @@ ROW_CNT = """\
 dataset: orders
 datasource: lake
 checks:
-  - row_cnt > 0
-  - missing_count(id) = 0
+  c1: row_cnt > 0
+  c2: missing_count(id) = 0
 """
 
 ON_WH = """\
 dataset: orders
 datasource: wh
 checks:
-  - row_count > 0
+  c1: row_count > 0
 """
 
 

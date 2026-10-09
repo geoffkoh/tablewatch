@@ -13,7 +13,7 @@ from tablewatch.diagnostics import ProjectError
 from tests.conftest import EXAMPLES, Workspace, invoke
 
 CONFIG = b"name: p\ndatasources:\n  wh:\n    type: duckdb\n    path: wh.duckdb\n"
-GOOD = b"dataset: orders\nchecks:\n  - row_count > 0\n"
+GOOD = b"dataset: orders\nchecks:\n  c1: row_count > 0\n"
 
 
 @pytest.fixture
@@ -195,7 +195,10 @@ def test_a_mistake_in_nested_merges_is_placed_where_written(
     project: Path, options: bytes, where: str
 ) -> None:
     _write(
-        project, b"dataset: orders\nchecks:\n  - row_count:\n      " + options + b"\n"
+        project,
+        b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count:\n      "
+        + options
+        + b"\n",
     )
     assert _errors(project) == [
         f"checks/orders.yml:{where}: error: `warn:` takes a trigger such as 'when < 10'"
@@ -205,7 +208,7 @@ def test_a_mistake_in_nested_merges_is_placed_where_written(
 def test_an_alias_of_a_merge(project: Path) -> None:
     _write(
         project,
-        b"dataset: orders\nchecks:\n  - row_count > 0: &m {<<: {name: 5}}\n"
+        b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count > 0: &m {<<: {name: 5}}\n"
         b"  - row_count > 1:\n      <<: *m\n",
     )
     assert (
@@ -266,11 +269,14 @@ def test_a_nested_merged_filter_has_no_line_but_an_own_one_does(project: Path) -
 
 
 def test_merged_triggers_keep_the_id_through_a_merge_of_a_merge(project: Path) -> None:
-    _write(project, b"dataset: orders\nchecks:\n  - row_count:\n      warn: when < 5\n")
+    _write(
+        project,
+        b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count:\n          warn: when < 5\n",
+    )
     direct = tw.load(project).checks[0].id
     _write(
         project,
-        b"dataset: orders\nchecks:\n  - row_count:\n      <<: {<<: {warn: when < 5}}\n",
+        b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count:\n          <<: {<<: {warn: when < 5}}\n",
     )
     assert tw.load(project).checks[0].id == direct
 

@@ -24,6 +24,7 @@ from tablewatch.metrics.base import (
     Unit,
 )
 from tests.conftest import invoke
+from tests.named import named_checks
 
 BACKENDS = pytest.mark.parametrize("ds", ["duck", "lite"])
 
@@ -76,7 +77,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _checks(root: Path, ds: str, body: str) -> None:
     (root / "checks" / "t.yml").write_text(
-        f"dataset: t\ndatasource: {ds}\nchecks:\n{body}", encoding="utf-8"
+        f"dataset: t\ndatasource: {ds}\n{named_checks(body)}", encoding="utf-8"
     )
 
 
@@ -174,7 +175,7 @@ def test_the_dataset_safety_net_still_catches_planning(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # I4
     (project / "checks" / "other.yml").write_text(
-        "dataset: t\ndatasource: lite\nchecks:\n  - row_count > 0\n", encoding="utf-8"
+        "dataset: t\ndatasource: lite\nchecks:\n  c1: row_count > 0\n", encoding="utf-8"
     )
     _checks(project, "duck", "  - row_count > 0\n  - missing_count(id) = 0\n")
     real = plan_dataset

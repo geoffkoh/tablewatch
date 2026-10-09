@@ -99,7 +99,7 @@ def test_p13_a_change_check_errors_naming_only_the_variable(
     _set_url(retail, "postgresql+psycopg://tw:${env:TW_STORE_PASSWORD}@localhost/tw")
     checks = retail / "checks" / "change.yml"
     checks.write_text(
-        f"dataset: {DATASET}\nchecks:\n  - change(row_count) > -50%\n",
+        f"dataset: {DATASET}\nchecks:\n  c1: change(row_count) > -50%\n",
         encoding="utf-8",
     )
     code, out, _ = invoke(retail, "run", "--no-store", "--output", "json")
@@ -139,7 +139,7 @@ def test_a_password_needs_no_escaping(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_p16_long_values_record(retail: Path) -> None:
     folder = retail / "checks" / "long.yml"
     folder.write_text(
-        f"dataset: {'d' * 600}\nowner: {'o' * 400}\nchecks:\n  - row_count >= 0\n",
+        f"dataset: {'d' * 600}\nowner: {'o' * 400}\nchecks:\n  c1: row_count >= 0\n",
         encoding="utf-8",
     )
     run = tw.run(retail)
@@ -163,7 +163,7 @@ def test_p16_a_long_project_name(retail: Path) -> None:
 
 def test_p17_a_control_character_in_a_name(retail: Path) -> None:
     (retail / "checks" / "nul.yml").write_text(
-        f'dataset: {DATASET}\nchecks:\n  - row_count > 0:\n      name: "a\\0b"\n',
+        f'dataset: {DATASET}\nchecks:\n  c1:\n    clauses:\n      - row_count > 0:\n          name: "a\\0b"\n',
         encoding="utf-8",
     )
     code, out, err = invoke(retail, "validate")

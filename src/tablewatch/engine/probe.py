@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import Connection, Engine, column, false, literal, select
 
-from tablewatch.checks.model import Check, Dataset
+from tablewatch.checks.model import Clause, Dataset
 from tablewatch.checks.sources import FileSource
 from tablewatch.config.loader import Project
 from tablewatch.datasources import connection_problem, open_engine
@@ -121,7 +121,7 @@ def _probe_dataset(
 ) -> str | None:
     """Probe one dataset; a reason when the database refused for another cause."""
     source = dataset.from_clause()
-    uses = _columns(dataset.checks)
+    uses = _columns([c for check in dataset.checks for c in check.clauses])
     columns = list(uses)
     if _ok(
         conn, select(*[column(c) for c in columns] or [literal(1)]).select_from(source)
@@ -149,10 +149,10 @@ def _probe_dataset(
     return None
 
 
-def _columns(checks: list[Check]) -> dict[str, list[tuple[Check, int]]]:
-    """Each column the checks name, in order, with where each check names it."""
-    uses: dict[str, list[tuple[Check, int]]] = {}
-    for check in checks:
+def _columns(clauses: list[Clause]) -> dict[str, list[tuple[Clause, int]]]:
+    """Each column the clauses name, in order, with where each clause names it."""
+    uses: dict[str, list[tuple[Clause, int]]] = {}
+    for check in clauses:
         if not check.metric.args_are_columns:
             continue
         call = check.expression.metric

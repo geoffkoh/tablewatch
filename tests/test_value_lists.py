@@ -19,6 +19,7 @@ from tablewatch.config.project import DuckDBDatasource
 from tablewatch.datasources import dialect_for
 from tablewatch.metrics.base import MetricContext, OptionValueError
 from tests.conftest import invoke
+from tests.named import named_checks
 
 BUILTIN = Path(__file__).parents[1] / "src" / "tablewatch" / "metrics" / "builtin"
 ROWS = [(1, "pending"), (2, "shipped"), (3, "shiped"), (4, None), (5, ""), (6, "NULL")]
@@ -50,7 +51,7 @@ def nulls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _write(root: Path, ds: str, body: str) -> None:
     (root / "checks" / "orders.yml").write_text(
-        f"datasource: {ds}\ndataset: orders\nchecks:\n{body}", encoding="utf-8"
+        f"datasource: {ds}\ndataset: orders\n{named_checks(body)}", encoding="utf-8"
     )
 
 

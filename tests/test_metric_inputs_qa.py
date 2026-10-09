@@ -23,6 +23,7 @@ from tablewatch.engine.planner import plan_dataset
 from tablewatch.metrics import registry
 from tablewatch.metrics.base import Measure, Measurement, Metric, MetricContext, Unit
 from tests.conftest import invoke
+from tests.named import named_checks
 from tests.test_files_datasets import ORDERS_CSV, make_project, run_json
 from tests.test_server import served
 
@@ -69,7 +70,7 @@ def project(tmp_path: Path) -> Path:
 
 def _write(root: Path, ds: str, body: str, dataset: str = "t") -> None:
     (root / "checks" / "t.yml").write_text(
-        f"dataset: {dataset}\ndatasource: {ds}\nchecks:\n{body}", encoding="utf-8"
+        f"dataset: {dataset}\ndatasource: {ds}\n{named_checks(body)}", encoding="utf-8"
     )
 
 

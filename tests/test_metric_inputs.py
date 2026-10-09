@@ -17,6 +17,7 @@ import pytest
 import tablewatch as tw
 from tablewatch.metrics.base import MetricInputError, kind_of, numeric
 from tests.conftest import invoke
+from tests.named import named_checks
 
 SECRET = "bob@secret.example"
 BOTH = pytest.mark.parametrize("ds", ["duck", "lite"])
@@ -68,7 +69,7 @@ def _run(
     root: Path, ds: str, checks: str
 ) -> dict[str, tuple[str, float | None, str | None]]:
     (root / "checks" / "t.yml").write_text(
-        f"dataset: t\ndatasource: {ds}\nchecks:\n{checks}  - row_count > 0\n",
+        f"dataset: t\ndatasource: {ds}\n{named_checks(checks)}  - row_count > 0\n",
         encoding="utf-8",
     )
     result = tw.run(root)

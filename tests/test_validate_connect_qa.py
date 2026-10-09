@@ -17,6 +17,7 @@ import pytest
 from tablewatch.config import load_project
 from tablewatch.dsl.ast import MetricCall
 from tests.conftest import invoke
+from tests.named import named_checks
 
 BACKENDS = ["sqlite", "duckdb"]
 DDL = (
@@ -59,7 +60,7 @@ def _project(
     _write(
         root,
         "checks/orders.yml",
-        f"dataset: {dataset}\ndatasource: shop\nchecks:\n" + checks,
+        f"dataset: {dataset}\ndatasource: shop\n" + named_checks(checks),
     )
     _database(root / filename, backend, DDL, "INSERT INTO orders (id) VALUES (1)")
     return root
@@ -187,7 +188,7 @@ def test_schema_qualified_on_duckdb(tmp_path: Path) -> None:
     _write(
         root,
         "checks/gone.yml",
-        "dataset: nope.orders\ndatasource: shop\nchecks:\n  - row_count > 0\n",
+        "dataset: nope.orders\ndatasource: shop\nchecks:\n  c1: row_count > 0\n",
     )
     _database(
         root / "shop.duckdb",
@@ -249,12 +250,12 @@ def test_a_load_error_and_an_unreached_datasource_is_3(
     _write(
         root,
         "checks/remote.yml",
-        "dataset: orders\ndatasource: down\nchecks:\n  - row_count > 0\n",
+        "dataset: orders\ndatasource: down\nchecks:\n  c1: row_count > 0\n",
     )
     _write(
         root,
         "checks/bad.yml",
-        "dataset: orders\ndatasource: shop\nchecks:\n  - no_such_metric > 0\n",
+        "dataset: orders\ndatasource: shop\nchecks:\n  c1: no_such_metric > 0\n",
     )
     code, out, err = invoke(root, "validate", "--connect")
     assert code == 3
@@ -345,7 +346,7 @@ def test_a_missing_parent_directory_is_not_created(
     _write(
         root,
         "checks/o.yml",
-        "dataset: orders\ndatasource: shop\nchecks:\n  - row_count > 0\n",
+        "dataset: orders\ndatasource: shop\nchecks:\n  c1: row_count > 0\n",
     )
     code, _, err = invoke(root, "validate", "--connect")
     assert code == 2
@@ -405,7 +406,7 @@ def test_run_and_connect_find_existing_files(
     _write(
         root,
         "checks/o.yml",
-        "dataset: orders\ndatasource: shop\nchecks:\n  - row_count = 1\n",
+        "dataset: orders\ndatasource: shop\nchecks:\n  c1: row_count = 1\n",
     )
     siblings = sorted(p.name for p in target.parent.iterdir())
     code, out, err = invoke(root, "run")
@@ -436,7 +437,7 @@ def test_every_duckdb_statement_is_a_zero_row_probe(tmp_path: Path) -> None:  # 
     _write(
         root,
         "checks/gone.yml",
-        "dataset: gone\ndatasource: shop\nchecks:\n  - row_count > 0\n",
+        "dataset: gone\ndatasource: shop\nchecks:\n  c1: row_count > 0\n",
     )
     text = (root / "checks/orders.yml").read_text(encoding="utf-8")
     (root / "checks/orders.yml").write_text(

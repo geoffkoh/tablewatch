@@ -83,7 +83,7 @@ def test_nothing_selected_means_nothing_ran(retail: Path) -> None:
 
 def test_invalid_project_exits_3_with_location(retail: Path) -> None:
     (retail / "checks" / "broken.yml").write_text(
-        "dataset: x\nchecks:\n  - row_count >\n"
+        "dataset: x\nchecks:\n  c1: row_count >\n"
     )
     code, output = invoke(retail, "run")
     assert code == 3

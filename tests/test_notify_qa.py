@@ -437,12 +437,12 @@ def test_off_in_a_folder_and_back_on_in_a_dataset(project: Path, hook: Hook) -> 
     _write(
         project,
         "checks/sales/other.yml",
-        "dataset: orders\ndatasource: lite\nchecks:\n  - row_count > 5\n",
+        "dataset: orders\ndatasource: lite\nchecks:\n  c1: row_count > 5\n",
     )
     _write(
         project,
         "checks/top.yml",
-        "dataset: orders\ndatasource: lite\nchecks:\n  - row_count > 6\n",
+        "dataset: orders\ndatasource: lite\nchecks:\n  c1: row_count > 6\n",
     )
     loaded = load_project(project)
     assert loaded.ok, loaded.diagnostics
@@ -466,7 +466,7 @@ def test_more_malformed_notify(project: Path, value: str, column: int) -> None: 
     _write(
         project,
         "checks/sales/orders.yml",
-        f"dataset: orders\ndatasource: lite\nnotify: {value}\nchecks:\n  - row_count > 0\n",
+        f"dataset: orders\ndatasource: lite\nnotify: {value}\nchecks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3
@@ -481,7 +481,7 @@ def test_an_empty_notify_is_a_diagnostic(project: Path) -> None:  # N14: `notify
     _write(
         project,
         "checks/sales/orders.yml",
-        "dataset: orders\ndatasource: lite\nnotify:\nchecks:\n  - row_count > 0\n",
+        "dataset: orders\ndatasource: lite\nnotify:\nchecks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3, out + err
@@ -524,7 +524,7 @@ def test_every_notify_mistake_in_one_pass(project: Path) -> None:  # N13, rule 5
         project,
         "checks/b.yml",
         "dataset: orders\ndatasource: lite\nnotify: [data-alerts, nope3]\n"
-        "checks:\n  - row_count > 0\n",
+        "checks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3

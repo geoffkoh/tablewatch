@@ -204,7 +204,7 @@ def test_p16_long_user_values_on_both_backends(store_url: str, tmp_path: Path) -
     root = _project(tmp_path / "p", store_url, "  - row_count > 0\n")
     (root / "checks" / "long.yml").write_text(
         f"dataset: {'d' * 600}\ndatasource: duck\nowner: {'o' * 400}\n"
-        "checks:\n  - row_count >= 0\n",
+        "checks:\n  c1: row_count >= 0\n",
         encoding="utf-8",
     )
     code, out, err = invoke(root, "run", "--output", "json")
@@ -226,7 +226,7 @@ def test_a_nul_in_owner_is_replaced_the_same_on_both(
     root = _project(tmp_path / "p", store_url, "  - row_count > 0\n")
     (root / "checks" / "orders.yml").write_text(
         'dataset: orders\ndatasource: duck\nowner: "a\\0b"\n'
-        "checks:\n  - row_count > 0\n",
+        "checks:\n  c1: row_count > 0\n",
         encoding="utf-8",
     )
     run = _record_at(root, T0)
@@ -242,7 +242,7 @@ def test_a_nul_in_a_tag_records_the_same_on_both(
     root = _project(tmp_path / "p", store_url, "  - row_count > 0\n")
     (root / "checks" / "orders.yml").write_text(
         'dataset: orders\ndatasource: duck\ntags: ["x\\0y"]\n'
-        "checks:\n  - row_count > 0\n",
+        "checks:\n  c1: row_count > 0\n",
         encoding="utf-8",
     )
     code, out, err = invoke(root, "run", "--output", "json")

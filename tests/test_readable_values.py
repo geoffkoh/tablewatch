@@ -39,63 +39,77 @@ MAIN = """\
 dataset: events
 datasource: {ds}
 checks:
-  - freshness(loaded_at) < 6h
-  - freshness(loaded_at):
-      name: Stale feed
-      fail: when > 1h
-  - freshness(future_at) < 6h
-  - freshness(skew_at) < 6h
-  - freshness(skew60_at) < 6h
-  - freshness(skew61_at) < 6h
-  - freshness(far_at) < 6h
-  - freshness(nines_at) < 6h
-  - freshness(day) < 2d
-  - freshness(day_future) < 6h
-  - freshness(empty_at) < 6h
-  - freshness(loaded_at) < 5h:
-      where: id < 0
-  - schema:
-      required_columns: [id, loaded_at]
+  c1: freshness(loaded_at) < 6h
+  c2:
+    clauses:
+      - freshness(loaded_at):
+          name: Stale feed
+          fail: when > 1h
+  c3: freshness(future_at) < 6h
+  c4: freshness(skew_at) < 6h
+  c5: freshness(skew60_at) < 6h
+  c6: freshness(skew61_at) < 6h
+  c7: freshness(far_at) < 6h
+  c8: freshness(nines_at) < 6h
+  c9: freshness(day) < 2d
+  c10: freshness(day_future) < 6h
+  c11: freshness(empty_at) < 6h
+  c12:
+    clauses:
+      - freshness(loaded_at) < 5h:
+          where: id < 0
+  c13:
+    clauses:
+      - schema:
+          required_columns: [id, loaded_at]
 """
 
 BAD_SCHEMA = """\
 dataset: events
 datasource: {ds}
 checks:
-  - schema:
-      name: Schema with problems
-      required_columns: [id, nope]
-      forbidden_columns: [loaded_at]
+  c1:
+    clauses:
+      - schema:
+          name: Schema with problems
+          required_columns: [id, nope]
+          forbidden_columns: [loaded_at]
 """
 
 ONE_PROBLEM = """\
 dataset: events
 datasource: {ds}
 checks:
-  - schema:
-      name: One problem
-      required_columns: [id, nope]
+  c1:
+    clauses:
+      - schema:
+          name: One problem
+          required_columns: [id, nope]
 """
 
 ZONED = """\
 dataset: events
 datasource: {ds}
 checks:
-  - freshness(loaded_at) < 12h
-  - freshness(loaded_at):
-      name: Stale feed
-      fail: when > 1h
+  c1: freshness(loaded_at) < 12h
+  c2:
+    clauses:
+      - freshness(loaded_at):
+          name: Stale feed
+          fail: when > 1h
 """
 
 NY = """\
 dataset: events
 datasource: {ds}
 checks:
-  - freshness(loaded_at) < 6h
-  - freshness(loaded_at):
-      name: Stale feed
-      warn: when > 1d
-  - freshness(loaded_at) between 0s and 6h
+  c1: freshness(loaded_at) < 6h
+  c2:
+    clauses:
+      - freshness(loaded_at):
+          name: Stale feed
+          warn: when > 1d
+  c3: freshness(loaded_at) between 0s and 6h
 """
 
 ROW = {
@@ -132,11 +146,11 @@ def _build(root: Path) -> None:
         (checks / f"{ds}_ny.yml").write_text(NY.format(ds=f"{ds}_ny"), encoding="utf-8")
     (checks / "lake_london.yml").write_text(
         "dataset: events\ndatasource: lake_london\n"
-        "checks:\n  - freshness(loaded_at) < 6h\n",
+        "checks:\n  c1: freshness(loaded_at) < 6h\n",
         encoding="utf-8",
     )
     (checks / "lite_aware.yml").write_text(
-        "dataset: events\ndatasource: lite\nchecks:\n  - freshness(aware_at) < 6h\n",
+        "dataset: events\ndatasource: lite\nchecks:\n  c1: freshness(aware_at) < 6h\n",
         encoding="utf-8",
     )
     stamps = [c for c in ROW if c.endswith("_at")]

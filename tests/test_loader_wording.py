@@ -14,6 +14,7 @@ import tablewatch as tw
 from tablewatch.config import load_project
 from tablewatch.output import console
 from tests.conftest import invoke
+from tests.named import named_checks
 
 YML = """\
 name: wording
@@ -42,7 +43,9 @@ def p(tmp_path: Path) -> Path:
 
 def checks(root: Path, body: str, name: str = "a.yml", ds: str = "staging") -> None:
     _write(
-        root, f"checks/{name}", f"dataset: orders\ndatasource: {ds}\nchecks:\n{body}"
+        root,
+        f"checks/{name}",
+        f"dataset: orders\ndatasource: {ds}\n{named_checks(body)}",
     )
 
 

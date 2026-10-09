@@ -647,7 +647,7 @@ def test_debug_logs_name_no_matched_file(landing: Path, symlink: bool) -> None:
 def test_a_dataset_filter_applies_across_files(landing: Path) -> None:
     (landing / "checks" / "landing" / "orders.yml").write_text(
         f"datasource: drop\ndataset: {PATTERN}\nfilter: id = 1\n"
-        "checks:\n  - row_count = 2\n",
+        "checks:\n  c1: row_count = 2\n",
         encoding="utf-8",
     )
     code, report, _ = run_json(landing)

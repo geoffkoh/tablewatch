@@ -160,7 +160,20 @@ class LatestResult(_Model):
         )
 
 
+class ClauseSummary(_Model):
+    """One clause of a named check, as loaded."""
+
+    key: str
+    expression: str
+    metric: str
+    unit: Unit
+    location: Location
+
+
 class CheckSummary(_Model):
+    """A named check. `metric`, `unit` and `rule` are its clause's when it has
+    one clause; with several, `metric` is `"check"` and `clauses` lists them."""
+
     id: str
     name: str
     expression: str
@@ -175,15 +188,17 @@ class CheckSummary(_Model):
     source: str
     location: Location
     latest: LatestResult | None
+    clauses: list[ClauseSummary]
 
     @classmethod
     def of(cls, check: Check, latest: LatestResult | None) -> CheckSummary:
+        first = check.clauses[0]
         return cls(
             id=check.id,
             name=check.name,
             expression=check.canonical,
-            metric=check.metric.name,
-            unit=check.unit.value,
+            metric=first.metric.name if len(check.clauses) == 1 else "check",
+            unit=first.unit.value,
             dataset=check.dataset.name,
             datasource=check.dataset.datasource,
             datasource_state=check.dataset.datasource_state,
@@ -192,6 +207,16 @@ class CheckSummary(_Model):
             source=str(check.location),
             location=Location.of(check.location),
             latest=latest,
+            clauses=[
+                ClauseSummary(
+                    key=c.key,
+                    expression=c.canonical,
+                    metric=c.metric.name,
+                    unit=c.unit.value,
+                    location=Location.of(c.location),
+                )
+                for c in check.clauses
+            ],
         )
 
 
@@ -248,10 +273,14 @@ class Rule(_Model):
 
     @classmethod
     def of(cls, check: Check) -> Rule:
+        """A one-clause check's rule; empty for several clauses (no one axis)."""
+        if len(check.clauses) != 1:
+            return cls(expect=None, warn=None, fail=None)
+        clause = check.clauses[0]
         return cls(
-            expect=_condition(check.expectation),
-            warn=_condition(check.warn),
-            fail=_condition(check.fail),
+            expect=_condition(clause.expectation),
+            warn=_condition(clause.warn),
+            fail=_condition(clause.fail),
         )
 
 
@@ -397,7 +426,7 @@ class CheckSource(_Model):
             filter=FileFilter(
                 line=dataset.filter_line,
                 text=dataset.filter,
-                applies=check.metric.scoped,
+                applies=any(c.metric.scoped for c in check.clauses),
             )
             if dataset.filter is not None and dataset.filter_line is not None
             else None,
@@ -548,7 +577,8 @@ class RunDetail(Run):
     @classmethod
     def of_detail(cls, run: RunRow) -> RunDetail:
         return cls(
-            **dict(Run.of(run)), results=[RunResultItem.of(r) for r in run.results]
+            **dict(Run.of(run)),
+            results=[RunResultItem.of(r) for r in run.check_results],
         )
 
 

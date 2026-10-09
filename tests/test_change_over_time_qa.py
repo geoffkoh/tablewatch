@@ -29,6 +29,7 @@ from tablewatch.config import load_project
 from tablewatch.results.models import RunRow
 from tablewatch.results.store import MIGRATIONS_DIR, ResultStore
 from tests.conftest import invoke
+from tests.named import named_checks
 from tests.test_change_over_time import results, set_rows, write
 
 BOTH = pytest.mark.parametrize("ds", ["duck", "lite"])
@@ -560,7 +561,7 @@ def test_skipped_never_alerts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         )
         set_rows(root, 1000)
         (root / "checks" / "orders.yml").write_text(
-            "dataset: orders\ndatasource: lite\nnotify: a\nchecks:\n" + CHANGE,
+            "dataset: orders\ndatasource: lite\nnotify: a\n" + named_checks(CHANGE),
             encoding="utf-8",
         )
         tw.run(root)  # skipped: the baseline

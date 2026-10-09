@@ -123,9 +123,11 @@ def test_an_env_reference_never_echoes_the_rest(url: str) -> None:
 FLOAT_OPTIONS = """\
 dataset: sales.orders
 checks:
-  - row_count > 1
-  - invalid_count(amount) = 0:
-      valid_max: 99.5
+  c1: row_count > 1
+  c2:
+    clauses:
+      - invalid_count(amount) = 0:
+          valid_max: 99.5
 """
 
 
@@ -174,12 +176,14 @@ def test_compile_prints_a_float_option(
 SHAPES = """\
 dataset: sales.orders
 checks:
-  - row_count > 1
-  - row_count < 1000000
-  - duplicate_count(customer_id) = 0
-  - duplicate_count(customer_id) < 5
-  - sql_metric = 0:
-      query: select 0
+  c1: row_count > 1
+  c2: row_count < 1000000
+  c3: duplicate_count(customer_id) = 0
+  c4: duplicate_count(customer_id) < 5
+  c5:
+    clauses:
+      - sql_metric = 0:
+          query: select 0
 """
 
 
@@ -208,7 +212,7 @@ def test_a_dataset_with_only_queries_has_no_scan(retail: Path) -> None:
     _write(
         retail,
         "sales/queries.yml",
-        "dataset: sales.only_queries\nchecks:\n  - duplicate_count(order_id) = 0\n",
+        "dataset: sales.only_queries\nchecks:\n  c1: duplicate_count(order_id) = 0\n",
     )
     check = _check(retail, "sales.only_queries", "duplicate_count(order_id) = 0")
     compiled = compile_dataset(check.dataset, tw.load(retail).config.datasources)
@@ -223,7 +227,7 @@ def test_a_dataset_with_only_a_schema_check(retail: Path) -> None:
     _write(
         retail,
         "sales/schema_only.yml",
-        "dataset: sales.only_schema\nchecks:\n  - schema:\n"
+        "dataset: sales.only_schema\nchecks:\n  c1:\n    clauses:\n      - schema:\n"
         "      required_columns: [order_id]\n",
     )
     check = _check(retail, "sales.only_schema", "schema")
@@ -277,7 +281,7 @@ def test_a_condition_is_served_verbatim(
     _write(
         retail,
         "sales/hostile.yml",
-        "dataset: sales.orders\nchecks:\n  - failed_rows:\n"
+        "dataset: sales.orders\nchecks:\n  c1:\n    clauses:\n      - failed_rows:\n"
         f'      condition: "{escaped}"\n',
     )
     check = next(
@@ -302,7 +306,7 @@ def test_a_pinned_id_with_dots_and_colons(retail: Path, pinned: str) -> None:
     _write(
         retail,
         "sales/pinned.yml",
-        f"dataset: sales.orders\nchecks:\n  - row_count > 7:\n      id: {pinned}\n",
+        f"dataset: sales.orders\nchecks:\n  c1:\n    clauses:\n      - row_count > 7:\n          id: {pinned}\n",
     )
     with served(retail) as client:
         for path in (pinned, pinned.replace(":", "%3A").replace(".", "%2E")):
@@ -364,7 +368,7 @@ def test_an_unknown_timezone_is_an_error_not_a_500(retail: Path) -> None:
     _write(
         retail,
         "far/t.yml",
-        "dataset: t\ndatasource: far\nchecks:\n  - row_count > 0\n",
+        "dataset: t\ndatasource: far\nchecks:\n  c1: row_count > 0\n",
     )
     far = _check(retail, "t", "row_count > 0")
     with served(retail) as client:
@@ -387,7 +391,7 @@ def test_credential_free_answer_is_fast(
     _write(
         root,
         "o.yml",
-        "dataset: public.orders\ndatasource: pg\nchecks:\n  - row_count > 0\n",
+        "dataset: public.orders\ndatasource: pg\nchecks:\n  c1: row_count > 0\n",
     )
     (root / "tablewatch.yml").write_text(
         "name: pg\ndatasources:\n  pg:\n    type: postgres\n    host: 192.0.2.1\n"
@@ -436,13 +440,19 @@ def test_readme_quotes_the_warning_verbatim() -> None:  # X3
 ODD_SCALARS = """\
 dataset: sales.orders
 checks:
-  - row_count > 2
-  - invalid_count(amount) = 0:
-      valid_values: [0x10, 0o17, 1_000, 1e3, -0.0, .5, 99999999999999999999999999]
-  - invalid_count(status) = 0:
-      valid_values: [true, false, 2024-01-01]
-  - invalid_count(created_at) = 0:
-      valid_values: [2024-01-01T10:00:00Z, 2024-01-01T10:00:00]
+  c1: row_count > 2
+  c2:
+    clauses:
+      - invalid_count(amount) = 0:
+          valid_values: [0x10, 0o17, 1_000, 1e3, -0.0, .5, 99999999999999999999999999]
+  c3:
+    clauses:
+      - invalid_count(status) = 0:
+          valid_values: [true, false, 2024-01-01]
+  c4:
+    clauses:
+      - invalid_count(created_at) = 0:
+          valid_values: [2024-01-01T10:00:00Z, 2024-01-01T10:00:00]
 """
 
 

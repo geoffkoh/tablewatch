@@ -47,12 +47,16 @@ filter: status != 'test'
 
 checks:
   # Tier-1: paged out of hours.
-  - row_count > 0
-  - missing_count(order_id) = 0:
-      name: Every return has an order
-      # fail: when > 5   (restore after the CRM backfill)
-  - avg(amount) between 1 and 500:
-      where: reason != 'damaged'
+  c1: row_count > 0
+  c2:
+    clauses:
+      - missing_count(order_id) = 0:
+          name: Every return has an order
+          # fail: when > 5   (restore after the CRM backfill)
+  c3:
+    clauses:
+      - avg(amount) between 1 and 500:
+          where: reason != 'damaged'
   # - duplicate_count(return_id) = 0   (off: known duplicates)
 # canary-tw-5f3a: not part of any check
 owner: returns@example.com
@@ -96,7 +100,7 @@ def filtered(retail: Path) -> Path:
 @pytest.fixture
 def broken(retail: Path) -> Path:
     (retail / "checks" / "sales" / "lost.yml").write_text(
-        "dataset: sales.lost\ndatasource: nowhere\nchecks:\n  - row_count > 0\n",
+        "dataset: sales.lost\ndatasource: nowhere\nchecks:\n  c1: row_count > 0\n",
         encoding="utf-8",
     )
     return retail
@@ -113,7 +117,7 @@ def remote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "# canary-tw-5f3a\nowner: ops@example.com\n", encoding="utf-8"
     )
     (root / "checks" / "pg" / "orders.yml").write_text(
-        "dataset: public.orders\ndatasource: pg\nchecks:\n  - row_count > 0\n"
+        "dataset: public.orders\ndatasource: pg\nchecks:\n  c1: row_count > 0\n"
         "  - invalid_count(status) = 0:\n      valid_values: [open, closed]\n",
         encoding="utf-8",
     )
@@ -126,7 +130,7 @@ def remote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         datasource = "wh" if name == "events" else name
         (root / "checks" / "wh" / f"{name}.yml").write_text(
             f"dataset: {dataset}\ndatasource: {datasource}\n"
-            "checks:\n  - row_count > 0\n",
+            "checks:\n  c1: row_count > 0\n",
             encoding="utf-8",
         )
     return root

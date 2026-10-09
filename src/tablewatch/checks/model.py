@@ -48,8 +48,20 @@ _RANK = {
 }
 
 
-def worst(outcomes: list[Outcome]) -> Outcome:
+def worst(outcomes: Sequence[Outcome]) -> Outcome:
     return max(outcomes, key=lambda o: o.rank, default=Outcome.PASS)
+
+
+def check_outcome(clauses: Sequence[Outcome]) -> Outcome:
+    """A check's outcome from its clauses': all must hold, so the worst.
+
+    `skipped` only when every clause was skipped; otherwise a skipped
+    clause neither passes nor spoils the check.
+    """
+    judged = [o for o in clauses if o is not Outcome.SKIPPED]
+    if clauses and not judged:
+        return Outcome.SKIPPED
+    return worst(judged)
 
 
 @dataclass(frozen=True)
@@ -125,28 +137,21 @@ class Dataset:
 
 @dataclass(eq=False)
 class Check:
-    """One check, fully resolved.
+    """One named check: a set of clauses that must all hold.
 
-    Exactly one of `expectation` or the `warn`/`fail` triggers decides the
-    outcome. An expectation states what should be true and fails when it is
-    not; a trigger states a problem condition and fires when it is met.
+    Its name is its identity, unique within its dataset; its outcome is the
+    worst of its clauses' (`CheckResult.outcome`). Renaming it starts a new
+    history.
 
-    Public: `id`, `short_id`, `name`, `canonical`, `location`, `dataset`.
-    Other attributes (`metric`, `expression`, `options`, ...) are provisional
-    and may change between releases.
+    Public: `id`, `short_id`, `name`, `location`, `dataset`, `clauses`.
+    Other attributes are provisional and may change between releases.
     """
 
     id: str
     name: str
     dataset: Dataset
-    metric: Metric
-    expression: CheckExpr
-    location: SourceLocation
-    expectation: Condition | None = None
-    warn: Condition | None = None
-    fail: Condition | None = None
-    where: str | None = None
-    options: dict[str, Any] = field(default_factory=dict)
+    location: SourceLocation  # where its name is written
+    clauses: list[Clause] = field(default_factory=list)
     # Its own lines in the file; None when they could not be told apart.
     # Never part of its identity.
     span: SourceSpan | None = None
@@ -163,8 +168,50 @@ class Check:
         return "\n".join(lines[span.start_line - 1 : span.end_line])
 
     @property
+    def canonical(self) -> str:
+        """Its clauses rendered back to normalised text, in file order."""
+        return "; ".join(clause.canonical for clause in self.clauses)
+
+    @property
+    def short_id(self) -> str:
+        return self.id[:12]
+
+    def __repr__(self) -> str:
+        return f"Check({self.dataset.name} {self.name!r}, {len(self.clauses)} clauses)"
+
+
+@dataclass(eq=False)
+class Clause:
+    """One rule of a check, fully resolved: a metric and what it must satisfy.
+
+    Exactly one of `expectation` or the `warn`/`fail` triggers decides the
+    outcome. An expectation states what should be true and fails when it is
+    not; a trigger states a problem condition and fires when it is met.
+
+    `key` names it within its check: its `name:`, or the metric call
+    without its rule (`missing_count(customer_id)`). Provisional: every
+    attribute may change between releases.
+    """
+
+    id: str
+    key: str
+    check: Check
+    metric: Metric
+    expression: CheckExpr
+    location: SourceLocation
+    expectation: Condition | None = None
+    warn: Condition | None = None
+    fail: Condition | None = None
+    where: str | None = None
+    options: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def dataset(self) -> Dataset:
+        return self.check.dataset
+
+    @property
     def relative_change(self) -> bool:
-        """A `change()` check whose rule is in `%`: compared relatively."""
+        """A `change()` clause whose rule is in `%`: compared relatively."""
         if self.expression.change is None:
             return False
         rules = (self.expectation, self.warn, self.fail)
@@ -177,7 +224,7 @@ class Check:
 
     @property
     def unit(self) -> Unit:
-        """The unit of this check's value: a relative change is a percentage."""
+        """The unit of this clause's value: a relative change is a percentage."""
         from tablewatch.metrics.base import Unit
 
         return Unit.PERCENT if self.relative_change else self.metric.unit
@@ -186,9 +233,8 @@ class Check:
     def canonical(self) -> str:
         return canonical_text(self.expression, self.warn, self.fail)
 
-    @property
-    def short_id(self) -> str:
-        return self.id[:12]
+    def __repr__(self) -> str:
+        return f"Clause({self.check.name}.{self.key})"
 
 
 def canonical_text(
@@ -203,32 +249,37 @@ def canonical_text(
     return " | ".join(parts)
 
 
-def derive_check_id(
-    path: Path,
-    dataset: str,
-    canonical: str,
+def derive_check_id(datasource: str, dataset: str, name: str) -> str:
+    """A check's identity: its name on its dataset, wherever its file lives.
+
+    Moving the file or editing its clauses keeps the id (and the history);
+    renaming the check starts a new one.
+    """
+    text = f"check\0{datasource}\0{dataset}\0{name}"
+    return hashlib.sha1(text.encode(), usedforsecurity=False).hexdigest()[:16]
+
+
+def derive_clause_id(
+    check_id: str,
+    key: str,
     where: str | None,
     *,
     identity: Sequence[tuple[str, str]] = (),
 ) -> str:
-    """A stable identity for a check that has no explicit `id:`.
+    """A clause's identity within its check: what it measures, not its rule.
 
-    Derived from where the check lives, what it says, and which rows it
-    looks at (`where:`), so history carries across runs. Editing any of
-    those starts a new history; pinning an explicit `id:` keeps it. Options
-    such as `valid_values` are deliberately left out — refining a rule is
-    the same check, better stated — except those a metric names in
-    `identity_options` (`failed_rows`' `condition:`, `sql_metric`'s
-    `query:`), which are what the check is: `identity` holds them as
-    (option, raw text) pairs. Text is compared with whitespace collapsed, so
-    re-indenting or re-wrapping SQL keeps the id; any other edit starts a
-    new history. With no `identity`, the input is what it always was.
+    Derived from its check, its key and which rows it looks at (`where:`),
+    so tightening a threshold or refining an option keeps its history, while
+    measuring something else starts a new one. A metric's `identity_options`
+    (`failed_rows`' `condition:`, `sql_metric`'s `query:`) are what it
+    measures: `identity` holds them as (option, raw text) pairs. Text is
+    compared with whitespace collapsed. An independent hash, never the
+    check's id extended, so a prefix of a check id never matches a clause.
     """
-    text = f"{path.as_posix()}\0{dataset}\0{canonical}\0{_collapse(where or '')}"
+    text = f"clause\0{check_id}\0{key}\0{_collapse(where or '')}"
     for option, value in identity:
         text += f"\0{option}={_collapse(value)}"
-    digest = hashlib.sha1(text.encode(), usedforsecurity=False)
-    return digest.hexdigest()[:16]
+    return hashlib.sha1(text.encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 def _collapse(text: str) -> str:

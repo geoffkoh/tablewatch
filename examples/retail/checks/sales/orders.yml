@@ -1,20 +1,27 @@
 dataset: sales.orders
 
 checks:
-  - row_count > 0
-  - row_count:
-      name: Order volume
-      warn: when < 100
-      fail: when = 0
-  - missing_count(customer_id) = 0
-  - duplicate_count(order_id) = 0
-  - invalid_percent(status) < 1%:
-      valid_values: [pending, shipped, delivered, cancelled]
-  - avg(amount) between 10 and 500
-  - freshness(created_at) < 6h
-  - failed_rows:
-      name: No negative amounts
-      condition: amount < 0
-  - schema:
-      required_columns: [order_id, customer_id, status, amount, created_at]
-      column_types: {amount: decimal}
+  # Every rule an order must keep before downstream jobs read the table.
+  orders_usable:
+    clauses:
+      - row_count > 0
+      - missing_count(customer_id) = 0
+      - duplicate_count(order_id) = 0
+      - invalid_percent(status) < 1%:
+          valid_values: [pending, shipped, delivered, cancelled]
+      - freshness(created_at) < 6h
+  order_volume:
+    clauses:
+      - row_count:
+          warn: when < 100
+          fail: when = 0
+  average_amount: avg(amount) between 10 and 500
+  no_negative_amounts:
+    clauses:
+      - failed_rows:
+          condition: amount < 0
+  orders_schema:
+    clauses:
+      - schema:
+          required_columns: [order_id, customer_id, status, amount, created_at]
+          column_types: {amount: decimal}

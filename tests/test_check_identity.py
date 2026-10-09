@@ -10,40 +10,57 @@ import pytest
 import tablewatch as tw
 from tablewatch.checks.model import derive_check_id
 from tests.conftest import invoke
+from tests.named import named_checks
 
 ALL_METRICS = """\
 dataset: orders
 
 checks:
-  - row_count > 0
-  - row_count:
-      warn: when < 100
-      fail: when = 0
-  - row_count > 0:
-      where: region = 'eu'
-  - missing_count(customer_id) = 0
-  - missing_percent(email) < 5%:
-      missing_values: ['', 'N/A']
-  - invalid_count(status) = 0:
-      valid_values: [pending, shipped]
-  - invalid_percent(email) < 1%:
-      valid_regex: '^[^@]+@[^@]+$'
-  - distinct_count(status) between 1 and 10
-  - duplicate_count(order_id) = 0
-  - duplicate_percent(order_id, line) < 1%
-  - min(total) >= 0
-  - max(total) < 100000
-  - avg(total) between 10 and 500
-  - sum(total) > 0
-  - freshness(created_at) < 6h
-  - schema:
-      required_columns: [order_id]
-  - sql_metric(orders_today) > 0:
-      id: orders-today
-      query: select count(*) from orders
-  - failed_rows:
-      id: no-negative-totals
-      condition: total < 0
+  c1: row_count > 0
+  c2:
+    clauses:
+      - row_count:
+          warn: when < 100
+          fail: when = 0
+  c3:
+    clauses:
+      - row_count > 0:
+          where: region = 'eu'
+  c4: missing_count(customer_id) = 0
+  c5:
+    clauses:
+      - missing_percent(email) < 5%:
+          missing_values: ['', 'N/A']
+  c6:
+    clauses:
+      - invalid_count(status) = 0:
+          valid_values: [pending, shipped]
+  c7:
+    clauses:
+      - invalid_percent(email) < 1%:
+          valid_regex: '^[^@]+@[^@]+$'
+  c8: distinct_count(status) between 1 and 10
+  c9: duplicate_count(order_id) = 0
+  c10: duplicate_percent(order_id, line) < 1%
+  c11: min(total) >= 0
+  c12: max(total) < 100000
+  c13: avg(total) between 10 and 500
+  c14: sum(total) > 0
+  c15: freshness(created_at) < 6h
+  c16:
+    clauses:
+      - schema:
+          required_columns: [order_id]
+  c17:
+    clauses:
+      - sql_metric(orders_today) > 0:
+          id: orders-today
+          query: select count(*) from orders
+  c18:
+    clauses:
+      - failed_rows:
+          id: no-negative-totals
+          condition: total < 0
 """
 
 TODAY = [
@@ -108,20 +125,28 @@ TWO_FAILED = """\
 dataset: orders
 
 checks:
-  - failed_rows:
-      condition: total < 0
-  - failed_rows:
-      condition: customer_id is null
+  c1:
+    clauses:
+      - failed_rows:
+          condition: total < 0
+  c2:
+    clauses:
+      - failed_rows:
+          condition: customer_id is null
 """
 
 TWO_SQL = """\
 dataset: orders
 
 checks:
-  - sql_metric > 0:
-      query: select count(*) from orders
-  - sql_metric > 0:
-      query: select count(*) from customers
+  c1:
+    clauses:
+      - sql_metric > 0:
+          query: select count(*) from orders
+  c2:
+    clauses:
+      - sql_metric > 0:
+          query: select count(*) from customers
 """
 
 
@@ -188,7 +213,7 @@ def test_the_same_sql_twice_is_a_duplicate(
     lake: Path, first: str, second: str
 ) -> None:  # M3
     (lake / "checks" / "orders.yml").write_text(
-        f"dataset: orders\n\nchecks:\n{first}{second}", encoding="utf-8"
+        f"dataset: orders\n\n{named_checks(first)}{second}", encoding="utf-8"
     )
     code, _, err = invoke(lake, "validate")
     assert code == 3
@@ -212,7 +237,9 @@ REFORMATS = [
 
 @pytest.mark.parametrize("check", REFORMATS)
 def test_reformatting_keeps_the_id(lake: Path, check: str) -> None:  # M4
-    assert _checks(lake, f"dataset: orders\n\nchecks:\n{check}") == ["a37eb03d163d2dac"]
+    assert _checks(lake, f"dataset: orders\n\n{named_checks(check)}") == [
+        "a37eb03d163d2dac"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -227,16 +254,14 @@ def test_reformatting_keeps_the_id(lake: Path, check: str) -> None:  # M4
 def test_other_edits_start_a_new_history(
     lake: Path, condition: str, expected: str
 ) -> None:  # M4
-    text = (
-        f"dataset: orders\n\nchecks:\n  - failed_rows:\n      condition: {condition}\n"
-    )
+    text = f"dataset: orders\n\nchecks:\n  c1:\n    clauses:\n      - failed_rows:\n          condition: {condition}\n"
     assert _checks(lake, text) == [expected]
 
 
 def test_an_explicit_id_is_unaffected(lake: Path) -> None:  # M7
     for condition in ("total < 0", "total <= 0"):
         text = (
-            "dataset: orders\n\nchecks:\n  - failed_rows:\n      id: no-negative-totals\n"
+            "dataset: orders\n\nchecks:\n  c1:\n    clauses:\n      - failed_rows:\n          id: no-negative-totals\n"
             f"      condition: {condition}\n  - sql_metric > 0:\n      id: counted\n"
             f"      query: select count(*) from {'orders' if '<=' not in condition else 'customers'}\n"
         )
@@ -288,10 +313,10 @@ def test_where_and_condition_both_count(lake: Path) -> None:  # M10
 def test_path_and_dataset_still_count(lake: Path) -> None:  # M11
     one = "  - failed_rows:\n      condition: total < 0\n"
     assert _checks(
-        lake, f"dataset: orders\n\nchecks:\n{one}", "finance/orders.yml"
+        lake, f"dataset: orders\n\n{named_checks(one)}", "finance/orders.yml"
     ) == ["e837f5e50ffe3193"]
     (lake / "checks" / "finance" / "orders.yml").unlink()
-    assert _checks(lake, f"dataset: orders_v2\n\nchecks:\n{one}") == [
+    assert _checks(lake, f"dataset: orders_v2\n\n{named_checks(one)}") == [
         "0d3aa10538bdfd35"
     ]
 
@@ -299,7 +324,7 @@ def test_path_and_dataset_still_count(lake: Path) -> None:  # M11
 def test_hostile_input(lake: Path) -> None:  # S2
     assert _checks(
         lake,
-        'dataset: orders\n\nchecks:\n  - failed_rows:\n      condition: "total < 0\\0x"\n',
+        'dataset: orders\n\nchecks:\n  c1:\n    clauses:\n      - failed_rows:\n          condition: "total < 0\\0x"\n',
     ) == ["d5df30c18e8ecb1f"]
     long_query = "select count(*) from orders where " + " or ".join(
         f"order_id = {i}" for i in range(6000)
@@ -309,13 +334,13 @@ def test_hostile_input(lake: Path) -> None:  # S2
         len(
             _checks(
                 lake,
-                f"dataset: orders\n\nchecks:\n  - sql_metric > 0:\n      query: {long_query}\n",
+                f"dataset: orders\n\nchecks:\n  c1:\n    clauses:\n      - sql_metric > 0:\n          query: {long_query}\n",
             )
         )
         == 1
     )
     (lake / "checks" / "orders.yml").write_text(
-        'dataset: orders\n\nchecks:\n  - failed_rows:\n      condition: "   \\n  "\n',
+        'dataset: orders\n\nchecks:\n  c1:\n    clauses:\n      - failed_rows:\n          condition: "   \\n  "\n',
         encoding="utf-8",
     )
     code, _, err = invoke(lake, "validate")
@@ -326,7 +351,7 @@ def test_hostile_input(lake: Path) -> None:  # S2
 def test_the_loose_corners_are_decided(lake: Path) -> None:  # S3
     for literal in ("'a  b'", "'a b'"):
         text = (
-            "dataset: orders\n\nchecks:\n  - failed_rows:\n"
+            "dataset: orders\n\nchecks:\n  c1:\n    clauses:\n      - failed_rows:\n"
             f'      condition: "status = {literal}"\n'
         )
         assert _checks(lake, text) == ["dfae2ed81ea02750"]

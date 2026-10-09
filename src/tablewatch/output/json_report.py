@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from tablewatch.engine.runner import RunResult
+from tablewatch.engine.runner import ClauseResult, RunResult
 from tablewatch.jsonvalues import finite, utc
 
-SCHEMA_VERSION = 1
+# 2: one result per named check, its clauses under `clauses` (spec 032).
+SCHEMA_VERSION = 2
 
 
 def as_dict(run: RunResult) -> dict[str, Any]:
@@ -35,7 +36,6 @@ def as_dict(run: RunResult) -> dict[str, Any]:
                 "check_id": r.check.id,
                 "name": r.check.name,
                 "expression": r.check.canonical,
-                "metric": r.check.metric.name,
                 "dataset": r.check.dataset.name,
                 "datasource": r.check.dataset.datasource,
                 "outcome": str(r.outcome),
@@ -46,22 +46,38 @@ def as_dict(run: RunResult) -> dict[str, Any]:
                 "owner": r.check.dataset.owner,
                 "tags": list(r.check.dataset.tags),
                 "duration_ms": round(r.duration_ms, 3),
-                "measured": finite(r.measured),
-                "unit": str(r.check.unit),
-                "previous": None
-                if r.previous is None
-                else {
-                    "value": finite(r.previous.value),
-                    "run_id": r.previous.run_id,
-                    "started_at": utc(r.previous.started_at).isoformat(),
-                    "baseline": r.check.expression.change.label
-                    if r.check.expression.change
-                    else "previous run",
-                    "runs": r.previous.runs,
-                },
+                "clauses": [_clause(c) for c in r.clauses],
             }
             for r in run.results
         ],
+    }
+
+
+def _clause(r: ClauseResult) -> dict[str, Any]:
+    clause = r.clause
+    return {
+        "clause_id": clause.id,
+        "key": clause.key,
+        "expression": clause.canonical,
+        "metric": clause.metric.name,
+        "outcome": str(r.outcome),
+        "value": r.value,
+        "display_value": r.display_value,
+        "message": r.message,
+        "source": str(clause.location),
+        "measured": finite(r.measured),
+        "unit": str(clause.unit),
+        "previous": None
+        if r.previous is None
+        else {
+            "value": finite(r.previous.value),
+            "run_id": r.previous.run_id,
+            "started_at": utc(r.previous.started_at).isoformat(),
+            "baseline": clause.expression.change.label
+            if clause.expression.change
+            else "previous run",
+            "runs": r.previous.runs,
+        },
     }
 
 

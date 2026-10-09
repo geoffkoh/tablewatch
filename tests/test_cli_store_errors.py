@@ -174,7 +174,9 @@ def test_a_check_only_another_project_recorded(shared: tuple[Path, Path]) -> Non
     config = other / "checks" / "inventory" / "products.yml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
-            "checks:\n", "checks:\n  - row_count > 1:\n      id: only-in-other\n", 1
+            "checks:\n",
+            "checks:\n  c1:\n    clauses:\n      - row_count > 1:\n          id: only-in-other\n",
+            1,
         ),
         encoding="utf-8",
     )
@@ -194,14 +196,18 @@ def test_a_prefix_shared_with_another_project_is_not_ambiguous(
     config = other / "checks" / "inventory" / "products.yml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
-            "checks:\n", "checks:\n  - row_count > 1:\n      id: zz-other\n", 1
+            "checks:\n",
+            "checks:\n  c1:\n    clauses:\n      - row_count > 1:\n          id: zz-other\n",
+            1,
         ),
         encoding="utf-8",
     )
     mine = retail / "checks" / "inventory" / "products.yml"
     mine.write_text(
         mine.read_text(encoding="utf-8").replace(
-            "checks:\n", "checks:\n  - row_count > 1:\n      id: zz-mine\n", 1
+            "checks:\n",
+            "checks:\n  c1:\n    clauses:\n      - row_count > 1:\n          id: zz-mine\n",
+            1,
         ),
         encoding="utf-8",
     )

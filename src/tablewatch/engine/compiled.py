@@ -10,7 +10,7 @@ what a run sends cannot diverge.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from tablewatch.checks.model import DATASOURCE_NAME, Check, Dataset
@@ -117,18 +117,21 @@ class CompiledDataset:
     scan: CompiledScan | None
     queries: tuple[CompiledQuery, ...]
     schema_lookup: bool
-    # check id -> role -> measure key
+    # clause id -> role -> measure key
     wiring: Mapping[str, Mapping[str, str]]
     error: str | None
+    # clause id -> the id of its check
+    owners: Mapping[str, str] = field(default_factory=dict)
 
     def for_check(self, check_id: str) -> CheckStatements:
-        """The statements `check_id` uses; `shared_by` counts the other checks."""
-        mine = set(self.wiring.get(check_id, {}).values())
-        others = [
-            set(roles.values())
-            for other, roles in self.wiring.items()
-            if other != check_id
-        ]
+        """The statements `check_id`'s clauses use; `shared_by` counts other checks."""
+        used: dict[str, set[str]] = {}
+        for clause, roles in self.wiring.items():
+            used.setdefault(self.owners.get(clause, clause), set()).update(
+                roles.values()
+            )
+        mine = used.get(check_id, set())
+        others = [keys for owner, keys in used.items() if owner != check_id]
 
         def shared(keys: set[str]) -> int:
             return sum(1 for used in others if used & keys)
@@ -174,7 +177,9 @@ def compile_dataset(
             dialect,
             now or datetime.now(UTC),
             timezone_of(config),
-            list(checks) if checks is not None else None,
+            [clause for check in checks for clause in check.clauses]
+            if checks is not None
+            else None,
         )
     except DatasourceError as exc:
         return _failed(datasource_problem(dataset.datasource, exc))
@@ -196,8 +201,13 @@ def compile_dataset(
             for key, query in plan.queries.items()
         ),
         schema_lookup=plan.needs_schema,
-        wiring={check: dict(roles) for check, roles in plan.wiring.items()},
+        wiring={clause: dict(roles) for clause, roles in plan.wiring.items()},
         error=None,
+        owners={
+            clause.id: check.id
+            for check in (checks if checks is not None else dataset.checks)
+            for clause in check.clauses
+        },
     )
 
 

@@ -161,15 +161,21 @@ ORDERS = """\
     dataset: orders
     datasource: lite
     checks:
-      - row_count > 0:
-          name: has a
-          where: "k = 'a'"
-      - row_count > 0:
-          name: has b
-          where: "k = 'b'"
-      - row_count > 0:
-          name: has c
-          where: "k = 'c'"
+      c1:
+        clauses:
+          - row_count > 0:
+              name: has a
+              where: "k = 'a'"
+      c2:
+        clauses:
+          - row_count > 0:
+              name: has b
+              where: "k = 'b'"
+      c3:
+        clauses:
+          - row_count > 0:
+              name: has c
+              where: "k = 'c'"
     """
 
 
@@ -462,12 +468,12 @@ def test_an_unknown_notifier_in_a_check_file(project: Path) -> None:  # N13
     _write(
         project,
         "checks/sales/orders.yml",
-        "dataset: orders\ndatasource: lite\nnotify: data-alrts\nchecks:\n  - row_count > 0\n",
+        "dataset: orders\ndatasource: lite\nnotify: data-alrts\nchecks:\n  c1: row_count > 0\n",
     )
     _write(
         project,
         "checks/other.yml",
-        "dataset: other\ndatasource: lite\nnotify: [nope]\nchecks:\n  - row_count > 0\n",
+        "dataset: other\ndatasource: lite\nnotify: [nope]\nchecks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3
@@ -484,7 +490,7 @@ def test_a_malformed_notify(project: Path, value: str) -> None:  # N14
     _write(
         project,
         "checks/sales/orders.yml",
-        f"dataset: orders\ndatasource: lite\nnotify: {value}\nchecks:\n  - row_count > 0\n",
+        f"dataset: orders\ndatasource: lite\nnotify: {value}\nchecks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3
@@ -611,7 +617,7 @@ def test_a_selection_only_considers_what_it_ran(
     _write(
         project,
         "checks/marketing/leads.yml",
-        "dataset: orders\ndatasource: lite\nnotify: data-alerts\nchecks:\n  - row_count > 5\n",
+        "dataset: orders\ndatasource: lite\nnotify: data-alerts\nchecks:\n  c1: row_count > 5\n",
     )
     run(project, paths=["checks/sales"])
     set_rows(project, "a", "b", "c")

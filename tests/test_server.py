@@ -276,7 +276,7 @@ def test_serve_needs_no_credentials(
     root = demo(
         tmp_path / "demo",
         **{
-            "orders.yml": "dataset: orders\ndatasource: wh\nchecks:\n  - row_count > 0\n"
+            "orders.yml": "dataset: orders\ndatasource: wh\nchecks:\n  c1: row_count > 0\n"
         },
     )
 

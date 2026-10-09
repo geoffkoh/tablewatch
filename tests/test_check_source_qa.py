@@ -16,6 +16,7 @@ import tablewatch as tw
 from tablewatch.checks.model import Check, SourceSpan
 from tablewatch.config import loader as loader_module
 from tests.conftest import invoke
+from tests.named import named_checks
 from tests.test_server import get, served
 
 PROJECT = """\
@@ -60,8 +61,12 @@ def _exact_or_unavailable(check: Check, expected: tuple[int, int]) -> None:
 ALIAS_TO_A_KEY = """\
 dataset: t
 checks:
-  - &k row_count > 0: {where: a > 1}
-  - *k
+  c1:
+    clauses:
+      - &k row_count > 0: {where: a > 1}
+  c2:
+    clauses:
+      - *k
 """
 
 
@@ -82,7 +87,7 @@ def test_a_block_alias_to_another_checks_key_is_unavailable(project: Path) -> No
 def test_a_block_alias_to_another_checks_key_over_the_api(project: Path) -> None:
     _write(
         project,
-        "dataset: t\nchecks:\n  - &k row_count > 0:\n      where: a > 1\n  - *k\n",
+        "dataset: t\nchecks:\n  c1:\n    clauses:\n      - &k row_count > 0:\n          where: a > 1\n  c2:\n    clauses:\n      - *k\n",
     )
     alias = next(c for c in _checks(project) if c.where is None)
     with served(project) as client:
@@ -97,8 +102,8 @@ def test_a_block_alias_to_another_checks_key_over_the_api(project: Path) -> None
 @pytest.mark.parametrize(
     "text",
     [
-        "<<: {filter: x > 1}\ndataset: t\nchecks:\n  - row_count > 0\n",
-        "<<: &b {filter: x > 1}\ndataset: t\nchecks:\n  - row_count > 0\n",
+        "<<: {filter: x > 1}\ndataset: t\nchecks:\n  c1: row_count > 0\n",
+        "<<: &b {filter: x > 1}\ndataset: t\nchecks:\n  c1: row_count > 0\n",
     ],
 )
 def test_a_merged_filter_does_not_crash_the_loader(project: Path, text: str) -> None:
@@ -111,7 +116,7 @@ def test_a_merged_filter_does_not_crash_the_loader(project: Path, text: str) -> 
 
 
 def test_validate_on_a_merged_filter_exits_0(project: Path) -> None:
-    _write(project, "<<: {filter: x > 1}\ndataset: t\nchecks:\n  - row_count > 0\n")
+    _write(project, "<<: {filter: x > 1}\ndataset: t\nchecks:\n  c1: row_count > 0\n")
     code, out, err = invoke(project, "validate")
     assert "Traceback" not in err
     assert code == 0, (out, err)
@@ -134,7 +139,7 @@ def test_spans_do_not_make_loading_quadratic(
     body = "".join(
         f"  # c{i}\n  - row_count > {i}:\n      name: n{i}\n" for i in range(3000)
     )
-    _write(project, "dataset: t\nchecks:\n" + body)
+    _write(project, "dataset: t\n" + named_checks(body))
     with_spans = _load_seconds(project)
     monkeypatch.setattr(loader_module, "check_span", lambda *_: None)
     without = _load_seconds(project)
@@ -171,7 +176,7 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
     (
         "keep-chomping block scalar then a key",
         (
-            "dataset: t\nchecks:\n  - sql_metric > 0:\n      query: |+\n"
+            "dataset: t\nchecks:\n  c1:\n    clauses:\n      - sql_metric > 0:\n          query: |+\n"
             "        SELECT 1\n\n\nowner: o@example.com\n"
         ),
         {"sql_metric > 0": (3, 5)},
@@ -179,7 +184,7 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
     (
         "folded strip block scalar with a # line, then a key",
         (
-            "dataset: t\nchecks:\n  - sql_metric > 0:\n      query: >-\n"
+            "dataset: t\nchecks:\n  c1:\n    clauses:\n      - sql_metric > 0:\n          query: >-\n"
             "        SELECT 1\n        # not a comment\nowner: o@example.com\n"
         ),
         {"sql_metric > 0": (3, 6)},
@@ -187,7 +192,7 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
     (
         "double-quoted scalar whose continuation starts with #",
         (
-            'dataset: t\nchecks:\n  - sql_metric > 0:\n      query: "SELECT 1\n\n'
+            'dataset: t\nchecks:\n  c1:\n    clauses:\n      - sql_metric > 0:\n          query: "SELECT 1\n\n'
             '        # FROM x"\n  # lead\n  - row_count > 0\n'
         ),
         {"sql_metric > 0": (3, 6), "row_count > 0": (7, 8)},
@@ -195,7 +200,7 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
     (
         "single-quoted continuation starting with #, then a key",
         (
-            "dataset: t\nchecks:\n  - sql_metric > 0:\n      query: 'SELECT 1\n"
+            "dataset: t\nchecks:\n  c1:\n    clauses:\n      - sql_metric > 0:\n          query: 'SELECT 1\n"
             "        # FROM x'\nowner: '\n  # hi'\n"
         ),
         {"sql_metric > 0": (3, 5)},
@@ -203,19 +208,19 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
     (
         "zero-indented list with a column-0 comment between items",
         (
-            "dataset: t\nchecks:\n- row_count > 0\n# c\n- missing_count(a) = 0\n"
+            "dataset: t\nchecks:\n  c1: row_count > 0\n  # c\n  c2: missing_count(a) = 0\n"
             "owner: o@example.com\n"
         ),
         {"row_count > 0": (3, 3), "missing_count(a) = 0": (4, 5)},
     ),
     (
         "checks first, then keys, comments at and left of the dash",
-        "checks:\n  - row_count > 0\n  # at the dash\n# at 0\ndataset: t\n",
+        "checks:\n  c1: row_count > 0\n  # at the dash\n# at 0\ndataset: t\n",
         {"row_count > 0": (2, 2)},
     ),
     (
         "indented root mapping, key after the list",
-        "  dataset: t\n  checks:\n  - row_count > 0\n  # c\n  owner: o@example.com\n",
+        "  dataset: t\n  checks:\n    c1: row_count > 0\n  # c\n  owner: o@example.com\n",
         {"row_count > 0": (3, 3)},
     ),
     (
@@ -226,7 +231,7 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
     (
         "nested option list with comments, then a deeper trailing comment",
         (
-            "dataset: t\nchecks:\n  - invalid_count(c) = 0:\n      valid_values:\n"
+            "dataset: t\nchecks:\n  c1:\n    clauses:\n      - invalid_count(c) = 0:\n          valid_values:\n"
             "      - a\n      # x\n      - b\n    # deeper\n  # lead\n  - row_count > 0\n"
         ),
         {"invalid_count(c) = 0": (3, 8), "row_count > 0": (9, 10)},
@@ -243,7 +248,7 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
     ),
     (
         "mixed CR CRLF LF",
-        "dataset: t\r\r\nchecks:\n  - row_count > 0\r\n  # c\r  - missing_count(a) = 0",
+        "dataset: t\r\r\nchecks:\n  c1: row_count > 0\r\n  # c\r  - missing_count(a) = 0",
         {"row_count > 0": (4, 4), "missing_count(a) = 0": (5, 6)},
     ),
     (
@@ -277,12 +282,12 @@ for _sep in SEPARATORS:
         ),
         (
             f"{name} in a plain dataset value",
-            f"dataset: t{_sep}\nchecks:\n  - row_count > 0\n",
+            f"dataset: t{_sep}\nchecks:\n  c1: row_count > 0\n",
             {"row_count > 0": (3, 3)},
         ),
         (
             f"{name} at the end of an item",
-            f"dataset: t\nchecks:\n  - row_count > 0{_sep}\n  - missing_count(a) = 0\n",
+            f"dataset: t\nchecks:\n  c1: row_count > 0{_sep}\n  c2: missing_count(a) = 0\n",
             {"row_count > 0": (3, 3), "missing_count(a) = 0": (4, 4)},
         ),
         (
@@ -293,7 +298,7 @@ for _sep in SEPARATORS:
         (
             f"{name} in a check's name",
             (
-                f'dataset: t\nfilter: "x > 1"\nchecks:\n  - row_count > 0:\n'
+                f'dataset: t\nfilter: "x > 1"\nchecks:\n  c1:\n    clauses:\n      - row_count > 0:\n'
                 f'      name: "a{_sep}b"\n  - missing_count(a) = 0\n'
             ),
             {"row_count > 0": (4, 5), "missing_count(a) = 0": (6, 6)},
@@ -337,10 +342,11 @@ def test_awkward_layouts_never_serve_another_key(
 
 
 def test_the_span_does_not_feed_identity(project: Path) -> None:
-    _write(project, "dataset: t\nchecks:\n  - row_count > 0\n")
+    _write(project, "dataset: t\nchecks:\n  c1: row_count > 0\n")
     (plain,) = _checks(project)
     _write(
-        project, "dataset: t\n\n\nchecks:\n  # moved and commented\n  - row_count > 0\n"
+        project,
+        "dataset: t\n\n\nchecks:\n  # moved and commented\n  c1: row_count > 0\n",
     )
     (moved,) = _checks(project)
     assert plain.id == moved.id
@@ -352,7 +358,8 @@ def test_a_compose_failure_changes_nothing_but_spans(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # rule 5, architect F4
     _write(
-        project, "dataset: t\nchecks:\n  - row_count > 0\n  - missing_count(a) = 0\n"
+        project,
+        "dataset: t\nchecks:\n  c1: row_count > 0\n  c2: missing_count(a) = 0\n",
     )
     before = invoke(project, "validate")
 

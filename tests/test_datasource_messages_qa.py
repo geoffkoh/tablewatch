@@ -154,7 +154,7 @@ def test_s9_an_unknown_timezone_is_prefixed_on_run_and_compile(
         encoding="utf-8",
     )
     (root / "checks" / "orders.yml").write_text(
-        "dataset: orders\ndatasource: warehouse\nchecks:\n  - row_count > 0\n",
+        "dataset: orders\ndatasource: warehouse\nchecks:\n  c1: row_count > 0\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(root)

@@ -203,7 +203,7 @@ def test_no_project_above_the_cwd_raises_even_when_recording(
 
 def test_an_invalid_loaded_project_runs_nothing(retail: Path) -> None:  # R5
     (retail / "checks" / "bad.yml").write_text(
-        "dataset: x\ndatasource: lake\nchecks:\n  - row_cnt > 0\n", encoding="utf-8"
+        "dataset: x\ndatasource: lake\nchecks:\n  c1: row_cnt > 0\n", encoding="utf-8"
     )
     project = tw.load(retail)
     assert project.ok is False

@@ -51,6 +51,17 @@ class RunRow(Base):
         order_by="CheckResultRow.id",  # recorded order
     )
 
+    @property
+    def check_results(self) -> list[CheckResultRow]:
+        """One row per named check, in recorded order — not its clauses' rows."""
+        return [r for r in self.results if r.metric == CHECK_METRIC]
+
+
+# The `metric` of a check's own row. Each run records one row per named
+# check (its outcome, the worst of its clauses') and one per clause, under
+# the clause's own id; part 2 of spec 032 replaces this with a registry.
+CHECK_METRIC = "check"
+
 
 class CheckResultRow(Base):
     __tablename__ = "tablewatch_check_results"

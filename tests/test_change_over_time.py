@@ -20,6 +20,7 @@ from tablewatch.config import load_project
 from tablewatch.results.models import RunRow
 from tablewatch.results.store import ResultStore
 from tests.conftest import invoke
+from tests.named import named_checks
 
 BOTH = pytest.mark.parametrize("ds", ["duck", "lite"])
 
@@ -61,7 +62,7 @@ def set_rows(root: Path, n: int, amount: float = 20.0, status: str = "ok") -> No
 
 def write(root: Path, ds: str, checks: str) -> None:
     (root / "checks" / "orders.yml").write_text(
-        f"dataset: orders\ndatasource: {ds}\nchecks:\n{checks}", encoding="utf-8"
+        f"dataset: orders\ndatasource: {ds}\n{named_checks(checks)}", encoding="utf-8"
     )
 
 

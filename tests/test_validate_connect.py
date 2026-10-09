@@ -35,10 +35,10 @@ ORDERS = """\
 dataset: orders
 datasource: shop
 checks:
-  - row_count > 0
-  - missing_count(emial) = 0
-  - avg(amount) > 0
-  - duplicate_count(id, Email) = 0
+  c1: row_count > 0
+  c2: missing_count(emial) = 0
+  c3: avg(amount) > 0
+  c4: duplicate_count(id, Email) = 0
 """
 
 
@@ -56,12 +56,12 @@ def p(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     _write(
         root,
         "checks/customers.yml",
-        "dataset: main.customers\ndatasource: shop\nchecks:\n  - row_count > 0\n",
+        "dataset: main.customers\ndatasource: shop\nchecks:\n  c1: row_count > 0\n",
     )
     _write(
         root,
         "checks/remote.yml",
-        "dataset: orders\ndatasource: down\nchecks:\n  - row_count > 0\n",
+        "dataset: orders\ndatasource: down\nchecks:\n  c1: row_count > 0\n",
     )
     with closing(sqlite3.connect(root / "shop.db")) as db, db:
         db.execute("CREATE TABLE orders (id integer, email text, amount real)")
@@ -109,7 +109,7 @@ def test_case_follows_the_database(tmp_path: Path) -> None:  # S4 on DuckDB
     _write(
         root,
         "checks/t.yml",
-        "dataset: t\nchecks:\n  - duplicate_count(id, Email) = 0\n",
+        "dataset: t\nchecks:\n  c1: duplicate_count(id, Email) = 0\n",
     )
     con = duckdb.connect(str(root / "d.duckdb"))
     try:
@@ -239,9 +239,9 @@ def test_a_files_datasource(tmp_path: Path) -> None:  # S11
     _write(
         root,
         "checks/orders.yml",
-        "dataset: orders.csv\nchecks:\n  - missing_count(emial) = 0\n",
+        "dataset: orders.csv\nchecks:\n  c1: missing_count(emial) = 0\n",
     )
-    _write(root, "checks/gone.yml", "dataset: gone.csv\nchecks:\n  - row_count > 0\n")
+    _write(root, "checks/gone.yml", "dataset: gone.csv\nchecks:\n  c1: row_count > 0\n")
     code, _, err = invoke(root, "validate", "--connect")
     assert code == 3
     assert "column 'emial' not found in orders.csv (datasource 'drop')" in err
@@ -257,7 +257,7 @@ def test_a_parse_error_and_a_missing_column_in_one_pass(p: Path) -> None:  # S12
     _write(
         p,
         "checks/broken.yml",
-        "dataset: orders\ndatasource: shop\nchecks:\n  - missing_count(email = 0\n",
+        "dataset: orders\ndatasource: shop\nchecks:\n  c1: missing_count(email = 0\n",
     )
     code, _, err = invoke(p, "validate", "--connect")
     assert code == 3
@@ -312,7 +312,7 @@ def test_a_url_datasource_never_creates_a_file(tmp_path: Path) -> None:  # VERIF
         "tablewatch.yml",
         f"name: u\ndatasources:\n  raw: {{type: sqlalchemy, url: 'sqlite:///{target}'}}\n",
     )
-    _write(root, "checks/t.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    _write(root, "checks/t.yml", "dataset: t\nchecks:\n  c1: row_count > 0\n")
     code, _, err = invoke(root, "validate", "--connect")
     assert code == 2
     assert "database file not found" in err

@@ -42,13 +42,17 @@ def compose(text: str) -> MappingNode | None:
 def check_span(
     lines: Sequence[str], root: MappingNode, index: int
 ) -> SourceSpan | None:
-    """The 1-based, inclusive lines of the `index`th item under `checks:`."""
+    """The 1-based, inclusive lines of the `index`th check under `checks:`.
+
+    A check is an entry of the `checks:` mapping: from its name to the end
+    of its clauses.
+    """
     facts = _facts(root, tuple(lines))
-    if facts is None or index >= len(facts.checks.value):
+    if facts is None or index >= len(facts.starts):
         return None
-    checks, item, text = facts.checks, facts.checks.value[index], facts.lines
-    # An item sharing a node with an earlier item (an alias of it, or of its
-    # key) carries that item's marks: its lines are not this check's own.
+    checks, item, text = facts.checks, facts.starts[index], facts.lines
+    # An entry sharing a node with an earlier one (an alias of it, or of its
+    # key) carries that entry's marks: its lines are not this check's own.
     if facts.aliased[index]:
         return None
     start_line: int = item.start_mark.line
@@ -59,7 +63,11 @@ def check_span(
         start, end = start_line, facts.item_last[index]
     else:
         column: int = checks.start_mark.column
-        if start_line <= previous_end or _char_at(text, start_line, column) != "-":
+        if (
+            start_line <= previous_end
+            or item.start_mark.column != column
+            or not _starts_as_written(text, item)
+        ):
             return None
         floor = facts.checks_key_line
         if index:
@@ -81,10 +89,12 @@ class _Facts:
     """What every span in one file is checked against, computed once."""
 
     lines: tuple[str, ...]
-    checks: SequenceNode
+    checks: MappingNode
+    # Each check's name node: where its entry starts.
+    starts: tuple[Node, ...]
     checks_key_line: int
     # The `checks` extent: from the line below `checks:` (the key's own line
-    # in flow style) to the list's last line, trailing comments included.
+    # in flow style) to the mapping's last line, trailing comments included.
     checks_first: int
     checks_end: int
     other_keys: tuple[tuple[int, int], ...]
@@ -109,23 +119,27 @@ def _facts(root: MappingNode, lines: tuple[str, ...]) -> _Facts | None:
             checks_key, checks = key, value
         else:
             other_keys.append((key.start_mark.line, _last_line(lines, value)))
-    if checks_key is None or not isinstance(checks, SequenceNode):
+    if checks_key is None or not isinstance(checks, MappingNode):
         return None
-    item_last = tuple(_last_line(lines, item) for item in checks.value)
+    item_last = tuple(
+        max(_last_line(lines, key), _last_line(lines, value))
+        for key, value in checks.value
+    )
     first: int = checks_key.start_mark.line + (0 if checks.flow_style else 1)
-    # A block list's end mark runs past its trailing comments to the next
+    # A block mapping's end mark runs past its trailing comments to the next
     # token, so rule 2's comments are inside; its content alone would leave
     # them out and make those spans unavailable.
     end = max(max(item_last, default=first), _end_line(checks))
     seen: set[int] = set()
     aliased = []
-    for item in checks.value:
-        nodes = {id(node) for node in walk_nodes(item)}
+    for key, value in checks.value:
+        nodes = {id(node) for node in (*walk_nodes(key), *walk_nodes(value))}
         aliased.append(bool(nodes & seen))
         seen |= nodes
     return _Facts(
         lines=lines,
         checks=checks,
+        starts=tuple(key for key, _ in checks.value),
         checks_key_line=checks_key.start_mark.line,
         checks_first=first,
         checks_end=end,
@@ -176,7 +190,7 @@ def _indent(line: str) -> int:
 
 
 def _trailing(lines: Sequence[str], body_end: int, column: int) -> int:
-    """Rule 2: comment lines right below, indented past the dash, are the check's."""
+    """Rule 2: comment lines right below, indented past its name, are the check's."""
     end = body_end
     while (
         end + 1 < len(lines)
@@ -187,9 +201,9 @@ def _trailing(lines: Sequence[str], body_end: int, column: int) -> int:
     return end
 
 
-def _leading(lines: Sequence[str], dash: int, floor: int) -> int:
-    """Rule 3: comment lines right above the dash, not the previous check's."""
-    start = dash
+def _leading(lines: Sequence[str], first: int, floor: int) -> int:
+    """Rule 3: comment lines right above its name, not the previous check's."""
+    start = first
     while start - 1 > floor and _is_comment(lines[start - 1]):
         start -= 1
     return start

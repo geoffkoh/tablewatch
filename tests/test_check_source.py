@@ -24,15 +24,19 @@ dataset: sales.orders
 checks:
   # Finance reconciles on amount: a negative amount breaks the ledger.
   # Refunds are separate rows, so none should be negative.
-  - failed_rows:
-      name: No negative amounts
-      condition: amount < 0   # refunds are their own rows
+  c1:
+    clauses:
+      - failed_rows:
+          name: No negative amounts
+          condition: amount < 0   # refunds are their own rows
 
   # Volume alarm agreed with ops, 2026-09.
-  - row_count:
-      name: Order volume
-      warn: when < 100
-      fail: when = 0
+  c2:
+    clauses:
+      - row_count:
+          name: Order volume
+          warn: when < 100
+          fail: when = 0
   # trailing note, not part of any check
 """
 
@@ -322,15 +326,17 @@ def test_the_files_filter(commented: Path, retail: Path) -> None:  # Y12
 REFUNDS_YML = """\
 dataset: sales.orders
 checks:
-  - sql_metric > 0:
-      name: Refund ratio
-      query: |
-        SELECT count(*)
-        FROM refunds
+  c1:
+    clauses:
+      - sql_metric > 0:
+          name: Refund ratio
+          query: |
+            SELECT count(*)
+            FROM refunds
 
-        WHERE amount > 0
+            WHERE amount > 0
 
-  - row_count > 0
+  c2: row_count > 0
 """
 
 
@@ -388,7 +394,7 @@ def test_symlinked_check_files(retail: Path, tmp_path: Path) -> None:  # Y16
     outside = tmp_path / "outside" / "linked.yml"
     outside.parent.mkdir()
     outside.write_text(
-        "dataset: sales.orders\nchecks:\n  - row_count > 3\n", encoding="utf-8"
+        "dataset: sales.orders\nchecks:\n  c1: row_count > 3\n", encoding="utf-8"
     )
     (retail / "checks" / "sales" / "linked.yml").symlink_to(outside)
     check_id = _id(retail, "checks/sales/linked.yml", "row_count > 3")
@@ -518,7 +524,7 @@ def test_the_readme_quotes_the_cli_warning(
     [
         (
             (
-                "dataset: x\nchecks:\n  - &a row_count > 0\n  - *a\n"
+                "dataset: x\nchecks:\n  c1:\n    clauses:\n      - &a row_count > 0\n  c2:\n    clauses:\n      - *a\n"
                 "  - missing_count(y) = 0\n"
             ),
             [(3, 3), None, (5, 5)],
@@ -537,7 +543,7 @@ def test_an_alias_of_an_earlier_check_is_not_its_lines(
 
 
 def test_a_file_with_a_byte_order_mark(retail: Path) -> None:  # P14, iteration 6 VERIFY
-    text = "﻿dataset: sales.orders\nchecks:\n  # note\n  - row_count > 5\n"
+    text = "﻿dataset: sales.orders\nchecks:\n  # note\n  c1: row_count > 5\n"
     root = compose(text)
     assert root is not None
     span = check_span(split_lines(text), root, 0)

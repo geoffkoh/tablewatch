@@ -19,6 +19,7 @@ from sqlalchemy import Engine, create_engine
 
 from tablewatch.config.loader import load_project
 from tablewatch.engine.runner import CheckResult, run_checks
+from tests.named import named_checks
 
 NOW = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
 
@@ -77,7 +78,7 @@ def _run(
 ) -> list[CheckResult]:
     header = f"dataset: {dataset}\ndatasource: {datasource}\n"
     (root / "checks" / "c.yml").write_text(
-        header + "checks:\n" + body, encoding="utf-8"
+        header + named_checks(body), encoding="utf-8"
     )
     project = load_project(root)
     assert project.ok, project.diagnostics

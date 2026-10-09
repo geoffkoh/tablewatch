@@ -9,6 +9,7 @@ import pytest
 from tablewatch.config import find_project_root, load_project
 from tablewatch.diagnostics import ProjectError
 from tests.conftest import Workspace
+from tests.named import named_checks
 
 
 def messages(ws: Workspace) -> list[str]:
@@ -26,10 +27,11 @@ def test_defaults_cascade_nearest_wins_and_tags_accumulate(
     )
     workspace.write(
         "checks/sales/orders.yml",
-        "dataset: t\ntags: [tier-1]\nchecks:\n  - row_count > 0\n",
+        "dataset: t\ntags: [tier-1]\nchecks:\n  c1: row_count > 0\n",
     )
     workspace.write(
-        "checks/other.yml", "dataset: t\ndatasource: lite\nchecks:\n  - row_count > 0\n"
+        "checks/other.yml",
+        "dataset: t\ndatasource: lite\nchecks:\n  c1: row_count > 0\n",
     )
     project = workspace.load()
     assert project.ok, messages(workspace)
@@ -46,13 +48,13 @@ def test_single_datasource_is_implied(tmp_path: Path) -> None:
     ws.write(
         "tablewatch.yml", "name: x\ndatasources:\n  only: {type: sqlite, path: a.db}\n"
     )
-    ws.write("checks/a.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    ws.write("checks/a.yml", "dataset: t\nchecks:\n  c1: row_count > 0\n")
     [dataset] = ws.load().datasets
     assert dataset.datasource == "only"
 
 
 def test_ambiguous_datasource_is_an_error(workspace: Workspace) -> None:
-    workspace.write("checks/a.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    workspace.write("checks/a.yml", "dataset: t\nchecks:\n  c1: row_count > 0\n")
     assert messages(workspace) == [
         (
             "checks/a.yml:1:1: error: no datasource for this dataset — "
@@ -100,7 +102,9 @@ def test_ambiguous_datasource_is_an_error(workspace: Workspace) -> None:
     ],
 )
 def test_check_diagnostics(workspace: Workspace, checks: str, expected: str) -> None:
-    workspace.write("checks/t.yml", "dataset: t\ndatasource: duck\nchecks:\n" + checks)
+    workspace.write(
+        "checks/t.yml", "dataset: t\ndatasource: duck\n" + named_checks(checks)
+    )
     found = messages(workspace)
     assert len(found) == 1, found
     assert expected in found[0]
@@ -110,7 +114,7 @@ def test_check_diagnostics(workspace: Workspace, checks: str, expected: str) -> 
 def test_file_level_diagnostics(workspace: Workspace) -> None:
     workspace.write("checks/a.yml", "datasets: t\nchecks: []\n")
     workspace.write(
-        "checks/b.yml", "dataset: t\ndatasource: nope\nchecks:\n  - row_count > 0\n"
+        "checks/b.yml", "dataset: t\ndatasource: nope\nchecks:\n  c1: row_count > 0\n"
     )
     workspace.write("checks/c.yml", "dataset: [t\n")
     found = messages(workspace)
@@ -127,7 +131,7 @@ def test_file_level_diagnostics(workspace: Workspace) -> None:
 def test_all_problems_are_reported_in_one_pass(workspace: Workspace) -> None:
     workspace.write(
         "checks/t.yml",
-        "dataset: t\ndatasource: duck\nchecks:\n  - row_cont > 0\n  - row_count >\n  - row_count > 0\n",
+        "dataset: t\ndatasource: duck\nchecks:\n  c1: row_cont > 0\n  c2: row_count >\n  c3: row_count > 0\n",
     )
     project = workspace.load()
     assert len(project.diagnostics) == 2
@@ -135,7 +139,7 @@ def test_all_problems_are_reported_in_one_pass(workspace: Workspace) -> None:
 
 
 def test_identity_is_stable_and_scoped(workspace: Workspace) -> None:
-    body = "dataset: t\ndatasource: duck\nchecks:\n  - row_count > 0\n  - row_count > 0:\n      where: grp = 'a'\n"
+    body = "dataset: t\ndatasource: duck\nchecks:\n  c1: row_count > 0\n  c2:\n    clauses:\n      - row_count > 0:\n          where: grp = 'a'\n"
     workspace.write("checks/t.yml", body)
     first = [c.id for c in workspace.load().checks]
     workspace.write("checks/t.yml", body.replace("row_count > 0\n", "row_count>0\n", 1))
@@ -147,12 +151,12 @@ def test_identity_is_stable_and_scoped(workspace: Workspace) -> None:
 def test_duplicate_checks_need_an_explicit_id(workspace: Workspace) -> None:
     workspace.write(
         "checks/t.yml",
-        "dataset: t\ndatasource: duck\nchecks:\n  - row_count > 0\n  - row_count > 0\n",
+        "dataset: t\ndatasource: duck\nchecks:\n  c1: row_count > 0\n  c2: row_count > 0\n",
     )
     assert "duplicate check (also at checks/t.yml:4:5)" in messages(workspace)[0]
     workspace.write(
         "checks/t.yml",
-        "dataset: t\ndatasource: duck\nchecks:\n  - row_count > 0\n  - row_count > 0:\n      id: again\n",
+        "dataset: t\ndatasource: duck\nchecks:\n  c1: row_count > 0\n  c2:\n    clauses:\n      - row_count > 0:\n          id: again\n",
     )
     assert [c.id for c in workspace.load().checks][1] == "again"
 
@@ -163,7 +167,7 @@ def test_env_references_are_not_resolved_at_load(tmp_path: Path) -> None:
         "tablewatch.yml",
         "name: x\ndatasources:\n  pg: {type: postgres, host: '${env:TW_UNSET_HOST}', database: d}\n",
     )
-    ws.write("checks/a.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    ws.write("checks/a.yml", "dataset: t\nchecks:\n  c1: row_count > 0\n")
     assert ws.load().ok
 
 
