@@ -39,12 +39,13 @@ from tests.test_api import demo
 REPO = Path(__file__).parent.parent
 OPENAPI_SNAPSHOT = REPO / "docs" / "api" / "openapi.json"
 
-CUSTOMERS_EMAIL = "b1ceb8262d8b5441"
-PRICE_FRESHNESS = "41e58afff9c48a46"
-ORDER_VOLUME = "32867fbe86f483f3"
-CUSTOMERS_COUNTRY = "000f8d0048744bfb"
-ORDERS_STATUS = "a30dacf7316eef07"
-EDITED_EMAIL = "e41cf32f07f328c3"
+# Named checks (spec 032): a check's id is `derive_check_id(datasource,
+# dataset, name)` — stable under moving the file or editing a clause's rule.
+CUSTOMERS_EMAIL = "2532c1f31d28bf94"  # contactable
+PRICE_FRESHNESS = "fb0015b3eb35e125"  # price_feed_fresh
+ORDER_VOLUME = "4a420be887e8984a"  # order_volume
+CUSTOMERS_COUNTRY = "000a5dec27131233"  # known_countries
+ORDERS_USABLE = "b0a39f0d9284fa3e"  # orders_usable
 
 # In-process tests don't depend on the committed bundle being built.
 FAKE_BUNDLE = Bundle(
@@ -243,17 +244,20 @@ def test_check_file_mistakes_do_not_stop_serve(
     def probe(client: TestClient) -> None:
         project = get(client, "/api/v1/project")
         assert project["ok"] is False
-        assert project["counts"]["checks"] == 18
+        # A syntax error in one of `orders_usable`'s clauses drops the whole
+        # named check (D1: a check loads all its clauses or none), not just
+        # the one clause — one fewer than the 12 named checks in the example.
+        assert project["counts"]["checks"] == 11
         [diagnostic] = project["diagnostics"]
         assert diagnostic["location"] == {
             "file": "checks/sales/orders.yml",
-            "line": 11,
-            "column": 30,
+            "line": 10,
+            "column": 34,
         }
         assert len(get(client, "/api/v1/runs")["items"]) == 2
-        assert get(client, "/api/v1/checks?outcome=fail")["total"] == 5
-        assert_error(client.get(f"/api/v1/checks/{ORDERS_STATUS}"), 404, "not_found")
-        history = get(client, f"/api/v1/checks/{ORDERS_STATUS}/history")["items"]
+        assert get(client, "/api/v1/checks?outcome=fail")["total"] == 3
+        assert_error(client.get(f"/api/v1/checks/{ORDERS_USABLE}"), 404, "not_found")
+        history = get(client, f"/api/v1/checks/{ORDERS_USABLE}/history")["items"]
         assert [h["outcome"] for h in history] == ["fail", "fail"]
 
     started = start(recorded.root, monkeypatch, probe=probe)
@@ -261,11 +265,11 @@ def test_check_file_mistakes_do_not_stop_serve(
     assert started.served
     lines = started.stderr.splitlines()
     assert (
-        lines[0] == "checks/sales/orders.yml:11:30: error: expected a number, found '<'"
+        lines[0] == "checks/sales/orders.yml:10:34: error: expected a number, found '<'"
     )
     assert (
         lines[1]
-        == "tablewatch: 1 error in the project — serving the 18 checks that loaded"
+        == "tablewatch: 1 error in the project — serving the 11 checks that loaded"
     )
 
 
@@ -319,7 +323,7 @@ def test_the_store_is_migrated_once_at_startup(
         assert get(client, "/api/v1/runs") == {"items": [], "next_cursor": None}
         checks = get(client, "/api/v1/checks")["items"]
         assert all(c["latest"] is None for c in checks)
-        assert get(client, "/api/v1/checks?outcome=not_run")["total"] == 19
+        assert get(client, "/api/v1/checks?outcome=not_run")["total"] == 12
 
     started = start(retail, monkeypatch, probe=probe)
     assert started.code == 0, started.stderr
@@ -495,7 +499,7 @@ def test_project(recorded: Recorded) -> None:  # P1
     assert body["name"] == "retail-example"
     assert body["ok"] is True
     assert body["diagnostics"] == []
-    assert body["counts"] == {"datasets": 3, "checks": 19}
+    assert body["counts"] == {"datasets": 3, "checks": 12}
     assert body["datasources"] == [{"name": "lake", "type": "duckdb"}]
     assert body["version"] == tw.__version__
     assert body["loaded_at"].endswith("+00:00")
@@ -508,14 +512,14 @@ def test_every_check_with_its_latest_result(recorded: Recorded) -> None:  # C1
     listed = json.loads(out)
     with served(recorded.root) as client:
         body = get(client, "/api/v1/checks")
-    assert body["total"] == 19
+    assert body["total"] == 12
     assert [c["id"] for c in body["items"]] == [c["id"] for c in listed]
     item = {c["id"]: c for c in body["items"]}[CUSTOMERS_EMAIL]
-    assert item["source"] == "checks/sales/customers.yml:6:5"
+    assert item["source"] == "checks/sales/customers.yml:6:3"
     assert item["location"] == {
         "file": "checks/sales/customers.yml",
         "line": 6,
-        "column": 5,
+        "column": 3,
     }
     assert item["tags"] == ["example", "sales", "tier-1"]
     assert item["owner"] == "sales-data@example.com"
@@ -541,13 +545,13 @@ def test_filter_by_latest_outcome(recorded: Recorded) -> None:  # C2
             assert found == [i for i in order if i in found]
             return found
 
-        assert len(ids("?outcome=fail")) == 6
+        assert len(ids("?outcome=fail")) == 4
         both = ids("?outcome=fail&outcome=warn")
-        assert len(both) == 8
+        assert len(both) == 6
         assert {PRICE_FRESHNESS, ORDER_VOLUME} <= set(both)
         assert ids("?outcome=error") == []
         assert ids("?outcome=not_run") == []
-        assert len(ids("?outcome=pass")) == 11
+        assert len(ids("?outcome=pass")) == 6
         assert ids("?outcome=skipped") == []
         for bad in ("bad", "FAIL"):
             body = assert_error(
@@ -570,10 +574,10 @@ def test_check_files_are_read_once(recorded: Recorded) -> None:  # C4
         loaded_at = get(client, "/api/v1/project")["loaded_at"]
         customers = recorded.root / "checks" / "sales" / "customers.yml"
         customers.write_text(
-            customers.read_text(encoding="utf-8") + "  - row_count < 1000000\n",
+            customers.read_text(encoding="utf-8") + "  extra: row_count < 1000000\n",
             encoding="utf-8",
         )
-        assert get(client, "/api/v1/checks")["total"] == 19
+        assert get(client, "/api/v1/checks")["total"] == 12
         assert get(client, "/api/v1/project")["loaded_at"] == loaded_at
         invoke(recorded.root, "run", "checks/inventory")
         assert len(get(client, "/api/v1/runs")["items"]) == 3
@@ -598,20 +602,23 @@ def test_a_check_that_errored_last_time_shows_error(recorded: Recorded) -> None:
         assert latest["value"] is None
         assert latest["display_value"] == "—"
         assert latest["message"].startswith("IO Error: Cannot open database")
-        assert get(client, "/api/v1/checks?outcome=fail")["total"] == 4
-        assert get(client, "/api/v1/checks?outcome=error")["total"] == 5
+        assert get(client, "/api/v1/checks?outcome=fail")["total"] == 2
+        assert get(client, "/api/v1/checks?outcome=error")["total"] == 4
         assert (
             get(client, "/api/v1/checks?outcome=fail&outcome=warn&outcome=error")[
                 "total"
             ]
-            == 11
+            == 8
         )
         history = get(client, f"/api/v1/checks/{CUSTOMERS_EMAIL}/history")["items"]
     assert [h["run_id"] for h in history] == [run_e, recorded.run_b, recorded.run_a]
     assert [h["outcome"] for h in history] == ["error", "fail", "fail"]
 
 
-def test_editing_an_expression_starts_a_new_history(recorded: Recorded) -> None:  # L2
+def test_editing_a_clauses_threshold_keeps_the_checks_history(
+    recorded: Recorded,
+) -> None:  # L2, updated for D1/D4/D5: identity is the check's name, not its
+    # clauses' text; a clause's threshold isn't even part of its own key.
     customers = recorded.root / "checks" / "sales" / "customers.yml"
     customers.write_text(
         customers.read_text(encoding="utf-8").replace(
@@ -620,41 +627,61 @@ def test_editing_an_expression_starts_a_new_history(recorded: Recorded) -> None:
         encoding="utf-8",
     )
     with served(recorded.root) as client:
-        edited = checks_by_id(client)[EDITED_EMAIL]
-        assert edited["latest"] is None
+        still_there = checks_by_id(client)[CUSTOMERS_EMAIL]
+        assert still_there["latest"]["run_id"] == recorded.run_b
+        history = get(client, f"/api/v1/checks/{CUSTOMERS_EMAIL}/history")["items"]
+    assert len(history) == 2
+    assert {h["expression"] for h in history} == {
+        "missing_percent(email) < 5%; invalid_count(email) = 0"
+    }
+
+
+def test_a_renamed_check_starts_a_new_history(recorded: Recorded) -> None:  # L2, D3
+    customers = recorded.root / "checks" / "sales" / "customers.yml"
+    customers.write_text(
+        customers.read_text(encoding="utf-8").replace("contactable:", "reachable:"),
+        encoding="utf-8",
+    )
+    with served(recorded.root) as client:
+        renamed_id = next(
+            c["id"]
+            for c in get(client, "/api/v1/checks")["items"]
+            if c["name"] == "reachable"
+        )
+        renamed = checks_by_id(client)[renamed_id]
+        assert renamed["latest"] is None
         not_run = get(client, "/api/v1/checks?outcome=not_run")["items"]
-        assert [c["id"] for c in not_run] == [EDITED_EMAIL]
-        assert get(client, "/api/v1/checks?outcome=fail")["total"] == 5
+        assert [c["id"] for c in not_run] == [renamed_id]
+        assert get(client, "/api/v1/checks?outcome=fail")["total"] == 3
         assert_error(client.get(f"/api/v1/checks/{CUSTOMERS_EMAIL}"), 404, "not_found")
         history = get(client, f"/api/v1/checks/{CUSTOMERS_EMAIL}/history")["items"]
     assert len(history) == 2
-    assert {h["expression"] for h in history} == {"missing_percent(email) < 5%"}
+    assert {h["expression"] for h in history} == {
+        "missing_percent(email) < 5%; invalid_count(email) = 0"
+    }
 
 
-def test_an_explicit_id_keeps_history_across_an_edit(
+def test_an_id_key_is_rejected_not_a_server_crash(
     retail: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # L2 (should)
+) -> None:  # D1: `id:` is gone; a check file using it is a diagnostic, never a crash
     monkeypatch.chdir(retail)
     customers = retail / "checks" / "sales" / "customers.yml"
-    text = customers.read_text(encoding="utf-8").replace(
-        "missing_percent(email) < 5%:\n",
-        "missing_percent(email) < 5%:\n      id: customers-email-missing\n",
+    customers.write_text(
+        customers.read_text(encoding="utf-8").replace(
+            "missing_percent(email) < 5%:\n",
+            "missing_percent(email) < 5%:\n      id: customers-email-missing\n",
+        ),
+        encoding="utf-8",
     )
-    customers.write_text(text, encoding="utf-8")
-    invoke(retail, "run", "checks/sales/customers.yml")
-    customers.write_text(text.replace("< 5%", "< 10%"), encoding="utf-8")
-    invoke(retail, "run", "checks/sales/customers.yml")
-    second = run_ids(retail)[-1]
-    with served(retail) as client:
-        assert (
-            get(client, "/api/v1/checks/customers-email-missing")["latest"]["run_id"]
-            == second
-        )
-        history = get(client, "/api/v1/checks/customers-email-missing/history")["items"]
-    assert [h["expression"] for h in history] == [
-        "missing_percent(email) < 10%",
-        "missing_percent(email) < 5%",
-    ]
+
+    def probe(client: TestClient) -> None:
+        project = get(client, "/api/v1/project")
+        assert project["ok"] is False
+        assert '"id:" is not used here' in project["diagnostics"][0]["message"]
+
+    started = start(retail, monkeypatch, probe=probe)
+    assert started.code == 0, started.stderr
+    assert started.served
 
 
 def clone_run(
@@ -764,10 +791,10 @@ def test_runs_newest_first_paginated(recorded: Recorded) -> None:  # R1
         assert run_b["id"] == recorded.run_b
         assert run_b["selection"] == {"paths": ["checks/sales"]}
         assert run_b["counts"] == {
-            "total": 14,
-            "pass": 7,
+            "total": 9,
+            "pass": 4,
             "warn": 1,
-            "fail": 6,
+            "fail": 4,
             "error": 0,
             "skipped": 0,
         }
@@ -783,7 +810,7 @@ def test_runs_newest_first_paginated(recorded: Recorded) -> None:  # R1
         second = get(client, f"/api/v1/runs?limit=1&cursor={page['next_cursor']}")
         [run_a] = second["items"]
         assert (run_a["id"], run_a["selection"]) == (recorded.run_a, {})
-        assert run_a["counts"]["total"] == 19
+        assert run_a["counts"]["total"] == 12
         assert second["next_cursor"] is None
         everything = get(client, "/api/v1/runs")
     assert [r["id"] for r in everything["items"]] == [recorded.run_b, recorded.run_a]
@@ -807,15 +834,27 @@ def test_run_detail(recorded: Recorded) -> None:  # R3
         details = [get(client, f"/api/v1/runs/{r['id']}") for r in listed]
         for bad in ("f" * 32, recorded.run_b[:12], "zzz"):
             assert_error(client.get(f"/api/v1/runs/{bad}"), 404, "not_found")
-    assert len(detail["results"]) == 14
+    assert len(detail["results"]) == 9
     expected = recorded.run_b_report["results"]
+    # Part 1 (D5): run detail reads summary rows (flat, one metric/unit), the
+    # JSON report nests a check's clauses — the two shapes now diverge, so
+    # only the fields both still carry are compared.
+    common = {
+        "check_id",
+        "name",
+        "expression",
+        "dataset",
+        "datasource",
+        "outcome",
+        "value",
+        "display_value",
+        "message",
+        "source",
+        "owner",
+        "tags",
+    }
     for got, want in zip(detail["results"], expected, strict=True):
-        # `previous` is the run's own context (spec 026), not stored.
-        assert set(got) == set(want) - {"previous"}
-        skip = {"duration_ms", "previous"}
-        assert {k: v for k, v in got.items() if k not in skip} == {
-            k: v for k, v in want.items() if k not in skip
-        }
+        assert {k: got[k] for k in common} == {k: want[k] for k in common}
     for run, full in zip(listed, details, strict=True):
         tally = {
             o: sum(1 for r in full["results"] if r["outcome"] == o)

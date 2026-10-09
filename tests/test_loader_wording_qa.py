@@ -85,14 +85,14 @@ def test_not_between_warns_on_each_bound(p: Path) -> None:
     checks(p, "  - missing_percent(email) not between 0.01 and 0.5\n")
     warnings = _warnings(p)
     assert len(warnings) == 2
-    assert all(w.startswith("checks/a.yml:4:5: warning: ") for w in warnings)
+    assert all(w.startswith("checks/a.yml:4:7: warning: ") for w in warnings)
 
 
 def test_a_leading_dot_fraction_warns(p: Path) -> None:
     checks(p, "  - missing_percent(email) < .5\n")
     assert _warnings(p) == [
         (
-            "checks/a.yml:4:5: warning: 0.5 on missing_percent means 0.5%, not 50% — "
+            "checks/a.yml:4:7: warning: 0.5 on missing_percent means 0.5%, not 50% — "
             "write 50% for 50 percent, or 0.5% if 0.5% is meant"
         )
     ]
@@ -117,7 +117,7 @@ def test_the_warning_does_not_change_the_check(p: Path) -> None:
     run = tw.run(p, record=False)
     [result] = run.results
     assert str(result.outcome) == "fail"
-    assert str(result.check.expression).endswith("< 0.05")
+    assert str(result.check.clauses[0].expression).endswith("< 0.05")
 
 
 def test_the_suggested_figures_agree(p: Path) -> None:
@@ -135,30 +135,38 @@ def test_a_tiny_fraction_suggests_something_that_parses(p: Path) -> None:
 # --- wording -----------------------------------------------------------------
 
 
-def test_explicit_id_collision_across_files(p: Path) -> None:
-    checks(p, "  - row_count > 0:\n      id: same\n")
-    checks(p, "  - row_count > 1:\n      id: same\n", name="b.yml", ds="prod")
+def test_duplicate_check_name_across_files(p: Path) -> None:
+    # Spec 032: a check's name is its identity; "id:" no longer exists. The
+    # equivalent collision is the same name, on the same datasource+dataset,
+    # in two different files.
+    checks(p, "  same: row_count > 0\n")
+    checks(p, "  same: row_count > 1\n", name="b.yml")
     code, out, err = invoke(p, "validate")
     assert code == 3
     text = out + err
     assert (
-        "checks/b.yml:4:5: error: the id 'same' is already used at checks/a.yml:4:5 "
-        "— ids must be unique in the project"
+        'checks/b.yml:4:3: error: duplicate check name "same" — names must be '
+        "unique within a dataset (first at checks/a.yml:4:3)"
     ) in text
-    assert "explicit `id:`" not in text
 
 
-def test_a_bad_where_with_an_id_reports_only_the_where(p: Path) -> None:
+def test_a_duplicate_check_suppresses_its_own_clause_errors(p: Path) -> None:
+    # The second occurrence is never loaded past the duplicate-name check, so
+    # a bad `where:` inside it never surfaces as a second, confusing error.
+    checks(p, "  same: row_count > 0\n")
     checks(
         p,
-        "  - row_count > 0:\n      id: same\n      where: ''\n"
-        "  - row_count > 1:\n      id: same\n",
+        "  same:\n    clauses:\n      - row_count > 1:\n          where: ''\n",
+        name="b.yml",
     )
     code, out, err = invoke(p, "validate")
     assert code == 3
     text = out + err
-    assert "checks/a.yml:6:14: error: `where:` must be a non-empty string" in text
-    assert "already used" not in text
+    assert (
+        'checks/b.yml:4:3: error: duplicate check name "same" — names must be '
+        "unique within a dataset (first at checks/a.yml:4:3)"
+    ) in text
+    assert "where:" not in text
 
 
 def test_a_mixed_null_list_keeps_the_old_message(p: Path) -> None:
@@ -231,23 +239,36 @@ def test_colour_keeps_the_columns_aligned(p: Path) -> None:
 
 
 def test_alike_within_one_datasource_of_a_wide_run(p: Path) -> None:
+    # Names are unique per dataset, so "alike" display now only happens when
+    # two distinct names clip to the same text.
+    name1 = "n" * 47 + "aaa"
+    name2 = "n" * 47 + "bbb"
     checks(
         p,
-        "  - failed_rows:\n      condition: amount < 0\n"
-        "  - failed_rows:\n      condition: amount > 100\n",
+        f"  {name1}:\n    clauses:\n      - failed_rows:\n          condition: amount < 0\n"
+        f"  {name2}:\n    clauses:\n      - failed_rows:\n          condition: amount > 100\n",
     )
     checks(
-        p, "  - failed_rows:\n      condition: amount < 0\n", name="b.yml", ds="prod"
+        p,
+        f"  {name1}:\n    clauses:\n      - failed_rows:\n          condition: amount < 0\n",
+        name="b.yml",
+        ds="prod",
     )
     text = "\n".join(_render(p, colour=False))
-    assert "failed_rows (checks/a.yml:4)" in text
-    assert "failed_rows (checks/a.yml:6)" in text
+    assert "n" * 47 + "… (checks/a.yml:4)" in text
+    assert "n" * 47 + "… (checks/a.yml:8)" in text
     assert "(checks/b.yml" not in text
 
 
 def test_error_rows_in_a_wide_run(p: Path) -> None:
-    checks(p, "  - row_count > 0\n  - row_count > 0:\n      where: id > 1\n")
-    checks(p, "  - row_count > 0\n", name="b.yml", ds="prod")
+    name1 = "n" * 47 + "aaa"
+    name2 = "n" * 47 + "bbb"
+    checks(
+        p,
+        f"  {name1}: row_count > 0\n"
+        f"  {name2}:\n    clauses:\n      - row_count > 0:\n          where: id > 1\n",
+    )
+    checks(p, "  row_count: row_count > 0\n", name="b.yml", ds="prod")
     (p / "tablewatch.yml").write_text(
         YML.replace("path: prod.db", "path: nowhere/at/all/prod.db"), encoding="utf-8"
     )
@@ -257,74 +278,80 @@ def test_error_rows_in_a_wide_run(p: Path) -> None:
     assert lines[0].split()[:3] == ["OUTCOME", "DATASET", "DATASOURCE"]
     error = next(line for line in lines if line.startswith("ERROR"))
     assert error.split()[:4] == ["ERROR", "orders", "prod", "row_count"]
-    assert "row_count > 0 (checks/a.yml:4)" in out
-    assert "row_count > 0 (checks/a.yml:5)" in out
+    assert "n" * 47 + "… (checks/a.yml:4)" in out
+    assert "n" * 47 + "… (checks/a.yml:5)" in out
 
 
 def test_names_that_clip_alike_get_their_location(p: Path) -> None:
     stem = "n" * 60
-    checks(
-        p,
-        f"  - row_count > 0:\n      name: {stem}a\n"
-        f"  - row_count > 1:\n      name: {stem}b\n",
-    )
+    checks(p, f"  {stem}a: row_count > 0\n  {stem}b: row_count > 1\n")
     text = "\n".join(_render(p, colour=False))
     assert "(checks/a.yml:4)" in text
-    assert "(checks/a.yml:6)" in text
+    assert "(checks/a.yml:5)" in text
 
 
 def test_json_names_and_ids_unchanged_by_the_suffix(p: Path) -> None:
+    name1 = "n" * 47 + "aaa"
+    name2 = "n" * 47 + "bbb"
     checks(
         p,
-        "  - failed_rows:\n      condition: amount < 0\n"
-        "  - failed_rows:\n      condition: amount > 100\n",
+        f"  {name1}:\n    clauses:\n      - failed_rows:\n          condition: amount < 0\n"
+        f"  {name2}:\n    clauses:\n      - failed_rows:\n          condition: amount > 100\n",
     )
-    checks(p, "  - row_count > 0\n", name="b.yml", ds="prod")
+    checks(p, "  row_count: row_count > 0\n", name="b.yml", ds="prod")
     _, out, _ = invoke(p, "run", "--no-store", "--output", "json")
     results = json.loads(out)["results"]
     assert all("(checks/" not in r["name"] for r in results)
     assert {r["check_id"] for r in results} == {c.id for c in load_project(p).checks}
 
 
-# --- L11: ids pinned against main (7311282's parent branch) -------------------
+# --- L11: ids pinned against spec 032's shape (name, not canonical text) -----
 
-MAIN_RETAIL_IDS = {
-    "cd3e8103b4318809", "8b9c5af854ba2a5f", "ace45b91cd324084", "41e58afff9c48a46",
-    "4532ee2fca0acfd9", "32c8f939b90f6367", "af0289a72fedd946", "b1ceb8262d8b5441",
-    "000f8d0048744bfb", "b6ecae522c1d4aaf", "f81f9ff5edea8887", "32867fbe86f483f3",
-    "fc9cc3088acaf77a", "11c20dd55fb97fa9", "a30dacf7316eef07", "366d9254d889c910",
-    "a81b0374b0b04f06", "e2948c41d4b15c10", "fbc3aa0b93b66eee",
+RETAIL_IDS = {
+    "a7bb2434f4ec6da4", "fb0015b3eb35e125", "09eb696a21e8885b", "f1bf8649135ba3ab",
+    "0636fb49233028f0", "2532c1f31d28bf94", "000a5dec27131233", "b0a39f0d9284fa3e",
+    "4a420be887e8984a", "47bf919485ea6f14", "abd72d1cb20bf7ed", "813017ce91016d84",
 }  # fmt: skip
 
 
 def test_l11_retail_ids_equal_mains(retail: Path) -> None:
-    assert {c.id for c in load_project(retail).checks} == MAIN_RETAIL_IDS
+    assert {c.id for c in load_project(retail).checks} == RETAIL_IDS
 
 
 def test_l11_warned_and_scoped_checks_keep_mains_ids(p: Path) -> None:
+    # Spec 032: identity is datasource+dataset+name, not canonical text, so
+    # these names (not "id:", gone) must keep producing the pinned ids below.
     checks(
         p,
-        "  - missing_percent(email) < 0.05\n"
-        '  - missing_percent(email) < 5%:\n      where: "id > 0"\n'
-        "  - invalid_percent(email):\n      valid_regex: '@'\n"
-        "      warn: when > 0.01\n      fail: when > 0.1\n"
-        "  - duplicate_percent(id) between 0.01 and 0.5\n"
-        "  - failed_rows:\n      condition: amount < 0\n"
-        "  - failed_rows:\n      condition: amount > 100\n"
-        "  - schema:\n      required_columns: [id]\n"
-        "  - row_count > 0:\n      id: explicit_one\n"
-        "  - invalid_count(email) = 0:\n      valid_values: [a@x]\n"
-        "      valid_length: 3\n",
+        "  missing_percent_fraction: missing_percent(email) < 0.05\n"
+        "  missing_percent_scoped:\n    clauses:\n"
+        '      - missing_percent(email) < 5%:\n          where: "id > 0"\n'
+        "  invalid_percent_triggers:\n    clauses:\n"
+        "      - invalid_percent(email):\n          valid_regex: '@'\n"
+        "          warn: when > 0.01\n          fail: when > 0.1\n"
+        "  duplicate_percent_between: duplicate_percent(id) between 0.01 and 0.5\n"
+        "  neg_amounts:\n    clauses:\n"
+        "      - failed_rows:\n          condition: amount < 0\n"
+        "  pos_amounts:\n    clauses:\n"
+        "      - failed_rows:\n          condition: amount > 100\n"
+        "  schema_check:\n    clauses:\n"
+        "      - schema:\n          required_columns: [id]\n"
+        "  row_count_check: row_count > 0\n"
+        "  invalid_count_check:\n    clauses:\n"
+        "      - invalid_count(email) = 0:\n          valid_values: [a@x]\n"
+        "          valid_length: 3\n",
     )
     checks(
         p,
-        "  - row_count > 0\n  - failed_rows:\n      condition: amount < 0\n",
+        "  row_count_check: row_count > 0\n"
+        "  neg_amounts:\n    clauses:\n"
+        "      - failed_rows:\n          condition: amount < 0\n",
         name="b.yml",
         ds="prod",
     )
     assert [c.id for c in load_project(p).checks] == [
-        "2c6fa209e19b8ff5", "d619ea47aea25ff8", "f98252517e1ef750",
-        "c5b9e2af556580d1", "8690442fbe6d8d36", "787d508e1b791e34",
-        "cff74716b2ff97b1", "explicit_one", "fb23c7ea0c69982d",
-        "c4c28e4b6c50e07b", "371213f9a5d21c67",
+        "890432eddcbd3b9c", "ac7d2b5287224173", "e9da3186ef868615",
+        "c665af85515056b6", "de410a80978dcb5a", "8bac3d007ee9232d",
+        "aa9fe2acc9f8fc06", "f2d151a2358a5d5d", "23a9fa6b53f04095",
+        "c6c173b72fca757a", "da7900d586b7a0e1",
     ]  # fmt: skip

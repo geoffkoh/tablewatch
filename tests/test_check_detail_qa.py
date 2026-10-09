@@ -13,6 +13,8 @@ from tests.test_check_detail import compare, rule_of
 from tests.test_server import FAKE_BUNDLE, get, served
 from tests.test_webui import run_e
 
+ORDER_VOLUME = "4a420be887e8984a"
+
 
 def _add_checks(root: Path, dataset_file: str, lines: str) -> None:
     path = root / "checks" / dataset_file
@@ -28,16 +30,17 @@ def test_failed_rows_with_triggers_has_no_implied_expectation(retail: Path) -> N
     _add_checks(
         retail,
         "sales/orders.yml",
-        "  - failed_rows:\n"
-        "      name: Big refunds\n"
-        "      condition: amount < -1000\n"
-        "      warn: when > 0\n"
-        "      fail: when > 10\n",
+        "  big_refunds:\n"
+        "    clauses:\n"
+        "      - failed_rows:\n"
+        "          condition: amount < -1000\n"
+        "          warn: when > 0\n"
+        "          fail: when > 10\n",
     )
     project = tw.load(retail)
     assert project.ok, project.diagnostics
-    [check] = [c for c in project.checks if c.name == "Big refunds"]
-    assert check.expectation is None  # what the engine evaluates
+    [check] = [c for c in project.checks if c.name == "big_refunds"]
+    assert check.clauses[0].expectation is None  # what the engine evaluates
     with served(retail) as client:
         rule = rule_of(client, check.id)
     assert rule["expect"] is None
@@ -50,14 +53,15 @@ def test_schema_with_triggers_has_no_implied_expectation(retail: Path) -> None:
     _add_checks(
         retail,
         "sales/orders.yml",
-        "  - schema:\n"
-        "      name: Schema drift\n"
-        "      required_columns: [order_id]\n"
-        "      fail: when > 2\n",
+        "  schema_drift:\n"
+        "    clauses:\n"
+        "      - schema:\n"
+        "          required_columns: [order_id]\n"
+        "          fail: when > 2\n",
     )
     project = tw.load(retail)
     assert project.ok, project.diagnostics
-    [check] = [c for c in project.checks if c.name == "Schema drift"]
+    [check] = [c for c in project.checks if c.name == "schema_drift"]
     with served(retail) as client:
         rule = rule_of(client, check.id)
     assert rule == {"expect": None, "warn": None, "fail": compare(">", 2.0, "> 2")}
@@ -68,7 +72,7 @@ def test_bare_numbers_on_a_percent_metric_keep_their_scale(retail: Path) -> None
     _add_checks(
         retail,
         "sales/customers.yml",
-        "  - missing_percent(country) < 5\n  - missing_percent(country) < 0.05\n",
+        "  c1: missing_percent(country) < 5\n  c2: missing_percent(country) < 0.05\n",
     )
     with served(retail) as client:
         ids = _ids_by_expression(client)
@@ -82,7 +86,7 @@ def test_bare_numbers_on_a_percent_metric_keep_their_scale(retail: Path) -> None
 
 def test_a_fractional_duration_is_in_seconds(retail: Path) -> None:
     # R2 (REFINE, should).
-    _add_checks(retail, "sales/orders.yml", "  - freshness(created_at) < 1.5h\n")
+    _add_checks(retail, "sales/orders.yml", "  c1: freshness(created_at) < 1.5h\n")
     with served(retail) as client:
         ids = _ids_by_expression(client)
         assert rule_of(client, ids["freshness(created_at) < 1.5h"])[
@@ -95,7 +99,7 @@ def test_between_keeps_negative_bounds_and_allows_low_equal_high(retail: Path) -
     _add_checks(
         retail,
         "sales/orders.yml",
-        "  - min(amount) not between -1 and 1\n  - row_count between 5 and 5\n",
+        "  c1: min(amount) not between -1 and 1\n  c2: row_count between 5 and 5\n",
     )
     with served(retail) as client:
         ids = _ids_by_expression(client)
@@ -115,7 +119,9 @@ def test_every_op_reaches_the_wire(retail: Path) -> None:
     # Decision 2: every operator of the union is producible end to end.
     ops = ["=", "!=", "<", "<=", ">", ">="]
     _add_checks(
-        retail, "sales/orders.yml", "".join(f"  - row_count {op} 7\n" for op in ops)
+        retail,
+        "sales/orders.yml",
+        "".join(f"  c{i}: row_count {op} 7\n" for i, op in enumerate(ops, 1)),
     )
     with served(retail) as client:
         ids = _ids_by_expression(client)
@@ -131,7 +137,7 @@ def test_a_number_too_large_is_a_diagnostic_at_its_column(retail: Path) -> None:
     huge = "9" * 400
     customers = retail / "checks" / "sales" / "customers.yml"
     lines = customers.read_text(encoding="utf-8").splitlines(keepends=True)
-    lines.append(f"  - row_count > {huge}\n")
+    lines.append(f"  too_large: row_count > {huge}\n")
     customers.write_text("".join(lines), encoding="utf-8")
     line_no = len(lines)
     project = tw.load(retail)
@@ -140,8 +146,9 @@ def test_a_number_too_large_is_a_diagnostic_at_its_column(retail: Path) -> None:
     location = diagnostic.location
     assert location is not None
     assert location.line == line_no
-    # "  - row_count > " is 16 characters; the number starts at column 17.
-    assert location.column == 17
+    # "  too_large: row_count > " is 25 characters; the number starts at
+    # column 26.
+    assert location.column == 26
     code, _out, err = invoke(retail, "validate")
     assert code == 3
     assert "Traceback" not in err
@@ -150,15 +157,20 @@ def test_a_number_too_large_is_a_diagnostic_at_its_column(retail: Path) -> None:
 def test_history_entries_of_errors_still_say_what_they_measured(
     recorded: Recorded,
 ) -> None:
-    # R7 on the error path: an `error` result (run E) keeps its metric and
-    # unit, so the page can place it without guessing.
+    # R7 on the error path: an `error` result (run E) keeps its unit, so
+    # the page can place it without guessing. Spec 032 part 1: `metric` is
+    # always the placeholder "check" (D5), not the clause's real metric —
+    # that detail moves into `clauses` and part 2's per-clause rows.
     run_e(recorded.root)
     with served(recorded.root) as client:
-        history = get(client, "/api/v1/checks/b1ceb8262d8b5441/history")["items"]
+        checks = {c["name"]: c["id"] for c in get(client, "/api/v1/checks")["items"]}
+        history = get(
+            client, f"/api/v1/checks/{checks['known_countries']}/history"
+        )["items"]
     assert [h["outcome"] for h in history] == ["error", "fail", "fail"]
     for entry in history:
-        assert entry["metric"] == "missing_percent"
-        assert entry["unit"] == "percent"
+        assert entry["metric"] == "check"
+        assert entry["unit"] == "count"
         assert entry["dataset"] == "sales.customers"
 
 
@@ -184,13 +196,13 @@ def test_check_links_reach_the_ui(recorded: Recorded, path: str) -> None:
     assert response.content == FAKE_BUNDLE.index.body
 
 
-@pytest.mark.parametrize("encoded", ["sales.orders%3Avolume", "b1ceb8262d8b5441"])
+@pytest.mark.parametrize("encoded", ["sales.orders%3Avolume", ORDER_VOLUME])
 def test_the_api_answers_encoded_ids(recorded: Recorded, encoded: str) -> None:
     # The page builds API paths with encodeURIComponent: `:` arrives as %3A.
     with served(recorded.root) as client:
         response = client.get(f"/api/v1/checks/{encoded}")
         history = client.get(f"/api/v1/checks/{encoded}/history?limit=200")
-    if encoded.startswith("b1"):
+    if encoded == ORDER_VOLUME:
         assert response.status_code == 200
         assert history.status_code == 200
     else:

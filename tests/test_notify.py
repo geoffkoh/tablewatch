@@ -601,7 +601,10 @@ def test_a_check_overrides_its_dataset(
     _write(
         project,
         "checks/sales/orders.yml",
-        ORDERS.replace("has_a:\n        clauses:", "has_a:\n        notify: backup\n        clauses:"),
+        ORDERS.replace(
+            "has_a:\n        clauses:",
+            "has_a:\n        notify: backup\n        clauses:",
+        ),
     )
     set_rows(project)
     run(project)
@@ -787,9 +790,7 @@ def test_editor_schemas_know_notify() -> None:  # N25
         {
             "dataset": "t",
             "notify": [],
-            "checks": {
-                "c1": {"clauses": ["row_count > 0"], "notify": ["a", "b"]}
-            },
+            "checks": {"c1": {"clauses": ["row_count > 0"], "notify": ["a", "b"]}},
         },
     ):
         assert not list(checks.iter_errors(document))

@@ -113,7 +113,7 @@ def test_inside_a_value(project: Path) -> None:  # T3
     _, errors = _validate(project)
     assert errors == [
         (
-            "checks/orders.yml:4:15: error: invalid YAML: hidden control character "
+            "checks/orders.yml:6:19: error: invalid YAML: hidden control character "
             "U+000B (vertical tab) is not allowed; delete it"
         )
     ]
@@ -121,11 +121,14 @@ def test_inside_a_value(project: Path) -> None:  # T3
         project,
         b'dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count > 0:\n          name: "a\\fb"\n',
     )
-    # An escaped control character is valid YAML, but not a check name the
+    # An escaped control character is valid YAML, but not a clause name the
     # results store keeps the same on every database (spec 031, Q7).
     assert _validate(project) == (
         3,
-        ["checks/orders.yml:4:13: error: a check name cannot hold control characters"],
+        [
+            'checks/orders.yml:6:17: error: clause name "a\\x0cb" is not valid — use '
+            'letters, digits, "_" and "-", starting with a letter'
+        ],
     )
 
 
@@ -229,8 +232,8 @@ def test_one_pass(project: Path) -> None:  # T7
     "data",
     [
         b"\xef\xbb\xbfdataset: orders\nchecks:\n  c1: row_count > 0\n",
-        b"dataset: orders\r\nchecks:\r\n  - row_count > 0\r\n",
-        b"dataset: orders\rchecks:\r  - row_count > 0\r",
+        b"dataset: orders\r\nchecks:\r\n  c1: row_count > 0\r\n",
+        b"dataset: orders\rchecks:\r  c1: row_count > 0\r",
         b"dataset: orders\n# a\ttab\nchecks:\n  c1: row_count > 0\n",
     ],
 )
@@ -247,7 +250,7 @@ def test_a_bad_tagged_value(project: Path, tag: str) -> None:  # G1
     _file(project, G1.replace(b"!!int", f"!!{tag}".encode()))
     assert _validate(project) == (
         3,
-        [f"checks/orders.yml:4:13: error: invalid YAML: 'xyz' is not a valid !!{tag}"],
+        [f"checks/orders.yml:6:17: error: invalid YAML: 'xyz' is not a valid !!{tag}"],
     )
 
 
@@ -257,7 +260,7 @@ def test_other_bad_tags(project: Path, value: bytes) -> None:  # G2
     code, errors = _validate(project)
     assert code == 3
     assert len(errors) == 1
-    assert errors[0].startswith("checks/orders.yml:4:13: error: invalid YAML:")
+    assert errors[0].startswith("checks/orders.yml:6:17: error: invalid YAML:")
 
 
 def test_bad_tags_in_the_other_files(project: Path) -> None:  # G3
@@ -312,18 +315,17 @@ def test_shared_triggers(project: Path) -> None:  # M1b, M6
     _file(project, M1B)
     project_ = tw.load(project)
     assert project_.ok, project_.diagnostics
-    assert [c.fail.__str__() if c.fail else None for c in project_.checks] == [
-        "> 5%",
-        "> 5%",
-        "> 20%",
-    ]
+    assert [
+        c.clauses[0].fail.__str__() if c.clauses[0].fail else None
+        for c in project_.checks
+    ] == ["> 5%", "> 5%", "> 20%"]
     _file(project, M1B.replace(b"when > 1%", b"when > 1d"))
     code, errors = _validate(project)
     assert code == 3
     assert (
         errors
         == [
-            "checks/orders.yml:4:25: error: '1d' is a duration, but missing_percent is not"
+            "checks/orders.yml:6:29: error: '1d' is a duration, but missing_percent is not"
         ]
         * 3
     )
@@ -335,7 +337,7 @@ def test_a_merge_does_not_change_the_id(project: Path) -> None:  # M7
     _file(
         project,
         b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - missing_percent(email):\n"
-        b"      warn: when > 1%\n      fail: when > 5%\n",
+        b"          warn: when > 1%\n          fail: when > 5%\n",
     )
     assert tw.load(project).checks[0].id == merged
 
@@ -346,23 +348,24 @@ def test_a_merge_does_not_change_the_id(project: Path) -> None:  # M7
         (
             "row_count",
             "{warn: 5}",
-            "4:18: error: `warn:` takes a trigger such as 'when < 10'",
+            "6:22: error: `warn:` takes a trigger such as 'when < 10'",
         ),
-        ("row_count", "{warn: when <<}", "4:24: error: expected a number, found '<'"),
+        ("row_count", "{warn: when <<}", "6:28: error: expected a number, found '<'"),
         (
             "row_count > 0",
             "{bogus: 1}",
-            "4:12: error: unknown option for row_count 'bogus'",
+            "6:16: error: unknown option for row_count 'bogus'",
         ),
         (
             "row_count > 0",
             "{name: 5}",
-            "4:18: error: `name:` must be a non-empty string",
+            '6:22: error: clause name "5" is not valid — use letters, digits, "_" '
+            'and "-", starting with a letter',
         ),
         (
             "row_count > 0",
             '{id: "a b"}',
-            "4:16: error: invalid id 'a b' — use letters, digits, '.', '_', ':' or '-'",
+            '6:16: error: "id:" is not used here — a check\'s name is its identity',
         ),
     ],
 )
@@ -385,14 +388,17 @@ def test_merges_at_the_item_and_the_root(project: Path) -> None:  # M3
     )
     assert _validate(project) == (0, [])
     assert [r.outcome.value for r in tw.run(project, record=False).results] == ["pass"]
-    _file(project, b"<<: {dataset: orders, checks: [row_count > 0]}\n")
+    _file(project, b"<<: {dataset: orders, checks: {c1: row_count > 0}}\n")
     assert _validate(project) == (0, [])
     for root, diagnostic in (
         (
             b"<<: {tags: 5}",
             "1:12: error: `tags:` must be a string or a list of strings",
         ),
-        (b"<<: {checks: 5}", "1:14: error: `checks:` must be a list"),
+        (
+            b"<<: {checks: 5}",
+            "1:14: error: `checks:` must be a mapping of check name to clauses",
+        ),
         (
             b"<<: {datasource: nope}",
             "1:18: error: unknown datasource 'nope' (defined in tablewatch.yml: wh)",
@@ -445,25 +451,25 @@ def test_own_keys_win(project: Path) -> None:  # M6
     _file(
         project,
         b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count:\n"
-        b"      <<: {warn: when < 5}\n      warn: when < 7\n",
+        b"          <<: {warn: when < 5}\n          warn: when < 7\n",
     )
     [check] = tw.load(project).checks
-    assert str(check.warn) == "< 7"
+    assert str(check.clauses[0].warn) == "< 7"
     _file(
         project,
         b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count:\n"
-        b"      <<: {warn: when < 5}\n      warn: 5\n",
+        b"          <<: {warn: when < 5}\n          warn: 5\n",
     )
     assert _validate(project)[1] == [
-        "checks/orders.yml:5:13: error: `warn:` takes a trigger such as 'when < 10'"
+        "checks/orders.yml:7:17: error: `warn:` takes a trigger such as 'when < 10'"
     ]
     _file(
         project,
         b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count:\n"
-        b"      <<: [&a {warn: when < 1}, &b {warn: when < 2}]\n",
+        b"          <<: [&a {warn: when < 1}, &b {warn: when < 2}]\n",
     )
     [check] = tw.load(project).checks
-    assert str(check.warn) == "< 1"  # the first merged mapping wins
+    assert str(check.clauses[0].warn) == "< 1"  # the first merged mapping wins
 
 
 def test_a_merged_filter_has_no_line_of_its_own(project: Path) -> None:  # architect

@@ -123,9 +123,7 @@ def test_odd_file_names_read_and_stay_relative(
     assert_f1(code, report)
     assert {r["dataset"] for r in report["results"]} == {on_disk}
     ids = {c.id for c in tw.load(landing).checks}
-    assert ids == {
-        derive_check_id("drop", on_disk, name) for name in ("c1", "c2")
-    }
+    assert ids == {derive_check_id("drop", on_disk, name) for name in ("c1", "c2")}
     compiled = invoke(landing, "compile")[1]
     assert_no_leak(
         [json.dumps(report), err, compiled, *stored_messages(landing)], landing

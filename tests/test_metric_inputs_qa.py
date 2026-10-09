@@ -79,7 +79,9 @@ def _run(
 ) -> dict[str, tuple[str, float | None, str | None]]:
     _write(root, ds, body, dataset)
     result = tw.run(root, record=False)
-    return {r.check.name: (r.outcome.value, r.value, r.message) for r in result.results}
+    return {
+        r.check.canonical: (r.outcome.value, r.value, r.message) for r in result.results
+    }
 
 
 def _everywhere(root: Path) -> str:
@@ -244,12 +246,12 @@ def test_a_stray_text_in_an_integer_column(project: Path, metric: str) -> None:
 def test_dataset_filter_scopes_the_probes(project: Path, ds: str) -> None:
     # The dataset filter drops the text rows; the probes must not see them.
     (project / "checks" / "t.yml").write_text(
-        f'dataset: t\ndatasource: {ds}\nfilter: "n = 3"\nchecks:\n'
-        "  - min(r) > 0\n  - row_count = 1\n",
+        f'dataset: t\ndatasource: {ds}\nfilter: "n = 3"\n'
+        + named_checks("  - min(r) > 0\n  - row_count = 1\n"),
         encoding="utf-8",
     )
     results = {
-        r.check.name: (r.outcome.value, r.message)
+        r.check.canonical: (r.outcome.value, r.message)
         for r in tw.run(project, record=False).results
     }
     assert results["row_count = 1"] == ("pass", None)
@@ -376,7 +378,7 @@ def test_a_csv_amount_with_na_is_text(tmp_path: Path, metric: str) -> None:
         encoding="utf-8",
     )
     code, report, err = run_json(root)
-    results = {r["name"]: r for r in report["results"]}
+    results = {r["expression"]: r for r in report["results"]}
     assert results[f"{metric}(amount) > 0"]["outcome"] == "error"
     assert (
         results[f"{metric}(amount) > 0"]["message"]

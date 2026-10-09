@@ -400,7 +400,9 @@ def test_an_empty_list_on_one_check_silences_only_that_check(
     _write(
         project,
         "checks/sales/orders.yml",
-        ORDERS.replace("has_a:\n        clauses:", "has_a:\n        notify: []\n        clauses:"),
+        ORDERS.replace(
+            "has_a:\n        clauses:", "has_a:\n        notify: []\n        clauses:"
+        ),
     )
     checks = {c.name: c.notify for c in load_project(project).checks}
     assert checks == {

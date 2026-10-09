@@ -186,9 +186,9 @@ def test_deep_nesting_is_a_diagnostic(project: Path) -> None:
 @pytest.mark.parametrize(
     ("options", "where"),
     [
-        (b"<<: {<<: {warn: 5}}", "4:23"),  # a merge of a merge
-        (b"<<: [{name: a}, {warn: 5}]", "4:30"),  # the second of a list
-        (b"<<: [{<<: {name: a}}, {<<: {warn: 5}}]", "4:41"),  # merges in a list
+        (b"<<: {<<: {warn: 5}}", "6:27"),  # a merge of a merge
+        (b"<<: [{name: a}, {warn: 5}]", "6:34"),  # the second of a list
+        (b"<<: [{<<: {name: a}}, {<<: {warn: 5}}]", "6:45"),  # merges in a list
     ],
 )
 def test_a_mistake_in_nested_merges_is_placed_where_written(
@@ -196,7 +196,7 @@ def test_a_mistake_in_nested_merges_is_placed_where_written(
 ) -> None:
     _write(
         project,
-        b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count:\n      "
+        b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count:\n          "
         + options
         + b"\n",
     )
@@ -208,26 +208,34 @@ def test_a_mistake_in_nested_merges_is_placed_where_written(
 def test_an_alias_of_a_merge(project: Path) -> None:
     _write(
         project,
-        b"dataset: orders\nchecks:\n  c1:\n    clauses:\n      - row_count > 0: &m {<<: {name: 5}}\n"
-        b"  - row_count > 1:\n      <<: *m\n",
+        b"dataset: orders\nchecks:\n"
+        b"  c1:\n    clauses:\n      - row_count > 0: &m {<<: {name: 5}}\n"
+        b"  c2:\n    clauses:\n      - row_count > 1:\n          <<: *m\n",
     )
     assert (
         _errors(project)
-        == ["checks/orders.yml:3:35: error: `name:` must be a non-empty string"] * 2
+        == [
+            'checks/orders.yml:5:39: error: clause name "5" is not valid — use '
+            'letters, digits, "_" and "-", starting with a letter'
+        ]
+        * 2
     )
 
 
 def test_a_merge_inside_a_flow_list_of_checks(project: Path) -> None:
-    _write(project, b"dataset: orders\nchecks: [{<<: {row_count > 0: {warn: 5}}}]\n")
+    _write(
+        project,
+        b"dataset: orders\nchecks: {c1: {clauses: [{<<: {row_count > 0: {warn: 5}}}]}}\n",
+    )
     assert _errors(project) == [
-        "checks/orders.yml:2:38: error: `warn:` takes a trigger such as 'when < 10'"
+        "checks/orders.yml:2:53: error: `warn:` takes a trigger such as 'when < 10'"
     ]
 
 
 def test_merges_in_the_root_nest(project: Path) -> None:
     _write(project, b"<<: {<<: {checks: 5}}\ndataset: orders\n")
     assert _errors(project) == [
-        "checks/orders.yml:1:19: error: `checks:` must be a list"
+        "checks/orders.yml:1:19: error: `checks:` must be a mapping of check name to clauses"
     ]
 
 
@@ -304,7 +312,7 @@ def test_merged_options_run_on_both_backends(
 def test_a_root_merge_runs_on_both_backends(workspace: Workspace, backend: str) -> None:
     workspace.write(
         "checks/t.yml",
-        f"<<: {{dataset: t, datasource: {backend}, checks: [row_count > 0]}}\n",
+        f"<<: {{dataset: t, datasource: {backend}, checks: {{c1: row_count > 0}}}}\n",
     )
     [result] = tw.run(workspace.root, record=False).results
     assert result.outcome.value == "pass"

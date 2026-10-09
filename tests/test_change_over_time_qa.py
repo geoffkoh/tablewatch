@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 import tablewatch as tw
 from tablewatch.api import read_baselines
+from tablewatch.checks.model import derive_check_id
 from tablewatch.config import load_project
 from tablewatch.results.models import RunRow
 from tablewatch.results.store import MIGRATIONS_DIR, ResultStore
@@ -124,25 +125,25 @@ def test_a_column_named_change(project: Path, ds: str) -> None:
     write(
         project,
         ds,
-        "  - missing_count(change) >= 0\n"
-        "  - change(missing_count(change)) between -10 and 10\n",
+        "  not_missing: missing_count(change) >= 0\n"
+        "  change_in_missing: change(missing_count(change)) between -10 and 10\n",
     )
     tw.run(project)
     got = results(tw.run(project))
-    assert got["missing_count(change) >= 0"].display_value == "1,000"
-    assert got["change(missing_count(change)) between -10 and 10"].display_value == "0"
+    assert got["not_missing"].display_value == "1,000"
+    assert got["change_in_missing"].display_value == "0"
 
 
 @pytest.mark.parametrize(
     ("check", "message", "col"),
     [
-        # `  - ` puts the expression at column 5.
-        ("change(change(row_count)) < 1%", "change() cannot contain change()", 12),
-        ("change() < 1%", "inside change(...)", 12),
-        ("change(row_count, x) < 1%", "expected a baseline after the metric", 23),
-        ("change(email) < 1%", "inside change(...)", 12),
-        ("change(change) < 1%", "inside change(...)", 12),
-        ("change(row_count < 1%", "')' to close change(", 22),
+        # `  c1: ` puts the expression at column 7.
+        ("change(change(row_count)) < 1%", "change() cannot contain change()", 14),
+        ("change() < 1%", "inside change(...)", 14),
+        ("change(row_count, x) < 1%", "expected a baseline after the metric", 25),
+        ("change(email) < 1%", "inside change(...)", 14),
+        ("change(change) < 1%", "inside change(...)", 14),
+        ("change(row_count < 1%", "')' to close change(", 24),
     ],
 )
 def test_diagnostics_point_at_the_problem(
@@ -214,10 +215,11 @@ def test_an_empty_run_is_passed_over(project: Path, ds: str) -> None:
     first = tw.run(project)  # avg 20
     set_rows(project, 0)
     [empty] = tw.run(project).results
-    assert empty.measured is None
+    assert empty.single is not None and empty.single.measured is None
     set_rows(project, 1000, amount=19.8)
     [r] = tw.run(project).results
-    assert r.previous is not None and r.previous.run_id == first.id
+    assert r.single is not None and r.single.previous is not None
+    assert r.single.previous.run_id == first.id
     assert r.display_value == "-1.00%"
 
 
@@ -255,23 +257,22 @@ def test_a_tie_on_started_at_breaks_on_run_id_as_history_does(project: Path) -> 
         check = load_project(project).checks[0]
         newest = store.history_page("changes", check.id, limit=1)[0][1].id
     [r] = tw.run(project).results
-    assert r.previous is not None and r.previous.run_id == newest
+    assert r.single is not None and r.single.previous is not None
+    assert r.single.previous.run_id == newest
 
 
-def test_an_id_pinned_across_a_metric_edit(project: Path) -> None:
+def test_an_id_on_a_change_clause_is_rejected(project: Path) -> None:  # D1: id: removed
     write(project, "lite", "  - change(row_count) > -20%:\n      id: pinned\n")
-    tw.run(project)
-    write(project, "lite", "  - change(sum(amount)) > -20%:\n      id: pinned\n")
-    [r] = tw.run(project).results
-    assert r.outcome.value == "skipped" and r.previous is None
+    code, out, err = invoke(project, "validate")
+    assert code == 3
+    assert '"id:" is not used here' in out + err
 
 
-def test_an_id_pinned_from_a_plain_check(project: Path) -> None:
+def test_an_id_on_a_plain_clause_is_rejected(project: Path) -> None:  # D1: id: removed
     write(project, "lite", "  - row_count > 0:\n      id: pinned\n")
-    tw.run(project)
-    write(project, "lite", "  - change(row_count) > -20%:\n      id: pinned\n")
-    [r] = tw.run(project).results
-    assert r.outcome.value == "skipped" and r.previous is None
+    code, out, err = invoke(project, "validate")
+    assert code == 3
+    assert '"id:" is not used here' in out + err
 
 
 def test_more_change_checks_than_one_chunk(project: Path) -> None:
@@ -306,8 +307,8 @@ def test_two_runs_at_once(project: Path) -> None:
         t.join()
     assert not errors
     assert all(r.outcome.value != "error" for run in runs for r in run.results)
-    [r] = [r for r in tw.run(project).results if r.check.expression.change]
-    assert r.previous is not None
+    [r] = [r for r in tw.run(project).results if r.check.clauses[0].expression.change]
+    assert r.single is not None and r.single.previous is not None
 
 
 @pytest.fixture
@@ -330,15 +331,19 @@ def test_no_store_reads_a_read_only_store(project: Path, read_only_store: Path) 
 
 
 def test_a_store_from_a_newer_tablewatch(project: Path) -> None:
-    write(project, "lite", CHANGE + "  - row_count > 0\n")
+    write(
+        project,
+        "lite",
+        "  changing: change(row_count) > -20%\n  plain: row_count > 0\n",
+    )
     tw.run(project)
     with closing(sqlite3.connect(store_path(project))) as con, con:
         con.execute("UPDATE tablewatch_alembic_version SET version_num = '9999'")
     run = tw.run(project, record=False)
     got = results(run)
-    assert got["change(row_count) > -20%"].outcome.value == "error"
-    assert "newer tablewatch" in (got["change(row_count) > -20%"].message or "")
-    assert got["row_count > 0"].outcome.value == "pass"
+    assert got["changing"].outcome.value == "error"
+    assert "newer tablewatch" in (got["changing"].message or "")
+    assert got["plain"].outcome.value == "pass"
     assert run.exit_code() == 2
 
 
@@ -357,7 +362,7 @@ def test_an_in_memory_store_is_no_history(project: Path) -> None:
 # --- the store migrated from 0001 -----------------------------------------------
 
 
-def _store_at_0001(path: Path) -> None:
+def _store_at_0001(path: Path, check_id: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(f"sqlite:///{path}")
     try:
@@ -382,10 +387,11 @@ def _store_at_0001(path: Path) -> None:
                     "INSERT INTO tablewatch_check_results (run_id, check_id,"
                     " check_name, expression, metric, dataset, datasource, outcome,"
                     " value, display_value, message, source, owner, tags,"
-                    " duration_ms) VALUES ('old', 'pinned', 'n', 'row_count > 0',"
+                    " duration_ms) VALUES ('old', :check_id, 'n', 'row_count > 0',"
                     " 'row_count', 'orders', 'lite', 'pass', 1000, '1,000 rows',"
                     " NULL, 'checks/orders.yml:4:5', NULL, '[]', 1.0)"
-                )
+                ),
+                {"check_id": check_id},
             )
     finally:
         engine.dispose()
@@ -394,10 +400,14 @@ def _store_at_0001(path: Path) -> None:
 def test_an_old_store_upgrades_and_old_rows_are_never_baselines(
     project: Path,
 ) -> None:
-    _store_at_0001(store_path(project))
-    write(project, "lite", "  - change(row_count) > -20%:\n      id: pinned\n")
+    # The check's id is now derived from its name alone (D1); compute the
+    # real id instead of pinning one through the removed `id:` key.
+    check_id = derive_check_id("lite", "orders", "main")
+    _store_at_0001(store_path(project), check_id)
+    write(project, "lite", "  main: change(row_count) > -20%\n")
     [r] = tw.run(project).results
-    assert r.outcome.value == "skipped" and r.previous is None
+    assert r.outcome.value == "skipped"
+    assert r.single is not None and r.single.previous is None
     engine = create_engine(f"sqlite:///{store_path(project)}")
     try:
         columns = {
@@ -417,13 +427,13 @@ def test_an_old_store_upgrades_and_old_rows_are_never_baselines(
     from tests.test_server import served
 
     with served(project) as client:
-        history = client.get("/api/v1/checks/pinned/history").json()
+        history = client.get(f"/api/v1/checks/{check_id}/history").json()
     units = {(i["run_id"], i["unit"]) for i in history["items"]}
     assert ("old", "count") in units
 
 
 def test_no_store_does_not_migrate_an_old_store(project: Path) -> None:  # S11
-    _store_at_0001(store_path(project))
+    _store_at_0001(store_path(project), "irrelevant")
     write(project, "lite", CHANGE)
     invoke(project, "run", "--no-store")
     with closing(sqlite3.connect(store_path(project))) as con:
@@ -441,15 +451,19 @@ def test_where_keeps_its_own_baseline(project: Path, ds: str) -> None:
     write(
         project,
         ds,
-        CHANGE + "  - change(row_count) > -20%:\n"
-        "      name: eu\n      where: region = 'EU'\n",
+        "  plain: change(row_count) > -20%\n"
+        "  eu:\n"
+        "    clauses:\n"
+        "      - change(row_count) > -20%:\n"
+        "          where: region = 'EU'\n",
     )
     tw.run(project)  # 1000 rows, 500 EU
     set_rows(project, 400)  # 200 EU
     got = results(tw.run(project))
-    assert got["change(row_count) > -20%"].previous is not None
-    assert got["change(row_count) > -20%"].previous.value == 1000
-    assert got["eu"].previous is not None and got["eu"].previous.value == 500
+    plain, eu = got["plain"].single, got["eu"].single
+    assert plain is not None and plain.previous is not None
+    assert plain.previous.value == 1000
+    assert eu is not None and eu.previous is not None and eu.previous.value == 500
     assert got["eu"].display_value == "-60.00%"
 
 
@@ -457,13 +471,14 @@ def test_where_keeps_its_own_baseline(project: Path, ds: str) -> None:
 def test_dataset_filter(project: Path, ds: str) -> None:
     (project / "checks" / "orders.yml").write_text(
         f"dataset: orders\ndatasource: {ds}\nfilter: region = 'US'\nchecks:\n"
-        "  - change(row_count) between -1000 and 1000\n",
+        "  main: change(row_count) between -1000 and 1000\n",
         encoding="utf-8",
     )
     tw.run(project)
     set_rows(project, 1100)
     [r] = tw.run(project).results
-    assert r.measured == 550 and r.display_value == "+50 rows"
+    assert r.single is not None and r.single.measured == 550
+    assert r.display_value == "+50 rows"
 
 
 def test_files_datasource(tmp_path: Path) -> None:
@@ -476,7 +491,7 @@ def test_files_datasource(tmp_path: Path) -> None:
     )
     (root / "checks" / "o.yml").write_text(
         "datasource: drop\ndataset: orders.csv\nchecks:\n"
-        "  - change(row_count) between -10 and 10\n",
+        "  main: change(row_count) between -10 and 10\n",
         encoding="utf-8",
     )
     csv = root / "landing" / "orders.csv"
@@ -493,7 +508,7 @@ def test_json_previous_started_at_is_utc_like_the_run(project: Path) -> None:
     _, out, _ = invoke(project, "run", "--no-store", "--output", "json")
     report = strict_json(out)
     run_started = report["run"]["started_at"]
-    previous = report["results"][0]["previous"]["started_at"]
+    previous = report["results"][0]["clauses"][0]["previous"]["started_at"]
     assert run_started.endswith("+00:00")
     assert previous.endswith("+00:00"), previous
 
@@ -502,9 +517,10 @@ def test_json_shape_for_a_plain_check(project: Path) -> None:  # D8 additive
     write(project, "lite", "  - row_count > 0\n")
     _, out, _ = invoke(project, "run", "--no-store", "--output", "json")
     report = strict_json(out)
-    assert report["schema_version"] == 1
+    assert report["schema_version"] == 2
     [r] = report["results"]
-    assert (r["measured"], r["unit"], r["previous"]) == (None, "count", None)
+    [c] = r["clauses"]
+    assert (c["measured"], c["unit"], c["previous"]) == (None, "count", None)
 
 
 def test_html_report_shows_the_change(project: Path) -> None:
@@ -528,20 +544,27 @@ def test_cli_history_shows_the_change(project: Path) -> None:  # S23
     assert "-60.00%" in out
 
 
-def test_api_run_items_carry_measured_and_unit(project: Path) -> None:
+def test_api_run_items_carry_the_check_unit(project: Path) -> None:
     from tests.test_server import served
 
-    write(project, "lite", CHANGE + "  - row_count > 0\n")
+    write(
+        project,
+        "lite",
+        "  changing: change(row_count) > -20%\n  plain: row_count > 0\n",
+    )
     tw.run(project)
     set_rows(project, 400)
     second = tw.run(project)
     with served(project) as client:
         body = client.get(f"/api/v1/runs/{second.id}").json()
-    items = {i["expression"]: i for i in body["results"]}
-    assert items["change(row_count) > -20%"]["unit"] == "percent"
-    assert items["change(row_count) > -20%"]["measured"] == 400
-    assert items["row_count > 0"]["unit"] == "count"
-    assert items["row_count > 0"]["measured"] is None
+    items = {i["name"]: i for i in body["results"]}
+    assert items["changing"]["unit"] == "percent"
+    # Part 1 (D5): run detail reads summary rows, whose `measured` is always
+    # NULL; a clause's own measured value is exposed through `change()`'s
+    # own baseline reads, not this endpoint.
+    assert items["changing"]["measured"] is None
+    assert items["plain"]["unit"] == "count"
+    assert items["plain"]["measured"] is None
 
 
 def test_skipped_never_alerts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -605,11 +628,11 @@ def test_s2_exact_message(project: Path) -> None:  # S2
 def test_s14_avg_on_text(project: Path, ds: str) -> None:  # S14
     write(project, ds, "  - change(avg(status)) < 10%\n")
     [r] = tw.run(project).results
-    assert (r.outcome.value, r.message, r.measured) == (
+    assert (r.outcome.value, r.message) == (
         "error",
         "avg needs a numeric column; got text",
-        None,
     )
+    assert r.single is not None and r.single.measured is None
 
 
 @BOTH
@@ -630,4 +653,4 @@ def test_missing_rule_diagnostic_location(project: Path) -> None:  # S17
     write(project, "lite", "  - change(row_count)\n")
     _, out, err = invoke(project, "validate")
     # At the end of the expression, where `- row_count` alone reports too.
-    assert "orders.yml:4:22: error: change(row_count) needs a comparison" in out + err
+    assert "orders.yml:4:24: error: change(row_count) needs a comparison" in out + err

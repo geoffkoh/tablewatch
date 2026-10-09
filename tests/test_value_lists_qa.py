@@ -397,9 +397,9 @@ def test_missing_percent_of_only_nulls_keeps_its_number(nulls: Path, ds: str) ->
     )
     diagnostics = _diagnostics(nulls)
     assert [(s, col) for s, _, col, _ in diagnostics] == [
-        ("warning", 24),
-        ("warning", 30),
-        ("warning", 36),
+        ("warning", 28),
+        ("warning", 34),
+        ("warning", 40),
     ]
     [(outcome, value)] = _results(nulls)
     assert outcome is Outcome.FAIL
@@ -414,7 +414,7 @@ def test_invalid_percent_gets_its_true_value(nulls: Path, ds: str) -> None:  # N
         "      valid_values: [pending, shipped, null]\n      missing_values: ['']\n",
     )
     [(severity, line, col, message)] = _diagnostics(nulls)
-    assert (severity, line, col) == ("warning", 5, 40)
+    assert (severity, line, col) == ("warning", 7, 44)
     assert "check it with missing_count" in message
     [(outcome, value)] = _results(nulls)
     assert outcome is Outcome.FAIL
@@ -430,7 +430,7 @@ def test_invalid_percent_only_nulls_is_an_error(nulls: Path) -> None:  # N4
     code, _, err = invoke(nulls, "validate")
     assert code == 3
     assert err.startswith(
-        "checks/orders.yml:5:21: error: `valid_values:` has no values"
+        "checks/orders.yml:7:25: error: `valid_values:` has no values"
     )
 
 
@@ -468,7 +468,7 @@ def test_the_check_id_is_the_one_main_derived(nulls: Path) -> None:
         "      valid_values: [pending, shipped, null]\n      missing_values: ['']\n",
     )
     [check] = tw.load(nulls).checks
-    assert check.id == "411abd1075a5408b"
+    assert check.id == "7d11a1fbf2cf4bd0"
 
 
 def test_validate_with_errors_and_warnings_keeps_the_error_line(nulls: Path) -> None:

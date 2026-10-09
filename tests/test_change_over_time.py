@@ -83,7 +83,8 @@ def test_the_first_run_is_the_baseline(project: Path, ds: str) -> None:  # S1
         "—",
         "no earlier result to compare with; this run is the baseline",
     )
-    assert r.measured == 1000
+    assert r.single is not None
+    assert r.single.measured == 1000
     assert run.exit_code() == 0
 
 
@@ -146,7 +147,8 @@ def test_an_error_is_never_a_baseline(project: Path, ds: str) -> None:  # S5, S1
         "avg needs a numeric column; got text",
         "avg needs a numeric column; found a non-numeric value",
     )
-    assert errored.measured is None
+    assert errored.single is not None
+    assert errored.single.measured is None
     set_rows(project, 1000, amount=19.8)
     [r] = tw.run(project).results
     assert r.display_value == "-1.00%"
@@ -172,8 +174,8 @@ def test_another_project_is_never_read(project: Path, tmp_path: Path) -> None:  
     tw.run(other)  # a newer result for the same check id, another project
     set_rows(project, 990)
     [r] = tw.run(project).results
-    assert r.previous is not None
-    assert r.previous.run_id == first.id
+    assert r.single is not None and r.single.previous is not None
+    assert r.single.previous.run_id == first.id
     assert r.display_value == "-1.00%"
 
 
@@ -194,22 +196,27 @@ def test_a_later_run_is_not_a_baseline(project: Path) -> None:  # S7
         )
     set_rows(project, 990)
     [r] = tw.run(project).results
-    assert r.previous is not None and r.previous.run_id == first.id
+    assert r.single is not None and r.single.previous is not None
+    assert r.single.previous.run_id == first.id
 
 
 @BOTH
 def test_from_zero(project: Path, ds: str) -> None:  # S8, S9, S10
-    write(project, ds, CHANGE + "  - change(row_count) < 1000:\n      name: absolute\n")
+    write(
+        project,
+        ds,
+        "  relative: change(row_count) > -20%\n  absolute: change(row_count) < 1000\n",
+    )
     set_rows(project, 0)
     tw.run(project)
     got = results(tw.run(project))
-    assert (
-        got["change(row_count) > -20%"].outcome.value,
-        got["change(row_count) > -20%"].display_value,
-    ) == ("pass", "0.00%")
+    assert (got["relative"].outcome.value, got["relative"].display_value) == (
+        "pass",
+        "0.00%",
+    )
     set_rows(project, 25)
     got = results(tw.run(project))
-    relative = got["change(row_count) > -20%"]
+    relative = got["relative"]
     assert relative.outcome.value == "skipped"
     assert relative.message == (
         "previous value was 0, so a percent change has no meaning; use an absolute "
@@ -230,7 +237,7 @@ def test_no_store_reads_history_and_writes_nothing(project: Path) -> None:  # S1
         assert code == 1
         [r] = json.loads(out)["results"]
         assert r["display_value"] == "-60.00%"
-        assert r["previous"]["value"] == 1000
+        assert r["clauses"][0]["previous"]["value"] == 1000
     [r] = tw.run(project, record=False).results
     assert r.outcome.value == "fail"
     url = load_project(project).config.results.url
@@ -246,17 +253,21 @@ def test_no_store_with_no_store_file(project: Path) -> None:  # S12
 
 
 def test_an_unreadable_store(project: Path) -> None:  # S13
-    write(project, "lite", CHANGE + "  - row_count > 0\n")
+    write(
+        project,
+        "lite",
+        "  changing: change(row_count) > -20%\n  plain: row_count > 0\n",
+    )
     store = project / ".tablewatch" / "results.db"
     store.parent.mkdir()
     store.write_text("garbage", encoding="utf-8")
     run = tw.run(project, record=False)
     got = results(run)
-    assert got["change(row_count) > -20%"].outcome.value == "error"
-    assert got["change(row_count) > -20%"].message == (
+    assert got["changing"].outcome.value == "error"
+    assert got["changing"].message == (
         "could not read this check's history: file is not a database"
     )
-    assert got["row_count > 0"].outcome.value == "pass"
+    assert got["plain"].outcome.value == "pass"
     assert run.exit_code() == 2
 
 
@@ -354,11 +365,11 @@ def test_positive_signs(project: Path, ds: str) -> None:  # S25, S26
     write(
         project,
         ds,
-        "  - change(row_count) between -20% and 20%\n"
-        "  - change(sum(amount)) between -5000 and 5000\n",
+        "  rows: change(row_count) between -20% and 20%\n"
+        "  total: change(sum(amount)) between -5000 and 5000\n",
     )
     tw.run(project)  # 1,000 rows of 20 = 20,000
     set_rows(project, 1100, amount=21.2727272727)
     got = results(tw.run(project))
-    assert got["change(row_count) between -20% and 20%"].display_value == "+10.00%"
-    assert got["change(sum(amount)) between -5000 and 5000"].display_value == "+3400"
+    assert got["rows"].display_value == "+10.00%"
+    assert got["total"].display_value == "+3400"

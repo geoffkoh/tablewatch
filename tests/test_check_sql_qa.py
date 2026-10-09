@@ -18,7 +18,7 @@ from tablewatch.config.project import (
 from tablewatch.datasources import DatasourceError, dialect_for
 from tablewatch.engine.compiled import compile_dataset
 from tests.conftest import Recorded, invoke
-from tests.test_check_sql import MALFORMED, PERCENT
+from tests.test_check_sql import CONTACTABLE, MALFORMED
 from tests.test_server import assert_error, get, served
 
 SECRETS = ("hunter2", "dana", "acct")
@@ -228,7 +228,7 @@ def test_a_dataset_with_only_a_schema_check(retail: Path) -> None:
         retail,
         "sales/schema_only.yml",
         "dataset: sales.only_schema\nchecks:\n  c1:\n    clauses:\n      - schema:\n"
-        "      required_columns: [order_id]\n",
+        "          required_columns: [order_id]\n",
     )
     check = _check(retail, "sales.only_schema", "schema")
     compiled = compile_dataset(check.dataset, tw.load(retail).config.datasources)
@@ -282,7 +282,7 @@ def test_a_condition_is_served_verbatim(
         retail,
         "sales/hostile.yml",
         "dataset: sales.orders\nchecks:\n  c1:\n    clauses:\n      - failed_rows:\n"
-        f'      condition: "{escaped}"\n',
+        f'          condition: "{escaped}"\n',
     )
     check = next(
         c for c in tw.load(retail).checks if c.dataset.path.name == "hostile.yml"
@@ -301,18 +301,38 @@ def test_a_condition_is_served_verbatim(
 # --- ids ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("pinned", ["orders.volume:v2", "a-b_c.d", "x" * 64])
-def test_a_pinned_id_with_dots_and_colons(retail: Path, pinned: str) -> None:
+@pytest.mark.parametrize("name", ["orders.volume", "a-b_c.d", "orders:v2"])
+def test_a_name_with_dots_or_colons_is_rejected(retail: Path, name: str) -> None:
+    # Spec 032: "id:" is gone, and D6 reserves "." and ":" in names for a
+    # later dotted/colon reference grammar — neither is built here, so a
+    # check cannot be named with them, and no such id is ever reachable.
     _write(
         retail,
         "sales/pinned.yml",
-        f"dataset: sales.orders\nchecks:\n  c1:\n    clauses:\n      - row_count > 7:\n          id: {pinned}\n",
+        f"dataset: sales.orders\nchecks:\n  {name}: row_count > 7\n",
     )
+    project = tw.load(retail)
+    assert not project.ok
+    assert any("is not valid" in str(d) for d in project.diagnostics)
     with served(retail) as client:
-        for path in (pinned, pinned.replace(":", "%3A").replace(".", "%2E")):
-            body = _sql(client, path)
-            assert body["check_id"] == pinned
-            assert body["statements"][0]["kind"] == "scan"
+        for path in (name, name.replace(":", "%3A").replace(".", "%2E")):
+            response = client.get(f"/api/v1/checks/{path}/sql")
+            assert response.status_code == 404
+
+
+def test_a_max_length_name_compiles(retail: Path) -> None:
+    # The name pattern allows up to 64 characters (MAX_NAME_LENGTH).
+    name = "x" * 64
+    _write(
+        retail,
+        "sales/pinned.yml",
+        f"dataset: sales.orders\nchecks:\n  {name}: row_count > 7\n",
+    )
+    check = _check(retail, "sales.orders", "row_count > 7")
+    with served(retail) as client:
+        body = _sql(client, check.id)
+    assert body["check_id"] == check.id
+    assert body["statements"][0]["kind"] == "scan"
 
 
 @pytest.mark.parametrize(
@@ -338,18 +358,18 @@ def test_ids_that_are_not_loaded_are_404(retail: Path, check_id: str) -> None:
 def test_an_orphaned_id_is_404_while_its_history_is_200(
     recorded: Recorded,
 ) -> None:  # S8, P6
+    # D3: tightening a threshold keeps a check's id (it is name-only now);
+    # only a rename orphans it.
     path = recorded.root / "checks" / "sales" / "customers.yml"
     path.write_text(
-        path.read_text(encoding="utf-8").replace(
-            "missing_percent(email) < 5%", "missing_percent(email) < 6%"
-        ),
+        path.read_text(encoding="utf-8").replace("contactable:", "reachable:"),
         encoding="utf-8",
     )
-    assert PERCENT not in {c.id for c in tw.load(recorded.root).checks}
+    assert CONTACTABLE not in {c.id for c in tw.load(recorded.root).checks}
     with served(recorded.root) as client:
-        assert client.get(f"/api/v1/checks/{PERCENT}/history").status_code == 200
-        assert client.get(f"/api/v1/checks/{PERCENT}").status_code == 404
-        assert_error(client.get(f"/api/v1/checks/{PERCENT}/sql"), 404, "not_found")
+        assert client.get(f"/api/v1/checks/{CONTACTABLE}/history").status_code == 200
+        assert client.get(f"/api/v1/checks/{CONTACTABLE}").status_code == 404
+        assert_error(client.get(f"/api/v1/checks/{CONTACTABLE}/sql"), 404, "not_found")
 
 
 # --- one dataset that cannot compile, next to one that can -------------------------
@@ -373,7 +393,7 @@ def test_an_unknown_timezone_is_an_error_not_a_500(retail: Path) -> None:
     far = _check(retail, "t", "row_count > 0")
     with served(retail) as client:
         response = client.get(f"/api/v1/checks/{far.id}/sql")
-        near = _sql(client, PERCENT)
+        near = _sql(client, CONTACTABLE)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["statements"] == []
