@@ -126,8 +126,10 @@ def test_inside_a_value(project: Path) -> None:  # T3
     assert _validate(project) == (
         3,
         [
-            'checks/orders.yml:6:17: error: clause name "a\\x0cb" is not valid — use '
-            'letters, digits, "_" and "-", starting with a letter'
+            (
+                'checks/orders.yml:6:17: error: clause name "a\\x0cb" is not valid — '
+                'use letters, digits, "_" and "-", starting with a letter'
+            )
         ],
     )
 
@@ -359,8 +361,10 @@ def test_a_merge_does_not_change_the_id(project: Path) -> None:  # M7
         (
             "row_count > 0",
             "{name: 5}",
-            '6:22: error: clause name "5" is not valid — use letters, digits, "_" '
-            'and "-", starting with a letter',
+            (
+                '6:22: error: clause name "5" is not valid — use letters, digits, '
+                '"_" and "-", starting with a letter'
+            ),
         ),
         (
             "row_count > 0",

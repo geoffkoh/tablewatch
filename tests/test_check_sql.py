@@ -297,8 +297,10 @@ def test_a_percent_check_names_its_columns(retail: Path) -> None:  # S1
         ),
         (
             "m2",
-            "sum(CASE WHEN (NOT (email IS NULL OR email IN ('', 'N/A')) AND NOT "
-            "regexp_matches(email, '^[^@]+@[^@]+\\.[a-z]+$')) THEN 1 ELSE 0 END)",
+            (
+                "sum(CASE WHEN (NOT (email IS NULL OR email IN ('', 'N/A')) AND NOT "
+                "regexp_matches(email, '^[^@]+@[^@]+\\.[a-z]+$')) THEN 1 ELSE 0 END)"
+            ),
         ),
     ]
     for use in statement["uses"]:
@@ -344,7 +346,8 @@ def test_sharing(retail: Path) -> None:  # S4
 def test_a_check_with_scan_and_query(retail: Path) -> None:  # S10
     path = retail / "checks" / "sales" / "customers.yml"
     path.write_text(
-        path.read_text(encoding="utf-8") + "  email_dup_rate: duplicate_percent(email) < 1%\n",
+        path.read_text(encoding="utf-8")
+        + "  email_dup_rate: duplicate_percent(email) < 1%\n",
         encoding="utf-8",
     )
     check_id = _id_on(retail, "sales.customers", "duplicate_percent(email) < 1%")

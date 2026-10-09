@@ -215,8 +215,10 @@ def test_an_alias_of_a_merge(project: Path) -> None:
     assert (
         _errors(project)
         == [
-            'checks/orders.yml:5:39: error: clause name "5" is not valid — use '
-            'letters, digits, "_" and "-", starting with a letter'
+            (
+                'checks/orders.yml:5:39: error: clause name "5" is not valid — use '
+                'letters, digits, "_" and "-", starting with a letter'
+            )
         ]
         * 2
     )

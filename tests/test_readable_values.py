@@ -597,13 +597,6 @@ def test_the_example_project_end_to_end(
     assert "0 problems" in table
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="spec 032: tests/golden/retail-{list,compile,compile-sales}.txt are "
-    "stale (pre-named-checks: 19 clause rows, old ids) and shared with "
-    "test_check_source.py/test_check_sql.py (not mine to edit) — needs a "
-    "shared regeneration, not a per-file fix",
-)
 def test_outcomes_ids_and_sql_do_not_move(
     retail: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # E4

@@ -164,9 +164,9 @@ def test_history_entries_of_errors_still_say_what_they_measured(
     run_e(recorded.root)
     with served(recorded.root) as client:
         checks = {c["name"]: c["id"] for c in get(client, "/api/v1/checks")["items"]}
-        history = get(
-            client, f"/api/v1/checks/{checks['known_countries']}/history"
-        )["items"]
+        history = get(client, f"/api/v1/checks/{checks['known_countries']}/history")[
+            "items"
+        ]
     assert [h["outcome"] for h in history] == ["error", "fail", "fail"]
     for entry in history:
         assert entry["metric"] == "check"

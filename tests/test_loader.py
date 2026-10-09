@@ -158,7 +158,9 @@ def test_identity_is_stable_and_scoped(workspace: Workspace) -> None:
     assert len(set(first)) == 2  # where: makes them distinct clauses
 
 
-def test_duplicate_check_names_across_files_in_one_dataset(workspace: Workspace) -> None:
+def test_duplicate_check_names_across_files_in_one_dataset(
+    workspace: Workspace,
+) -> None:
     workspace.write(
         "checks/a.yml",
         "dataset: t\ndatasource: duck\nchecks:\n  orders_usable: row_count > 0\n",

@@ -73,7 +73,7 @@ def p(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_the_retail_example_is_clean(retail: Path) -> None:  # S1
     code, out, _ = invoke(retail, "validate", "--connect")
     assert code == 0
-    assert out == "3 datasets, 19 checks — no problems found; 1 datasource checked\n"
+    assert out == "3 datasets, 12 checks — no problems found; 1 datasource checked\n"
 
 
 def test_a_missing_column(p: Path) -> None:  # S2, S4
@@ -82,7 +82,7 @@ def test_a_missing_column(p: Path) -> None:  # S2, S4
     code, _, err = invoke(p, "validate", "--connect")
     assert code == 3
     assert (
-        "checks/orders.yml:5:19: error: column 'emial' not found in orders "
+        "checks/orders.yml:5:21: error: column 'emial' not found in orders "
         "(datasource 'shop')"
     ) in err
     assert "Email" not in err
@@ -272,7 +272,7 @@ def test_sql_metric_labels_are_not_columns(p: Path) -> None:  # S13
         p,
         "checks/orders.yml",
         "dataset: orders\ndatasource: shop\nchecks:\n"
-        "  - sql_metric(revenue) > 0:\n      query: select 1\n",
+        "  c1:\n    clauses:\n      - sql_metric(revenue) > 0:\n          query: select 1\n",
     )
     assert invoke(p, "validate", "--connect")[0] == 0
 
@@ -290,11 +290,11 @@ def test_one_line_per_check(p: Path) -> None:  # S15
         p,
         "checks/orders.yml",
         "dataset: orders\ndatasource: shop\nchecks:\n"
-        "  - missing_count(emial) = 0\n  - distinct_count(emial) > 0\n",
+        "  c1: missing_count(emial) = 0\n  c2: distinct_count(emial) > 0\n",
     )
     _, _, err = invoke(p, "validate", "--connect")
-    assert "checks/orders.yml:4:19:" in err
-    assert "checks/orders.yml:5:20:" in err
+    assert "checks/orders.yml:4:21:" in err
+    assert "checks/orders.yml:5:22:" in err
 
 
 def test_help(p: Path) -> None:  # S16

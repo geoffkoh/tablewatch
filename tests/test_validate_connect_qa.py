@@ -91,26 +91,28 @@ def test_spacing_inside_the_call_keeps_the_id(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 @pytest.mark.parametrize(
-    ("line", "column"),
+    ("line", "row", "column"),
     [
-        ('  - "missing_count(emial) = 0"', 20),
-        ("  - 'distinct_count( emial ) > 0'", 22),
-        ("  - change(missing_count(emial)) < 5", 26),
-        ('  - "change(missing_count(emial)) < 5"', 27),
-        ("  - duplicate_count(id,   emial) = 0", 27),
-        ('  - duplicate_count(id, "emial") = 0', 25),
-        ("  - missing_count(emial) = 3:\n      where: id > 0", 19),
-        ("  - invalid_count(emial) = 0:\n      valid_values: [a]", 19),
+        ('  - "missing_count(emial) = 0"', 4, 22),
+        ("  - 'distinct_count( emial ) > 0'", 4, 24),
+        ("  - change(missing_count(emial)) < 5", 4, 28),
+        ('  - "change(missing_count(emial)) < 5"', 4, 29),
+        ("  - duplicate_count(id,   emial) = 0", 4, 29),
+        ('  - duplicate_count(id, "emial") = 0', 4, 27),
+        # An item with options becomes `c1:` / `clauses:` / the item, two
+        # lines lower (tests/named.py), so these land on line 6, not 4.
+        ("  - missing_count(emial) = 3:\n      where: id > 0", 6, 23),
+        ("  - invalid_count(emial) = 0:\n      valid_values: [a]", 6, 23),
     ],
 )
 def test_the_column_line_points_at_the_argument(
-    tmp_path: Path, backend: str, line: str, column: int
+    tmp_path: Path, backend: str, line: str, row: int, column: int
 ) -> None:
     root = _project(tmp_path, backend, line + "\n")
     code, _, err = invoke(root, "validate", "--connect")
     assert code == 3, err
     assert (
-        f"checks/orders.yml:4:{column}: error: column 'emial' not found in orders "
+        f"checks/orders.yml:{row}:{column}: error: column 'emial' not found in orders "
         "(datasource 'shop')"
     ) in err
 
@@ -167,7 +169,7 @@ def test_a_missing_column_that_needs_quoting(
     root = _project(tmp_path, backend, f'  - missing_count("{name}") = 0\n')
     code, _, err = invoke(root, "validate", "--connect")
     assert code == 3
-    assert f"checks/orders.yml:4:19: error: column '{name}' not found" in err
+    assert f"checks/orders.yml:4:21: error: column '{name}' not found" in err
 
 
 @pytest.mark.parametrize(
@@ -198,7 +200,7 @@ def test_schema_qualified_on_duckdb(tmp_path: Path) -> None:
     )
     code, _, err = invoke(root, "validate", "--connect")
     assert code == 3
-    assert "checks/orders.yml:4:19: error: column 'emial' not found in s1.orders" in err
+    assert "checks/orders.yml:4:21: error: column 'emial' not found in s1.orders" in err
     assert "checks/gone.yml:1:1: error: table nope.orders not found" in err
     gone = [line for line in err.splitlines() if "gone.yml" in line]
     assert len(gone) == 1
@@ -255,12 +257,12 @@ def test_a_load_error_and_an_unreached_datasource_is_3(
     _write(
         root,
         "checks/bad.yml",
-        "dataset: orders\ndatasource: shop\nchecks:\n  c1: no_such_metric > 0\n",
+        "dataset: orders\ndatasource: shop\nchecks:\n  bad_check: no_such_metric > 0\n",
     )
     code, out, err = invoke(root, "validate", "--connect")
     assert code == 3
     assert out == ""
-    assert "checks/bad.yml:4:5: error: unknown metric 'no_such_metric'" in err
+    assert "checks/bad.yml:4:14: error: unknown metric 'no_such_metric'" in err
     assert (
         "tablewatch.yml:6:3: error: datasource 'down': environment variable "
         "QA_PGPASS_UNSET is not set — 1 check not checked"

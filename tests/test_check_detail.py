@@ -54,7 +54,8 @@ def _add_email_completeness(root: Path) -> None:
 
 def _check_by_name(client: Any, name: str) -> dict[str, Any]:
     [check] = [c for c in get(client, "/api/v1/checks")["items"] if c["name"] == name]
-    return check
+    result: dict[str, Any] = check
+    return result
 
 
 def test_an_expectation(recorded: Recorded) -> None:  # R1

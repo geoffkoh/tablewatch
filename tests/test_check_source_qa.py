@@ -71,16 +71,16 @@ checks:
 
 
 def test_a_block_alias_to_another_checks_key_is_unavailable(project: Path) -> None:
-    # `- *k` is the check `row_count > 0` with no `where:`. Its marks are the
-    # anchor's, on line 3, which does hold a `-` at the dash column, so the
-    # block post-condition passes and the span is line 3: the other check's
-    # line, `where: a > 1` included. Spec B1 (b) and Y19 require unavailable.
+    # `- *k` is clause `row_count > 0` with no `where:`, aliasing c1's own
+    # clause node. check_span's "shares a node with an earlier one" guard
+    # (spec 032) catches this: c2 (the alias) is unavailable; c1 keeps its
+    # own ordinary span. Spec B1 (b) and Y19 require unavailable.
     _write(project, ALIAS_TO_A_KEY)
     checks = _checks(project)
-    scoped = next(c for c in checks if c.where is not None)
-    alias = next(c for c in checks if c.where is None)
+    scoped = next(c for c in checks if c.clauses[0].where is not None)
+    alias = next(c for c in checks if c.clauses[0].where is None)
     assert scoped.id != alias.id
-    assert _lines(scoped) == (3, 3)
+    assert _lines(scoped) == (3, 5)
     assert alias.span is None
 
 
@@ -89,11 +89,11 @@ def test_a_block_alias_to_another_checks_key_over_the_api(project: Path) -> None
         project,
         "dataset: t\nchecks:\n  c1:\n    clauses:\n      - &k row_count > 0:\n          where: a > 1\n  c2:\n    clauses:\n      - *k\n",
     )
-    alias = next(c for c in _checks(project) if c.where is None)
+    alias = next(c for c in _checks(project) if c.clauses[0].where is None)
     with served(project) as client:
         body = get(client, f"/api/v1/checks/{alias.id}/source")
-    assert body["text"] is None or "where" not in body["text"]
-    assert body["start_line"] in (None, 5)
+    assert body["text"] is None
+    assert body["start_line"] is None
 
 
 # --- rule 5: spans never make the loader raise --------------------------------------
@@ -150,26 +150,26 @@ def test_spans_do_not_make_loading_quadratic(
 
 
 def test_a_bom_flow_file_serves_line_one(project: Path) -> None:
-    # Spec P14: "a flow-style file that starts `checks: [row_count > 0]` and
-    # names its `dataset:` on line 2 serves it". ruamel does not count U+FEFF
-    # as a column, so the flow post-condition compares the wrong character and
-    # the span is unavailable.
-    _write(project, "\ufeffchecks: [row_count > 0]\ndataset: t\n")
+    # Spec P14: "a flow-style file that starts `checks: {c1: row_count > 0}`
+    # and names its `dataset:` on line 2 serves it". ruamel does not count
+    # U+FEFF as a column, so the flow post-condition compares the wrong
+    # character and the span is unavailable.
+    _write(project, "\ufeffchecks: {c1: row_count > 0}\ndataset: t\n")
     (check,) = _checks(project)
     assert _lines(check) == (1, 1)
     with served(project) as client:
         body = get(client, f"/api/v1/checks/{check.id}/source")
-    assert body["text"] == "\ufeffchecks: [row_count > 0]"
+    assert body["text"] == "\ufeffchecks: {c1: row_count > 0}"
 
 
 # --- awkward layouts: exactly the check's lines, or unavailable ---------------------
 
 LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
     (
-        "comment between the dash and its content",
+        "comment between the key and its content",
         (
-            "dataset: t\nchecks:\n  -\n    # note\n    row_count > 0\n"
-            "  - missing_count(a) = 0\n"
+            "dataset: t\nchecks:\n  c1:\n    # note\n    row_count > 0\n"
+            "  c2: missing_count(a) = 0\n"
         ),
         {"row_count > 0": (3, 5), "missing_count(a) = 0": (6, 6)},
     ),
@@ -177,25 +177,25 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
         "keep-chomping block scalar then a key",
         (
             "dataset: t\nchecks:\n  c1:\n    clauses:\n      - sql_metric > 0:\n          query: |+\n"
-            "        SELECT 1\n\n\nowner: o@example.com\n"
+            "            SELECT 1\n\n\nowner: o@example.com\n"
         ),
-        {"sql_metric > 0": (3, 5)},
+        {"sql_metric > 0": (3, 7)},
     ),
     (
         "folded strip block scalar with a # line, then a key",
         (
             "dataset: t\nchecks:\n  c1:\n    clauses:\n      - sql_metric > 0:\n          query: >-\n"
-            "        SELECT 1\n        # not a comment\nowner: o@example.com\n"
+            "            SELECT 1\n            # not a comment\nowner: o@example.com\n"
         ),
-        {"sql_metric > 0": (3, 6)},
+        {"sql_metric > 0": (3, 8)},
     ),
     (
         "double-quoted scalar whose continuation starts with #",
         (
             'dataset: t\nchecks:\n  c1:\n    clauses:\n      - sql_metric > 0:\n          query: "SELECT 1\n\n'
-            '        # FROM x"\n  # lead\n  - row_count > 0\n'
+            '        # FROM x"\n  # lead\n  c2: row_count > 0\n'
         ),
-        {"sql_metric > 0": (3, 6), "row_count > 0": (7, 8)},
+        {"sql_metric > 0": (3, 8), "row_count > 0": (9, 10)},
     ),
     (
         "single-quoted continuation starting with #, then a key",
@@ -203,7 +203,7 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
             "dataset: t\nchecks:\n  c1:\n    clauses:\n      - sql_metric > 0:\n          query: 'SELECT 1\n"
             "        # FROM x'\nowner: '\n  # hi'\n"
         ),
-        {"sql_metric > 0": (3, 5)},
+        {"sql_metric > 0": (3, 7)},
     ),
     (
         "zero-indented list with a column-0 comment between items",
@@ -225,48 +225,48 @@ LAYOUTS: list[tuple[str, str, dict[str, tuple[int, int]]]] = [
     ),
     (
         "explicit ? key for checks",
-        "dataset: t\n? checks\n# between\n:\n  # lead\n  - row_count > 0\n",
+        "dataset: t\n? checks\n# between\n:\n  # lead\n  c1: row_count > 0\n",
         {"row_count > 0": (5, 6)},
     ),
     (
         "nested option list with comments, then a deeper trailing comment",
         (
             "dataset: t\nchecks:\n  c1:\n    clauses:\n      - invalid_count(c) = 0:\n          valid_values:\n"
-            "      - a\n      # x\n      - b\n    # deeper\n  # lead\n  - row_count > 0\n"
+            "          - a\n          # x\n          - b\n    # deeper\n  # lead\n  c2: row_count > 0\n"
         ),
-        {"invalid_count(c) = 0": (3, 8), "row_count > 0": (9, 10)},
+        {"invalid_count(c) = 0": (3, 10), "row_count > 0": (11, 12)},
     ),
     (
-        "anchored and tagged sequences",
-        "dataset: t\nchecks: !!seq\n  - row_count > 0\n",
+        "anchored and tagged mappings",
+        "dataset: t\nchecks: !!map\n  c1: row_count > 0\n",
         {"row_count > 0": (3, 3)},
     ),
     (
         "CR-only line breaks",
-        "dataset: t\rchecks:\r  - row_count > 0\r  # c\r  - missing_count(a) = 0\r",
+        "dataset: t\rchecks:\r  c1: row_count > 0\r  # c\r  c2: missing_count(a) = 0\r",
         {"row_count > 0": (3, 3), "missing_count(a) = 0": (4, 5)},
     ),
     (
         "mixed CR CRLF LF",
-        "dataset: t\r\r\nchecks:\n  c1: row_count > 0\r\n  # c\r  - missing_count(a) = 0",
+        "dataset: t\r\r\nchecks:\n  c1: row_count > 0\r\n  # c\r  c2: missing_count(a) = 0",
         {"row_count > 0": (4, 4), "missing_count(a) = 0": (5, 6)},
     ),
     (
         "%YAML 1.1 with NEL in a quoted dataset",
         (
             '%YAML 1.1\n---\ndataset: "a\u0085\u0085b"\nfilter: x > 1\nchecks:\n'
-            "  - row_count > 0\n"
+            "  c1: row_count > 0\n"
         ),
         {"row_count > 0": (6, 6)},
     ),
     (
         "flow list closing on the line after the last item, key after",
-        "dataset: t\nchecks: [row_count > 0\n  ]\nfilter: a > 1\n",
+        "dataset: t\nchecks: {c1: row_count > 0\n  }\nfilter: a > 1\n",
         {"row_count > 0": (2, 2)},
     ),
     (
         "multi-line quoted flow item, key after",
-        'dataset: t\nchecks: ["row_count\n  > 0"]\nfilter: a > 1\n',
+        'dataset: t\nchecks: {c1: "row_count\n  > 0"}\nfilter: a > 1\n',
         {"row_count > 0": (2, 3)},
     ),
 ]
@@ -277,7 +277,7 @@ for _sep in SEPARATORS:
     LAYOUTS += [
         (
             f"{name} right after checks:",
-            f"dataset: t\nchecks:{_sep}\n  - row_count > 0\n",
+            f"dataset: t\nchecks:{_sep}\n  c1: row_count > 0\n",
             {"row_count > 0": (3, 3)},
         ),
         (
@@ -292,16 +292,19 @@ for _sep in SEPARATORS:
         ),
         (
             f"{name} in a quoted filter above a flow list",
-            f'dataset: t\nfilter: "a{_sep}{_sep}{_sep}"\nchecks: [row_count > 0]\n',
+            f'dataset: t\nfilter: "a{_sep}{_sep}{_sep}"\nchecks: {{c1: row_count > 0}}\n',
             {"row_count > 0": (3, 3)},
         ),
         (
-            f"{name} in a check's name",
+            # A name (check or clause) is checked against a letters/digits
+            # pattern (spec 032), so a separator can no longer live there;
+            # it still can in an ordinary option value like `where:`.
+            f"{name} in a clause's where",
             (
                 f'dataset: t\nfilter: "x > 1"\nchecks:\n  c1:\n    clauses:\n      - row_count > 0:\n'
-                f'      name: "a{_sep}b"\n  - missing_count(a) = 0\n'
+                f'          where: "a{_sep}b"\n  c2: missing_count(a) = 0\n'
             ),
-            {"row_count > 0": (4, 5), "missing_count(a) = 0": (6, 6)},
+            {"row_count > 0": (4, 7), "missing_count(a) = 0": (8, 8)},
         ),
     ]
 
@@ -375,8 +378,12 @@ def test_a_compose_failure_changes_nothing_but_spans(
 
 
 def test_a_flow_alias_to_another_checks_key_is_unavailable(project: Path) -> None:
-    _write(project, "dataset: t\nchecks: [{&k row_count > 0: {where: a > 1}}, *k]\n")
-    alias = next(c for c in _checks(project) if c.where is None)
+    _write(
+        project,
+        "dataset: t\nchecks: {c1: {clauses: [{&k row_count > 0: {where: a > 1}}]}, "
+        "c2: {clauses: [*k]}}\n",
+    )
+    alias = next(c for c in _checks(project) if c.clauses[0].where is None)
     assert alias.span is None
 
 
