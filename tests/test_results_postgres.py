@@ -54,7 +54,7 @@ from tests.test_server import served, start
 
 NEWER = "it was upgraded by a newer tablewatch — upgrade tablewatch to read it"
 RETAIL = "retail-example"
-RETAIL_CHECKS = 19
+RETAIL_CHECKS = 12  # named checks in examples/retail
 
 
 def _head() -> str:
@@ -313,7 +313,7 @@ def test_two_processes_record_interleaved_runs(
         assert {r.id for r in listed} == run_ids
         for run_id in run_ids:
             row = store.run(RETAIL, run_id)
-            assert row is not None and len(row.results) == RETAIL_CHECKS
+            assert row is not None and len(row.check_results) == RETAIL_CHECKS
         latest = store.latest_results(RETAIL)
         assert len(latest) == RETAIL_CHECKS
         for check_id, head in latest.items():
