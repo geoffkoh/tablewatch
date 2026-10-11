@@ -193,11 +193,8 @@ export interface components {
             source: string;
             /** Tags */
             tags: string[];
-            /**
-             * Unit
-             * @enum {string}
-             */
-            unit: "count" | "percent" | "duration" | "number";
+            /** Unit */
+            unit: ("count" | "percent" | "duration" | "number") | null;
         };
         /** CheckList */
         CheckList: {
@@ -259,7 +256,8 @@ export interface components {
         /**
          * CheckSummary
          * @description A named check. `metric`, `unit` and `rule` are its clause's when it has
-         *     one clause; with several, `metric` is `"check"` and `clauses` lists them.
+         *     one clause; with several, `metric` is `"check"`, `unit` is null and
+         *     `clauses` lists them.
          */
         CheckSummary: {
             /** Clauses */
@@ -289,11 +287,8 @@ export interface components {
             source: string;
             /** Tags */
             tags: string[];
-            /**
-             * Unit
-             * @enum {string}
-             */
-            unit: "count" | "percent" | "duration" | "number";
+            /** Unit */
+            unit: ("count" | "percent" | "duration" | "number") | null;
         };
         /**
          * ClauseSummary

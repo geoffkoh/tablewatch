@@ -523,7 +523,7 @@ def test_every_check_with_its_latest_result(recorded: Recorded) -> None:  # C1
     }
     assert item["tags"] == ["example", "sales", "tier-1"]
     assert item["owner"] == "sales-data@example.com"
-    assert item["unit"] == "percent"
+    assert item["unit"] is None  # two clauses (spec 032)
     latest = item["latest"]
     assert latest["run_id"] == recorded.run_b
     # `contactable` has two clauses (spec 032): the check-level `value` is
@@ -773,9 +773,12 @@ def test_equal_start_times_break_by_run_id(recorded: Recorded) -> None:  # L3
 def test_units_of_value(recorded: Recorded) -> None:  # U1
     with served(recorded.root) as client:
         checks = checks_by_id(client)
-    # `contactable` has two clauses (spec 032): the check's `unit` is still
-    # its first clause's, but there is no single `value` across clauses.
-    assert checks[CUSTOMERS_EMAIL]["unit"] == "percent"
+    # `contactable` has two clauses (spec 032): no single unit or value.
+    assert checks[CUSTOMERS_EMAIL]["unit"] is None
+    assert [c["unit"] for c in checks[CUSTOMERS_EMAIL]["clauses"]] == [
+        "percent",
+        "count",
+    ]
     assert checks[CUSTOMERS_EMAIL]["latest"]["value"] is None
     freshness = checks[PRICE_FRESHNESS]
     assert freshness["unit"] == "duration"

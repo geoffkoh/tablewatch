@@ -559,25 +559,30 @@ class _ChecksLoader:
     ) -> Check | None:
         """One named check: `name: <expression>` or `name: {clauses: [...]}`."""
         name_at = source.of_key(checks, name)
-        if not self._name_ok(name, "check", name_at):
+        written = None if isinstance(name, str) else _key_text(source, name_at)
+        if not self._name_ok(name, "check", name_at, written):
             return None
         value = checks[name]
         items: list[tuple[Any, SourceLocation]]
         own_notify: tuple[str, ...] | None = None
+        clean = True
         if isinstance(value, str):
             items = [(value, source.of_value(checks, name))]
         elif isinstance(value, CommentedMap) and "clauses" in value:
-            if "id" in value:
+            clean = "id" not in value
+            if not clean:
+                # Reported, and its clauses still checked: one pass (rule 5).
                 self.diagnostics.append(error(ID_UNUSED, source.of_key(value, "id")))
-                return None
-            self._reject_unknown(source, value, CHECK_KEYS, "key for a check")
+            self._reject_unknown(source, value, (*CHECK_KEYS, "id"), "key for a check")
             own_notify = self._notify(source, value)
             clauses = value["clauses"]
             if not isinstance(clauses, CommentedSeq) or not clauses:
                 self.diagnostics.append(
                     error(
                         "`clauses:` must be a list of one or more expressions",
-                        source.of_value(value, "clauses"),
+                        source.of_key(value, "clauses")
+                        if clauses is None
+                        else source.of_value(value, "clauses"),
                     )
                 )
                 return None
@@ -613,7 +618,6 @@ class _ChecksLoader:
         self._ids[check.id] = name_at
 
         keys: set[str] = set()
-        clean = True
         for item, item_at in items:
             clause = self._load_clause(source, check, item, item_at)
             if clause is None:
@@ -633,7 +637,9 @@ class _ChecksLoader:
             check.clauses.append(clause)
         return check if clean else None
 
-    def _name_ok(self, name: Any, kind: str, at: SourceLocation) -> bool:
+    def _name_ok(
+        self, name: Any, kind: str, at: SourceLocation, written: str | None = None
+    ) -> bool:
         if isinstance(name, str) and len(name) > MAX_NAME_LENGTH:
             self.diagnostics.append(
                 error(
@@ -646,7 +652,8 @@ class _ChecksLoader:
         if not isinstance(name, str) or not NAME_PATTERN.fullmatch(name):
             self.diagnostics.append(
                 error(
-                    f'{kind} name "{_printable(str(plain(name)))}" is not valid — '
+                    f'{kind} name "{_printable(written or str(plain(name)))}" is not '
+                    "valid — "
                     'use letters, digits, "_" and "-", starting with a letter',
                     at,
                 )
@@ -1198,6 +1205,16 @@ def _own_key_line(source: YAMLSource, node: CommentedMap, key: str) -> int | Non
     """The 1-based line of a key written in this mapping; None if absent or merged."""
     own = source.of_own_key(node, key)
     return own.line if own is not None else None
+
+
+def _key_text(source: YAMLSource, at: SourceLocation) -> str | None:
+    """A mapping key as written (`true`, `~`), not as YAML typed it."""
+    lines = split_lines(source.text or "")
+    if not 1 <= at.line <= len(lines):
+        return None
+    rest = lines[at.line - 1][at.column - 1 :]
+    key, colon, _ = rest.partition(":")
+    return key.strip() if colon and key.strip() else None
 
 
 def _printable(text: str) -> str:

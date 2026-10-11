@@ -62,15 +62,15 @@ nothing is released yet (0.1.0 is not on PyPI) — decided by the owner's 2026-0
 | --- | --- | --- | --- |
 | S1 | must | the YAML above, `validate` | exit 0, no diagnostics |
 | S2 | must | `list` on S1's project | one row named `orders_usable`, not four unnamed rows (today: four) |
-| S3 | must | `checks:` as a bare list of expression strings (today's shape) | `validate` diagnostic at `checks:`'s line:col: ``"checks:" is a mapping of name to clauses — a list is the old unnamed shorthand, no longer supported``; exit 2 (today: loads and runs) |
-| S4 | must | two checks both named `orders_usable` in one file | diagnostic at the second occurrence's line:col: ``duplicate check name "orders_usable" — names must be unique within a dataset``; exit 2 |
+| S3 | must | `checks:` as a bare list of expression strings (today's shape) | `validate` diagnostic at `checks:`'s line:col: ``"checks:" is a mapping of name to clauses — a list is the old unnamed shorthand, no longer supported``; exit 3 (today: loads and runs) |
+| S4 | must | two checks both named `orders_usable` in one file | diagnostic at the second occurrence's line:col: ``duplicate check name "orders_usable" — names must be unique within a dataset``; exit 3 |
 | S5 | must | `orders_usable` above; `row_count > 0` and `missing_count` pass, `freshness` triggers its `warn` | `run` outcome for `orders_usable` is `warn`; console shows one check row, outcome `WARN` (uppercase, the check's own outcome, what exit code and history key on), followed by its four clauses as indented sub-rows in YAML order (not severity order, so the layout is stable run to run), each with its own lowercase outcome, value and message: `pass  row_count > 0`, `pass  missing_count(customer_id) = 0`, `pass  invalid_percent(status) < 1%`, `warn  freshness(created_at)` (literal block under D7) |
 | S6 | must | S5's data, but `customer_id` column dropped from the table | `missing_count` clause outcome `error`; check outcome `error` (ranks above the sibling `warn`); the other three clauses still evaluate and show their own outcome (today: one bad column only errors its own check — unchanged, now scoped to the clause) |
 | S7 | must | S1's YAML, `compile` | one `SELECT` for `sales.orders` folding every clause's aggregate measure (rule 1 unchanged) |
 | S8 | must | JSON reporter on S5 | one result per check with `"name"`, `"outcome"` (the worst clause) and `"clauses": [{"expression": ..., "outcome": ..., "value": ...}, ...]`; `schema_version` bumped (a wire contract) |
 | S9 | must | JUnit reporter on S5 | one `<testcase name="orders_usable">` (not four) with the check's outcome; clause detail in `<system-out>` |
-| S10 | must | a clause mapping with `id: abc123` (today's per-check override) | diagnostic at `id:`'s line:col: ``"id:" is not used here — a check's name is its identity``; exit 2 |
-| S11 | must | a check named `orders.usable` (contains `.`) | diagnostic at the name's line:col: ``check name "orders.usable" is not valid — use letters, digits, "_" and "-", starting with a letter``; exit 2 (decision 6, nothing built yet) |
+| S10 | must | a clause mapping with `id: abc123` (today's per-check override) | diagnostic at `id:`'s line:col: ``"id:" is not used here — a check's name is its identity``; exit 3 |
+| S11 | must | a check named `orders.usable` (contains `.`) | diagnostic at the name's line:col: ``check name "orders.usable" is not valid — use letters, digits, "_" and "-", starting with a letter``; exit 3 (decision 6, nothing built yet) |
 | S12 | must | `tablewatch schema` (editor JSON Schema) | accepts the named shape; rejects a bare list under `checks:` |
 | S13 | must | `_defaults.yml` sets `where:` / options today inherited per check | inherited by every clause, as today by every check |
 | S14 | must | `run --check orders_usable`, `history orders_usable` | select / show the named check (selection and `history` take the name; Q5 settles the stored key) |

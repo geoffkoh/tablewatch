@@ -423,13 +423,16 @@ def test_an_old_store_upgrades_and_old_rows_are_never_baselines(
             assert tuple(old) == (None, None)
     finally:
         engine.dispose()
-    # the old row keeps its metric's unit in history
+    # A row recorded before spec 032 is not a named check's summary row, so
+    # history leaves it out (D5; no history migration, D10); this run's own
+    # summary row carries its one clause's unit (a relative change: percent).
     from tests.test_server import served
 
     with served(project) as client:
         history = client.get(f"/api/v1/checks/{check_id}/history").json()
     units = {(i["run_id"], i["unit"]) for i in history["items"]}
-    assert ("old", "count") in units
+    assert all(run != "old" for run, _ in units)
+    assert units and all(unit == "percent" for _, unit in units)
 
 
 def test_no_store_does_not_migrate_an_old_store(project: Path) -> None:  # S11

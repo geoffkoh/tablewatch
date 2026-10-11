@@ -92,7 +92,7 @@ def _rows(
                 *((result.check.dataset.datasource,) if wide else ()),
                 check,
                 result.display_value,
-                _clip(result.tally if several else result.message or "", _MAX_DETAIL),
+                _clip(_tally(result) if several else result.message or "", _MAX_DETAIL),
             )
         )
         outcomes.append(result.outcome)
@@ -111,6 +111,21 @@ def _rows(
             )
             outcomes.append(clause.outcome)
     return rows, outcomes
+
+
+_TALLY_ORDER = (
+    Outcome.PASS,
+    Outcome.SKIPPED,
+    Outcome.WARN,
+    Outcome.FAIL,
+    Outcome.ERROR,
+)
+
+
+def _tally(result: CheckResult) -> str:
+    """`3 pass, 1 warn`: how many clauses ended each way, worst last."""
+    counts = Counter(c.outcome for c in result.clauses)
+    return ", ".join(f"{counts[o]} {o.value}" for o in _TALLY_ORDER if counts[o])
 
 
 def _line(

@@ -727,6 +727,7 @@ class ResultStore:
             .join(RunRow, CheckResultRow.run_id == RunRow.id)
             .where(
                 RunRow.project == project,
+                CheckResultRow.metric == CHECK_METRIC,
                 CheckResultRow.check_id == check_id,
                 *_older_than(before),
             )

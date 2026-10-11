@@ -249,6 +249,10 @@ def canonical_text(
     return " | ".join(parts)
 
 
+# What derive_check_id and derive_clause_id return: 16 lowercase hex digits.
+ID_PATTERN = re.compile(r"[0-9a-f]{16}")
+
+
 def derive_check_id(datasource: str, dataset: str, name: str) -> str:
     """A check's identity: its name on its dataset, wherever its file lives.
 

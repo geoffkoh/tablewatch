@@ -118,14 +118,21 @@
             "type": "array"
           },
           "unit": {
-            "enum": [
-              "count",
-              "percent",
-              "duration",
-              "number"
+            "anyOf": [
+              {
+                "enum": [
+                  "count",
+                  "percent",
+                  "duration",
+                  "number"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Unit",
-            "type": "string"
+            "title": "Unit"
           }
         },
         "required": [
@@ -318,7 +325,7 @@
         "type": "object"
       },
       "CheckSummary": {
-        "description": "A named check. `metric`, `unit` and `rule` are its clause's when it has\none clause; with several, `metric` is `\"check\"` and `clauses` lists them.",
+        "description": "A named check. `metric`, `unit` and `rule` are its clause's when it has\none clause; with several, `metric` is `\"check\"`, `unit` is null and\n`clauses` lists them.",
         "properties": {
           "clauses": {
             "items": {
@@ -397,14 +404,21 @@
             "type": "array"
           },
           "unit": {
-            "enum": [
-              "count",
-              "percent",
-              "duration",
-              "number"
+            "anyOf": [
+              {
+                "enum": [
+                  "count",
+                  "percent",
+                  "duration",
+                  "number"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Unit",
-            "type": "string"
+            "title": "Unit"
           }
         },
         "required": [

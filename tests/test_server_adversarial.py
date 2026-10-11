@@ -932,6 +932,8 @@ def _enum_of(document: dict[str, Any], prop: dict[str, Any]) -> set[str]:
         return set(prop["enum"])
     if "const" in prop:
         return {prop["const"]}
+    if "anyOf" in prop:  # `X | None`: the values of X
+        return set().union(*(_enum_of(document, p) for p in prop["anyOf"]))
     return set()
 
 

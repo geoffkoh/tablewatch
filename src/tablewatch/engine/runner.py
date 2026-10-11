@@ -134,14 +134,6 @@ class CheckResult:
         return "; ".join(problems) or None
 
     @property
-    def tally(self) -> str:
-        """`3 pass, 1 warn`: how many clauses ended each way, worst last."""
-        counts: dict[Outcome, int] = {}
-        for c in self.clauses:
-            counts[c.outcome] = counts.get(c.outcome, 0) + 1
-        return ", ".join(f"{counts[o]} {o.value}" for o in TALLY_ORDER if o in counts)
-
-    @property
     def duration_ms(self) -> float:
         return max((c.duration_ms for c in self.clauses), default=0.0)
 
@@ -153,9 +145,6 @@ class CheckResult:
             f"CheckResult({self.outcome.value} {self.check.dataset.name} "
             f"{self.check.name!r}{value})"
         )
-
-
-TALLY_ORDER = (Outcome.PASS, Outcome.SKIPPED, Outcome.WARN, Outcome.FAIL, Outcome.ERROR)
 
 
 @dataclass

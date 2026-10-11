@@ -785,8 +785,9 @@ print(catalogue.exit_code(), catalogue.exit_code("fail"))   # 1 0
 - **Selectors** are lists (`paths`, `tags`, `datasources`, `excludes`,
   `check_ids`) and narrow the run as their CLI counterparts do. `paths` are
   relative to the project root, not the current directory. `check_ids`
-  take a check's name or an id prefix, as `--check` does, so `["a"]` selects
-  the checks named `a` and every check whose id starts with `a`.
+  take a check's name or an id prefix, as `--check` does: `["a"]` selects the
+  checks named `a` or, when no check has that name, every check whose id
+  starts with `a`.
 - **History.** `record=True`, the default, stores the run in the project's
   results store with `trigger` set to `"python"`. Pass `record=False` for
   exploratory runs: the store is not opened at all. If recording fails, the

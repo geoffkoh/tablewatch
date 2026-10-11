@@ -27,7 +27,7 @@ from tablewatch.engine.compiled import CompiledDataset, QueryUse, ScanUse
 from tablewatch.jsonvalues import JsonFloat, Timestamp
 from tablewatch.metrics.registry import get_metric
 from tablewatch.paths import scrub_paths
-from tablewatch.results.models import CheckResultRow, RunRow
+from tablewatch.results.models import CHECK_METRIC, CheckResultRow, RunRow
 from tablewatch.results.state import Evaluated
 from tablewatch.results.store import Latest
 from tablewatch.selection import Selection
@@ -172,13 +172,14 @@ class ClauseSummary(_Model):
 
 class CheckSummary(_Model):
     """A named check. `metric`, `unit` and `rule` are its clause's when it has
-    one clause; with several, `metric` is `"check"` and `clauses` lists them."""
+    one clause; with several, `metric` is `"check"`, `unit` is null and
+    `clauses` lists them."""
 
     id: str
     name: str
     expression: str
     metric: str
-    unit: Unit
+    unit: Unit | None
     dataset: str
     datasource: str
     # Whether `datasource` names a defined datasource, and if not, why not.
@@ -192,13 +193,13 @@ class CheckSummary(_Model):
 
     @classmethod
     def of(cls, check: Check, latest: LatestResult | None) -> CheckSummary:
-        first = check.clauses[0]
+        first, single = check.clauses[0], len(check.clauses) == 1
         return cls(
             id=check.id,
             name=check.name,
             expression=check.canonical,
-            metric=first.metric.name if len(check.clauses) == 1 else "check",
-            unit=first.unit.value,
+            metric=first.metric.name if single else CHECK_METRIC,
+            unit=first.unit.value if single else None,
             dataset=check.dataset.name,
             datasource=check.dataset.datasource,
             datasource_state=check.dataset.datasource_state,
