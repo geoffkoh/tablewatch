@@ -10,6 +10,40 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 33 — Named checks, part 2: the check registry and per-clause results (I-46 part 2), 2026-10-12
+
+- **Spec:** [033-named-checks-part-2](specs/033-named-checks-part-2.md). **Branch:** `iter/033`.
+  Full track. No items added (freeze). Iteration 32 shipped first in this session (PR #40, after
+  fixing two Postgres-only tests and an `npm audit` advisory in `source-map-js`).
+- **PLAN** shaped part 2 with I-49 so the store migrates once: I-49's run key, dataset runs, outbox
+  and lock are reserved as additive, not built.
+- **REFINE.** Architect → D1 (a clause row FKs its summary row, one cascade path), D2 (I-49 additive;
+  it relaxes NOT NULL on `tablewatch_runs`), D3 (the summary row keeps `unit`, drops `measured` and
+  `metric`), D4 (a concurrent first run reuses the winner's registry row). Tech lead → D5–D7 (no
+  natural-key drift since `id:` is gone; a dataset/datasource move is a new history, silently; the
+  summary row's `check_id` is the registry FK, `public_id` the hash) and D8 (the store holds data:
+  0004 moves spec 032's clause rows under their summary rows rather than dropping them).
+- **Shipped:** `tablewatch_checks` and `tablewatch_clause_results`; revision 0004 backfills the
+  registry, moves clause rows, drops pre-named-checks rows, and folds back on downgrade.
+  `ResultStore.baselines` reads a 0002/0003 store in its own shape, because a run reads baselines
+  before its save migrates and `--no-store` never migrates. Public ids, API, JSON and reports
+  unchanged. Suite: **2,608 passed, 44 skipped, 16 xfailed**; store tests also on Postgres 18 locally.
+- **Reviewer findings and resolution:**
+  - *architect (targeted re-check of D7, D8, legacy baselines) — approve-with-followups; fixed
+    (16d9ad7):* a savepoint fallback for a backend without `ON CONFLICT`, the FK named as the
+    migration names it, the baselines source built once, D4 reworded as built. Accepted: the row's
+    `check_id` attribute keeps its name (it holds the registry id; `public_id` is the hash), and the
+    upgrade reads clause rows into memory (nothing released).
+  - *qa-engineer — pass; 9 tests, no xfails:* round trips across datasources, two projects sharing
+    one hash, `--no-store` on a 0003 store, four concurrent first runs registering once, a clause
+    key holding `": "`. The tech lead ran them on Postgres too.
+  - *data-steward — accept; S1–S7 and D6 via the CLI*, no wording issues.
+- **Not added (backlog freeze):** none.
+- **Lesson:** "no history migration" had quietly become "drop the baselines", which a QA test from
+  iteration 26 caught; with an unreleased store in daily use, moving rows was cheap and kept it.
+- **Backlog:** I-46 part 2 done. Next: I-49 (resumable runs), on the reserved schema; I-46 part 3
+  after it, before I-51.
+
 ## Iteration 32 — Named checks with clauses, part 1: the language and evaluation (I-46 part 1), 2026-10-09
 
 - **Spec:** [032-named-checks-part-1](specs/032-named-checks-part-1.md). **Branch:** `iter/032`.
