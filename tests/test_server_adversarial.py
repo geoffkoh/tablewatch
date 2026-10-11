@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import socket
 import sqlite3
 import stat
@@ -456,7 +457,7 @@ def test_serve_never_exits_1_or_2_with_failing_checks_or_broken_files(
     # The recorded runs failed (exit 1), and a broken file is an error
     # diagnostic: serve still exits 0 on a clean stop.
     (recorded.root / "checks" / "broken.yml").write_text(
-        "dataset: nope\nchecks:\n  - row_count >>> 1\n", encoding="utf-8"
+        "dataset: nope\nchecks:\n  c1: row_count >>> 1\n", encoding="utf-8"
     )
     started = start(recorded.root, monkeypatch)
     assert started.code == 0, started.stderr
@@ -478,7 +479,7 @@ def test_a_read_only_store_can_be_served(
 
         def probe(client: TestClient) -> None:
             assert len(get(client, "/api/v1/runs")["items"]) == 2
-            assert get(client, "/api/v1/checks")["total"] == 19
+            assert get(client, "/api/v1/checks")["total"] == 12
 
         started = start(recorded.root, monkeypatch, probe=probe)
     finally:
@@ -616,54 +617,40 @@ def test_unknown_paths_and_trailing_slashes_are_404(recorded: Recorded) -> None:
 # --- check ids ------------------------------------------------------------------------
 
 
-def _add_explicit_id(root: Path, check_id: str) -> None:
+def _add_id_key(root: Path, value: str) -> None:
+    """`id:` on a clause: removed (D1) — every value is a diagnostic, never served."""
     customers = root / "checks" / "sales" / "customers.yml"
     customers.write_text(
         customers.read_text(encoding="utf-8").replace(
             "missing_percent(email) < 5%:\n",
-            f"missing_percent(email) < 5%:\n      id: {check_id!r}\n",
+            f"missing_percent(email) < 5%:\n          id: {value!r}\n",
         ),
         encoding="utf-8",
     )
 
 
 @pytest.mark.parametrize(
-    "check_id", ["sales.customers:email-missing_v2", "A", "0" * 16 + "x", "a" * 64]
+    "value",
+    ["sales.customers:email-missing_v2", "A", "0" * 16 + "x", "a" * 64, "c" * 65],
 )
-def test_explicit_ids_are_served(
-    retail: Path, monkeypatch: pytest.MonkeyPatch, check_id: str
-) -> None:
-    monkeypatch.chdir(retail)
-    _add_explicit_id(retail, check_id)
-    assert tw.load(retail).ok
-    invoke(retail, "run", "checks/sales/customers.yml")
-    with served(retail) as client:
-        assert check_id in checks_by_id(client)
-        assert get(client, f"/api/v1/checks/{check_id}")["latest"]["outcome"] == "fail"
-        history = get(client, f"/api/v1/checks/{check_id}/history")["items"]
-        assert len(history) == 1
+def test_an_id_key_is_always_a_diagnostic(retail: Path, value: str) -> None:  # D1
+    _add_id_key(retail, value)
+    project = tw.load(retail)
+    assert not project.ok
+    assert any('"id:" is not used here' in d.message for d in project.diagnostics)
 
 
-def test_every_listed_check_can_be_fetched_by_id(retail: Path) -> None:
-    # An explicit id the loader accepts must be reachable at /checks/{id}.
-    # The loader and the API share one cap: the store's column width, 64.
-    long_id = "c" * 64
-    _add_explicit_id(retail, long_id)
-    assert tw.load(retail).ok, "the loader accepts a 64-character id"
+def test_every_listed_check_can_be_fetched_by_its_own_id(retail: Path) -> None:
+    # Ids are always derived now (D1): 16 lowercase hex characters, never a
+    # value from the file — and every check listed must be fetchable by it.
     with served(retail) as client:
         for check in get(client, "/api/v1/checks")["items"]:
+            assert re.fullmatch(r"[0-9a-f]{16}", check["id"]), check["id"]
             response = client.get(f"/api/v1/checks/{check['id']}")
-            assert response.status_code == 200, check["id"][:20]
+            assert response.status_code == 200, check["id"]
             assert (
                 client.get(f"/api/v1/checks/{check['id']}/history").status_code == 200
             )
-
-
-def test_an_id_longer_than_the_store_holds_is_a_diagnostic(retail: Path) -> None:
-    _add_explicit_id(retail, "c" * 65)
-    project = tw.load(retail)
-    assert not project.ok
-    assert any("at most 64" in d.message for d in project.diagnostics)
 
 
 # --- paging ---------------------------------------------------------------------------
@@ -945,6 +932,8 @@ def _enum_of(document: dict[str, Any], prop: dict[str, Any]) -> set[str]:
         return set(prop["enum"])
     if "const" in prop:
         return {prop["const"]}
+    if "anyOf" in prop:  # `X | None`: the values of X
+        return set().union(*(_enum_of(document, p) for p in prop["anyOf"]))
     return set()
 
 
@@ -1062,7 +1051,7 @@ def test_serve_never_creates_a_datasource_engine(
     root = demo(
         tmp_path / "demo",
         **{
-            "orders.yml": "dataset: orders\ndatasource: wh\nchecks:\n  - row_count > 0\n"
+            "orders.yml": "dataset: orders\ndatasource: wh\nchecks:\n  c1: row_count > 0\n"
         },
     )
     calls: list[object] = []

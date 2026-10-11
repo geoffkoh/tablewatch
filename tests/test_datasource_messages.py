@@ -25,7 +25,7 @@ P = "datasource 'warehouse' in tablewatch.yml: "
 MALFORMED = (
     "url is not a SQLAlchemy URL: it must start with dialect:// or dialect+driver://"
 )
-CHECKS = "dataset: orders\ndatasource: warehouse\nchecks:\n  - row_count > 0\n"
+CHECKS = "dataset: orders\ndatasource: warehouse\nchecks:\n  c1: row_count > 0\n"
 SECRETS = ("secret", "Pa55w0rd", "admin", "db.prod", "foo=")
 
 
@@ -40,7 +40,7 @@ def _project(tmp_path: Path, url: str, *, local: bool = False) -> Path:
         db.execute("INSERT INTO things VALUES (1)")
         db.close()
         (root / "checks" / "local.yml").write_text(
-            "dataset: things\ndatasource: local\nchecks:\n  - row_count > 0\n",
+            "dataset: things\ndatasource: local\nchecks:\n  c1: row_count > 0\n",
             encoding="utf-8",
         )
     (root / "tablewatch.yml").write_text(config, encoding="utf-8")

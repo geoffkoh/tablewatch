@@ -1,8 +1,9 @@
 """JUnit XML, the format every CI system can display.
 
-One test suite per dataset, one test case per check. `fail` becomes a
-<failure>, `error` an <error>. JUnit has no notion of a warning, so a warn
-passes and carries its message in <system-out>.
+One test suite per dataset, one test case per named check. `fail` becomes
+a <failure>, `error` an <error>. JUnit has no notion of a warning, so a warn
+passes and carries its message in <system-out>. A check of several clauses
+lists each clause's outcome in <system-out>.
 """
 
 from __future__ import annotations
@@ -41,9 +42,10 @@ def render(run: RunResult) -> str:
             )
             text = (
                 f"{result.display_value}: {result.message}"
-                if result.message
-                else result.display_value
+                if result.message and result.display_value
+                else result.message or result.display_value
             )
+            out: list[str] = []
             match result.outcome:
                 case Outcome.FAIL:
                     ET.SubElement(case, "failure", message=text).text = text
@@ -52,9 +54,17 @@ def render(run: RunResult) -> str:
                 case Outcome.SKIPPED:
                     ET.SubElement(case, "skipped", message=text)
                 case Outcome.WARN:
-                    ET.SubElement(case, "system-out").text = f"WARN {text}"
+                    out.append(f"WARN {text}")
                 case Outcome.PASS:
                     pass
+            if result.single is None:
+                out += [
+                    f"{c.outcome} {c.clause.canonical}: "
+                    + (f"{c.display_value} {c.message or ''}".strip())
+                    for c in result.clauses
+                ]
+            if out:
+                ET.SubElement(case, "system-out").text = "\n".join(out)
     ET.indent(suites)
     return ET.tostring(suites, encoding="unicode", xml_declaration=True)
 

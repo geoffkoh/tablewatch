@@ -263,7 +263,7 @@ def test_every_result_an_error_has_no_last_evaluated(
         items = get(client, "/api/v1/checks")["items"]
         e_start = get(client, f"/api/v1/runs/{e}")["started_at"]
     errors = [c["latest"] for c in items if c["latest"] is not None]
-    assert len(errors) == 5
+    assert len(errors) == 4
     for latest in errors:
         assert latest["outcome"] == "error"
         assert latest["last_evaluated"] is None
@@ -297,7 +297,7 @@ def _big_project(root: Path, checks: int) -> list[str]:
         encoding="utf-8",
     )
     lines = ["dataset: t\ndatasource: lake\nchecks:\n"]
-    lines += [f"  - row_count > {n}\n" for n in range(checks)]
+    lines += [f"  c{n}: row_count > {n}\n" for n in range(checks)]
     (root / "checks" / "t.yml").write_text("".join(lines), encoding="utf-8")
     project = tw.load(root)
     assert project.ok
@@ -343,7 +343,7 @@ def _write_runs(root: Path, ids: list[str], runs: int) -> None:
                             "check_id": check,
                             "check_name": check,
                             "expression": "row_count > 0",
-                            "metric": "row_count",
+                            "metric": "check",
                             "dataset": "t",
                             "datasource": "lake",
                             "outcome": ("fail", "error", "pass")[(r + n) % 3],

@@ -161,15 +161,18 @@ ORDERS = """\
     dataset: orders
     datasource: lite
     checks:
-      - row_count > 0:
-          name: has a
-          where: "k = 'a'"
-      - row_count > 0:
-          name: has b
-          where: "k = 'b'"
-      - row_count > 0:
-          name: has c
-          where: "k = 'c'"
+      has_a:
+        clauses:
+          - row_count > 0:
+              where: "k = 'a'"
+      has_b:
+        clauses:
+          - row_count > 0:
+              where: "k = 'b'"
+      has_c:
+        clauses:
+          - row_count > 0:
+              where: "k = 'c'"
     """
 
 
@@ -253,7 +256,7 @@ def test_a_failure_is_sent_once(project: Path, hook: Hook) -> None:  # N1, N2
 
     set_rows(project, "b", "c")
     assert run(project).exit_code() == 1
-    assert names(hook) == [("has a", "failing")]
+    assert names(hook) == [("has_a", "failing")]
     event = hook.events[0]
     assert event["outcome"] == "fail"
     assert event["previous_outcome"] == "pass"
@@ -267,7 +270,7 @@ def test_recovery_is_sent(project: Path, hook: Hook) -> None:  # N5
     run(project)
     set_rows(project, "a", "b", "c")
     assert run(project).exit_code() == 0
-    assert names(hook)[-1] == ("has a", "recovered")
+    assert names(hook)[-1] == ("has_a", "recovered")
     assert hook.events[-1]["previous_outcome"] == "fail"
 
 
@@ -275,10 +278,10 @@ def test_error_then_back_to_failing_sends_nothing(
     project: Path, hook: Hook
 ) -> None:  # N3, N4
     set_rows(project, "b", "c")
-    run(project)  # has a: failing
+    run(project)  # has_a: failing
     drop_table(project)
     assert run(project).exit_code() == 2
-    erroring = [e for e in hook.bodies[-1]["events"] if e["check"]["name"] == "has a"]
+    erroring = [e for e in hook.bodies[-1]["events"] if e["check"]["name"] == "has_a"]
     assert erroring[0]["event"] == "erroring"
     assert erroring[0]["previous_outcome"] == "fail"
     sent = len(hook.bodies)
@@ -290,7 +293,7 @@ def test_error_then_back_to_failing_sends_nothing(
 def test_first_results(project: Path, hook: Hook) -> None:  # N7
     set_rows(project, "b")
     run(project)
-    assert sorted(names(hook)) == [("has a", "failing"), ("has c", "failing")]
+    assert sorted(names(hook)) == [("has_a", "failing"), ("has_c", "failing")]
 
 
 def test_one_post_per_run_in_the_run_order(project: Path, hook: Hook) -> None:  # N9
@@ -299,9 +302,9 @@ def test_one_post_per_run_in_the_run_order(project: Path, hook: Hook) -> None:  
     run(project)
     assert len(hook.bodies) == 1
     assert [e["check"]["name"] for e in hook.bodies[0]["events"]] == [
-        "has a",
-        "has b",
-        "has c",
+        "has_a",
+        "has_b",
+        "has_c",
     ]
 
 
@@ -462,12 +465,12 @@ def test_an_unknown_notifier_in_a_check_file(project: Path) -> None:  # N13
     _write(
         project,
         "checks/sales/orders.yml",
-        "dataset: orders\ndatasource: lite\nnotify: data-alrts\nchecks:\n  - row_count > 0\n",
+        "dataset: orders\ndatasource: lite\nnotify: data-alrts\nchecks:\n  c1: row_count > 0\n",
     )
     _write(
         project,
         "checks/other.yml",
-        "dataset: other\ndatasource: lite\nnotify: [nope]\nchecks:\n  - row_count > 0\n",
+        "dataset: other\ndatasource: lite\nnotify: [nope]\nchecks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3
@@ -484,7 +487,7 @@ def test_a_malformed_notify(project: Path, value: str) -> None:  # N14
     _write(
         project,
         "checks/sales/orders.yml",
-        f"dataset: orders\ndatasource: lite\nnotify: {value}\nchecks:\n  - row_count > 0\n",
+        f"dataset: orders\ndatasource: lite\nnotify: {value}\nchecks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3
@@ -514,7 +517,8 @@ def test_notify_does_not_change_check_ids(project: Path) -> None:  # N16
         project,
         "checks/sales/orders.yml",
         ORDERS.replace(
-            "where: \"k = 'b'\"", "where: \"k = 'b'\"\n          notify: data-alerts"
+            "has_b:\n        clauses:",
+            "has_b:\n        notify: data-alerts\n        clauses:",
         ),
     )
     after = {c.name: c.id for c in load_project(project).checks}
@@ -597,12 +601,15 @@ def test_a_check_overrides_its_dataset(
     _write(
         project,
         "checks/sales/orders.yml",
-        ORDERS.replace("name: has a", "name: has a\n          notify: backup"),
+        ORDERS.replace(
+            "has_a:\n        clauses:",
+            "has_a:\n        notify: backup\n        clauses:",
+        ),
     )
     set_rows(project)
     run(project)
-    assert [e["check"]["name"] for e in second_hook.events] == ["has a"]
-    assert [e["check"]["name"] for e in hook.events] == ["has b", "has c"]
+    assert [e["check"]["name"] for e in second_hook.events] == ["has_a"]
+    assert [e["check"]["name"] for e in hook.events] == ["has_b", "has_c"]
 
 
 def test_a_selection_only_considers_what_it_ran(
@@ -611,7 +618,7 @@ def test_a_selection_only_considers_what_it_ran(
     _write(
         project,
         "checks/marketing/leads.yml",
-        "dataset: orders\ndatasource: lite\nnotify: data-alerts\nchecks:\n  - row_count > 5\n",
+        "dataset: orders\ndatasource: lite\nnotify: data-alerts\nchecks:\n  c1: row_count > 5\n",
     )
     run(project, paths=["checks/sales"])
     set_rows(project, "a", "b", "c")
@@ -619,17 +626,32 @@ def test_a_selection_only_considers_what_it_ran(
     assert all(e["check"]["path"].startswith("checks/sales") for e in hook.events)
 
 
-def test_an_edited_check_alerts_as_new(project: Path, hook: Hook) -> None:  # N31
+def test_an_edited_clause_keeps_the_check_alerting(
+    project: Path, hook: Hook
+) -> None:  # N31, updated for D4: a check's identity is its name, not its clauses
     set_rows(project, "b", "c")
     run(project)
-    assert names(hook) == [("has a", "failing")]
+    assert names(hook) == [("has_a", "failing")]
     _write(
         project,
         "checks/sales/orders.yml",
         ORDERS.replace("k = 'a'", "k = 'a' OR k = 'z'"),
     )
     run(project)
-    assert names(hook)[-1] == ("has a", "failing")
+    assert len(hook.bodies) == 1  # N2: still failing, the check's id is unchanged
+
+
+def test_a_renamed_check_alerts_as_new(project: Path, hook: Hook) -> None:  # D3
+    set_rows(project, "b", "c")
+    run(project)
+    assert names(hook) == [("has_a", "failing")]
+    _write(
+        project,
+        "checks/sales/orders.yml",
+        ORDERS.replace("has_a:", "has_a_2:"),
+    )
+    run(project)
+    assert names(hook)[-1] == ("has_a_2", "failing")
     assert hook.events[-1]["previous_outcome"] is None
 
 
@@ -637,7 +659,7 @@ def test_previous_results_is_project_scoped(project: Path, hook: Hook) -> None: 
     set_rows(project, "b", "c")
     first = run(project)
     url = load_project(project).config.results.url
-    check = next(r.check.id for r in first.results if r.check.name == "has a")
+    check = next(r.check.id for r in first.results if r.check.name == "has_a")
     with ResultStore.open(url, project) as store:
         assert (
             store.previous_results(
@@ -764,15 +786,15 @@ def test_editor_schemas_know_notify() -> None:  # N25
 
     checks = jsonschema.Draft202012Validator(check_file_schema())
     for document in (
-        {"dataset": "t", "notify": "a", "checks": ["row_count > 0"]},
+        {"dataset": "t", "notify": "a", "checks": {"c1": "row_count > 0"}},
         {
             "dataset": "t",
             "notify": [],
-            "checks": [{"row_count > 0": {"notify": ["a", "b"]}}],
+            "checks": {"c1": {"clauses": ["row_count > 0"], "notify": ["a", "b"]}},
         },
     ):
         assert not list(checks.iter_errors(document))
-    assert list(checks.iter_errors({"dataset": "t", "notify": 3, "checks": []}))
+    assert list(checks.iter_errors({"dataset": "t", "notify": 3, "checks": {}}))
     project = jsonschema.Draft202012Validator(project_schema())
     good = {"name": "p", "notifiers": {"a": {"type": "webhook", "url": "${env:X}"}}}
     assert not list(project.iter_errors(good))
@@ -804,7 +826,7 @@ def test_loopback_http_never_goes_through_a_proxy(
     monkeypatch.delenv("no_proxy", raising=False)
     set_rows(project, "b", "c")
     run(project)
-    assert names(hook) == [("has a", "failing")]
+    assert names(hook) == [("has_a", "failing")]
 
 
 def test_a_trickled_answer_cannot_hold_the_run(

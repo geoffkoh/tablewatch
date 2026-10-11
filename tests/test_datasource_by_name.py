@@ -11,6 +11,7 @@ import pytest
 
 import tablewatch as tw
 from tests.conftest import invoke
+from tests.named import named_checks
 from tests.test_server import served
 
 NOT_DEFINED = (
@@ -44,12 +45,12 @@ def _project(tmp_path: Path, *files: tuple[str, str]) -> Path:
 
 def _checks(datasource: str | None) -> str:
     line = f"datasource: {json.dumps(datasource)}\n" if datasource is not None else ""
-    return f"dataset: orders\n{line}checks:\n  - row_count > 0\n"
+    return f"dataset: orders\n{line}checks:\n  c1: row_count > 0\n"
 
 
 FIXTURE = (
     ("orders.yml", _checks("warehous")),
-    ("customers.yml", "dataset: customers\nchecks:\n  - row_count > 0\n"),
+    ("customers.yml", "dataset: customers\nchecks:\n  c1: row_count > 0\n"),
 )
 
 
@@ -189,7 +190,7 @@ def counted(request: pytest.FixtureRequest, tmp_path: Path) -> Path:
 
 def _display(root: Path, checks: str) -> list[str]:
     (root / "checks" / "t.yml").write_text(
-        f"dataset: t\nchecks:\n{checks}", encoding="utf-8"
+        f"dataset: t\n{named_checks(checks)}", encoding="utf-8"
     )
     return [r.display_value for r in tw.run(root, record=False).results]
 
@@ -208,7 +209,7 @@ def test_c1_c2_c3_row_counts_name_their_unit(counted: Path) -> None:
 
 def test_c1_the_value_stays_a_number(counted: Path) -> None:
     (counted / "checks" / "t.yml").write_text(
-        "dataset: t\nchecks:\n  - failed_rows = 0:\n      condition: amount < 0\n",
+        "dataset: t\nchecks:\n  c1:\n    clauses:\n      - failed_rows = 0:\n          condition: amount < 0\n",
         encoding="utf-8",
     )
     [result] = tw.run(counted, record=False).results

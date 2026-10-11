@@ -35,10 +35,10 @@ ORDERS = """\
 dataset: orders
 datasource: shop
 checks:
-  - row_count > 0
-  - missing_count(emial) = 0
-  - avg(amount) > 0
-  - duplicate_count(id, Email) = 0
+  c1: row_count > 0
+  c2: missing_count(emial) = 0
+  c3: avg(amount) > 0
+  c4: duplicate_count(id, Email) = 0
 """
 
 
@@ -56,12 +56,12 @@ def p(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     _write(
         root,
         "checks/customers.yml",
-        "dataset: main.customers\ndatasource: shop\nchecks:\n  - row_count > 0\n",
+        "dataset: main.customers\ndatasource: shop\nchecks:\n  c1: row_count > 0\n",
     )
     _write(
         root,
         "checks/remote.yml",
-        "dataset: orders\ndatasource: down\nchecks:\n  - row_count > 0\n",
+        "dataset: orders\ndatasource: down\nchecks:\n  c1: row_count > 0\n",
     )
     with closing(sqlite3.connect(root / "shop.db")) as db, db:
         db.execute("CREATE TABLE orders (id integer, email text, amount real)")
@@ -73,7 +73,7 @@ def p(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_the_retail_example_is_clean(retail: Path) -> None:  # S1
     code, out, _ = invoke(retail, "validate", "--connect")
     assert code == 0
-    assert out == "3 datasets, 19 checks — no problems found; 1 datasource checked\n"
+    assert out == "3 datasets, 12 checks — no problems found; 1 datasource checked\n"
 
 
 def test_a_missing_column(p: Path) -> None:  # S2, S4
@@ -82,7 +82,7 @@ def test_a_missing_column(p: Path) -> None:  # S2, S4
     code, _, err = invoke(p, "validate", "--connect")
     assert code == 3
     assert (
-        "checks/orders.yml:5:19: error: column 'emial' not found in orders "
+        "checks/orders.yml:5:21: error: column 'emial' not found in orders "
         "(datasource 'shop')"
     ) in err
     assert "Email" not in err
@@ -109,7 +109,7 @@ def test_case_follows_the_database(tmp_path: Path) -> None:  # S4 on DuckDB
     _write(
         root,
         "checks/t.yml",
-        "dataset: t\nchecks:\n  - duplicate_count(id, Email) = 0\n",
+        "dataset: t\nchecks:\n  c1: duplicate_count(id, Email) = 0\n",
     )
     con = duckdb.connect(str(root / "d.duckdb"))
     try:
@@ -239,9 +239,9 @@ def test_a_files_datasource(tmp_path: Path) -> None:  # S11
     _write(
         root,
         "checks/orders.yml",
-        "dataset: orders.csv\nchecks:\n  - missing_count(emial) = 0\n",
+        "dataset: orders.csv\nchecks:\n  c1: missing_count(emial) = 0\n",
     )
-    _write(root, "checks/gone.yml", "dataset: gone.csv\nchecks:\n  - row_count > 0\n")
+    _write(root, "checks/gone.yml", "dataset: gone.csv\nchecks:\n  c1: row_count > 0\n")
     code, _, err = invoke(root, "validate", "--connect")
     assert code == 3
     assert "column 'emial' not found in orders.csv (datasource 'drop')" in err
@@ -257,7 +257,7 @@ def test_a_parse_error_and_a_missing_column_in_one_pass(p: Path) -> None:  # S12
     _write(
         p,
         "checks/broken.yml",
-        "dataset: orders\ndatasource: shop\nchecks:\n  - missing_count(email = 0\n",
+        "dataset: orders\ndatasource: shop\nchecks:\n  c1: missing_count(email = 0\n",
     )
     code, _, err = invoke(p, "validate", "--connect")
     assert code == 3
@@ -272,7 +272,7 @@ def test_sql_metric_labels_are_not_columns(p: Path) -> None:  # S13
         p,
         "checks/orders.yml",
         "dataset: orders\ndatasource: shop\nchecks:\n"
-        "  - sql_metric(revenue) > 0:\n      query: select 1\n",
+        "  c1:\n    clauses:\n      - sql_metric(revenue) > 0:\n          query: select 1\n",
     )
     assert invoke(p, "validate", "--connect")[0] == 0
 
@@ -290,11 +290,11 @@ def test_one_line_per_check(p: Path) -> None:  # S15
         p,
         "checks/orders.yml",
         "dataset: orders\ndatasource: shop\nchecks:\n"
-        "  - missing_count(emial) = 0\n  - distinct_count(emial) > 0\n",
+        "  c1: missing_count(emial) = 0\n  c2: distinct_count(emial) > 0\n",
     )
     _, _, err = invoke(p, "validate", "--connect")
-    assert "checks/orders.yml:4:19:" in err
-    assert "checks/orders.yml:5:20:" in err
+    assert "checks/orders.yml:4:21:" in err
+    assert "checks/orders.yml:5:22:" in err
 
 
 def test_help(p: Path) -> None:  # S16
@@ -312,7 +312,7 @@ def test_a_url_datasource_never_creates_a_file(tmp_path: Path) -> None:  # VERIF
         "tablewatch.yml",
         f"name: u\ndatasources:\n  raw: {{type: sqlalchemy, url: 'sqlite:///{target}'}}\n",
     )
-    _write(root, "checks/t.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    _write(root, "checks/t.yml", "dataset: t\nchecks:\n  c1: row_count > 0\n")
     code, _, err = invoke(root, "validate", "--connect")
     assert code == 2
     assert "database file not found" in err

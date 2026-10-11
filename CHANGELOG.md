@@ -6,6 +6,18 @@ All notable changes to tablewatch. The format follows
 
 ## Unreleased
 
+### Changed — breaking
+
+- **Named checks with clauses.** `checks:` is now a mapping of check name to what it checks:
+  `orders_fresh: freshness(created_at) < 6h` for one rule, or `orders_usable: {clauses: [...]}`
+  for several, all of which must hold — the check takes its worst clause's outcome. The name is
+  the check's identity: history follows it when the file moves or a clause is edited, and a
+  rename starts a new history. The list shape is an error, `id:` is gone, and a clause's `name:`
+  is its key within the check. Results, the JSON report (`schema_version` 2), JUnit, the console
+  and `/api/v1/checks` carry one result per named check with its clauses; `--check` and
+  `history` take a name. There is no migration of earlier history: nothing has been released.
+  See "Writing a check" and "Check identity" in `docs/check-language.md` (spec 032).
+
 ### Added
 
 - Files as datasets: a datasource with `type: files` checks CSV, Parquet or JSON files directly,

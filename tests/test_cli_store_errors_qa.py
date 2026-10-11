@@ -167,18 +167,18 @@ def test_dash_is_stdout_for_every_output(
     assert not (retail / "-").exists()
     assert "Traceback" not in err
     if output == "json":
-        assert len(json.loads(out)["results"]) == 19
+        assert len(json.loads(out)["results"]) == 12
     elif output == "junit":
         assert out.lstrip().startswith("<?xml")
     else:
-        assert "19 checks" in out
+        assert "12 checks" in out
 
 
 def test_dash_with_quiet_table(retail: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(retail)
     code, out, _ = invoke(retail, "-q", "run", "--output-file", "-")
     assert code == 1
-    assert "19 checks" in out
+    assert "12 checks" in out
     assert not (retail / "-").exists()
 
 
@@ -329,7 +329,7 @@ def test_a_relative_project_dir(retail: Path, monkeypatch: pytest.MonkeyPatch) -
     for given in ("retail", "retail/tablewatch.yml", "./retail/"):
         code, out, err = _cli("--project-dir", given, "list")
         assert code == 0, err
-        assert "19 checks" in out
+        assert "12 checks" in out
     tw.run("retail/tablewatch.yml")
     code, out, _ = _cli("--project-dir", "retail/tablewatch.yml", "runs")
     assert code == 0
@@ -355,7 +355,7 @@ def test_the_env_var_may_name_the_file(
     monkeypatch.setenv("TABLEWATCH_PROJECT_DIR", str(retail / "tablewatch.yml"))
     code, out, _ = _cli("list")
     assert code == 0
-    assert "19 checks" in out
+    assert "12 checks" in out
 
 
 def test_an_empty_env_var_falls_back_to_discovery(
@@ -365,7 +365,7 @@ def test_an_empty_env_var_falls_back_to_discovery(
     monkeypatch.setenv("TABLEWATCH_PROJECT_DIR", "")
     code, out, _ = _cli("list")
     assert code == 0
-    assert "19 checks" in out
+    assert "12 checks" in out
 
 
 def test_a_symlinked_tablewatch_yml(

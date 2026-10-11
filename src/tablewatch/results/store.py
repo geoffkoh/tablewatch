@@ -46,7 +46,13 @@ from tablewatch.config.project import (
 from tablewatch.engine.baselines import BaselineRequest, Sample
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import ResultSink, RunResult
-from tablewatch.results.models import VERSION_TABLE, Base, CheckResultRow, RunRow
+from tablewatch.results.models import (
+    CHECK_METRIC,
+    VERSION_TABLE,
+    Base,
+    CheckResultRow,
+    RunRow,
+)
 from tablewatch.results.state import Entry, State, current_state
 
 log = logging.getLogger(__name__)
@@ -420,27 +426,50 @@ class ResultStore:
             failed=run.count(Outcome.FAIL),
             errored=run.count(Outcome.ERROR),
         )
-        row.results = [
-            CheckResultRow(
-                check_id=r.check.id,
-                check_name=r.check.name,
-                expression=r.check.canonical,
-                metric=r.check.metric.name,
-                dataset=r.check.dataset.name,
-                datasource=r.check.dataset.datasource,
-                outcome=str(r.outcome),
-                value=r.value,
-                display_value=r.display_value,
-                message=r.message,
-                measured=r.measured,
-                unit=str(r.check.unit),
-                source=str(r.check.location),
-                owner=r.check.dataset.owner,
-                tags=list(r.check.dataset.tags),
-                duration_ms=r.duration_ms,
+        row.results = []
+        for r in run.results:
+            check, single = r.check, r.single
+            row.results.append(
+                CheckResultRow(
+                    check_id=check.id,
+                    check_name=check.name,
+                    expression=check.canonical,
+                    metric=CHECK_METRIC,
+                    dataset=check.dataset.name,
+                    datasource=check.dataset.datasource,
+                    outcome=str(r.outcome),
+                    value=r.value,
+                    display_value=r.display_value,
+                    message=r.message,
+                    measured=None,
+                    unit=str(single.clause.unit) if single else None,
+                    source=str(check.location),
+                    owner=check.dataset.owner,
+                    tags=list(check.dataset.tags),
+                    duration_ms=r.duration_ms,
+                )
             )
-            for r in run.results
-        ]
+            row.results.extend(
+                CheckResultRow(
+                    check_id=c.clause.id,
+                    check_name=f"{check.name}: {c.clause.key}",
+                    expression=c.clause.canonical,
+                    metric=c.clause.metric.name,
+                    dataset=check.dataset.name,
+                    datasource=check.dataset.datasource,
+                    outcome=str(c.outcome),
+                    value=c.value,
+                    display_value=c.display_value,
+                    message=c.message,
+                    measured=c.measured,
+                    unit=str(c.clause.unit),
+                    source=str(c.clause.location),
+                    owner=check.dataset.owner,
+                    tags=list(check.dataset.tags),
+                    duration_ms=c.duration_ms,
+                )
+                for c in r.clauses
+            )
         _fit(row)
         for result in row.results:
             _fit(result)
@@ -487,7 +516,11 @@ class ResultStore:
         order, then the head rows. `as_of` reads history as it stood when
         that run was recorded: it and older runs only.
         """
-        scope = [RunRow.project == project, *_not_newer_than(as_of)]
+        scope = [
+            RunRow.project == project,
+            CheckResultRow.metric == CHECK_METRIC,
+            *_not_newer_than(as_of),
+        ]
         if check_id is not None:
             scope.append(CheckResultRow.check_id == check_id)
         outcomes = (
@@ -654,6 +687,7 @@ class ResultStore:
             .join(RunRow, CheckResultRow.run_id == RunRow.id)
             .where(
                 RunRow.project == project,
+                CheckResultRow.metric == CHECK_METRIC,
                 CheckResultRow.check_id.startswith(prefix, autoescape=True),
                 # SQLite's LIKE ignores ASCII case, Postgres's does not: the
                 # exact comparison makes both keep it (spec 031, P18).
@@ -693,6 +727,7 @@ class ResultStore:
             .join(RunRow, CheckResultRow.run_id == RunRow.id)
             .where(
                 RunRow.project == project,
+                CheckResultRow.metric == CHECK_METRIC,
                 CheckResultRow.check_id == check_id,
                 *_older_than(before),
             )

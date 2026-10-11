@@ -39,6 +39,7 @@ from tablewatch.results.store import (
 )
 from tests import postgres
 from tests.conftest import invoke
+from tests.named import named_checks
 from tests.postgres import (
     AWKWARD_PASSWORD,
     NOT_SET,
@@ -53,7 +54,7 @@ from tests.test_server import served, start
 
 NEWER = "it was upgraded by a newer tablewatch — upgrade tablewatch to read it"
 RETAIL = "retail-example"
-RETAIL_CHECKS = 19
+RETAIL_CHECKS = 12  # named checks in examples/retail
 
 
 def _head() -> str:
@@ -101,7 +102,7 @@ def _project(root: Path, url: str, checks: str, *, name: str = "pg") -> Path:
         encoding="utf-8",
     )
     (root / "checks" / "orders.yml").write_text(
-        f"dataset: orders\ndatasource: duck\nchecks:\n{checks}", encoding="utf-8"
+        f"dataset: orders\ndatasource: duck\n{named_checks(checks)}", encoding="utf-8"
     )
     set_rows(root, 1000)
     return root
@@ -312,7 +313,7 @@ def test_two_processes_record_interleaved_runs(
         assert {r.id for r in listed} == run_ids
         for run_id in run_ids:
             row = store.run(RETAIL, run_id)
-            assert row is not None and len(row.results) == RETAIL_CHECKS
+            assert row is not None and len(row.check_results) == RETAIL_CHECKS
         latest = store.latest_results(RETAIL)
         assert len(latest) == RETAIL_CHECKS
         for check_id, head in latest.items():
@@ -402,7 +403,9 @@ def test_a_session_in_another_time_zone_reads_utc(
     set_rows(root, 950)
     third = _record_at(root, next_sunday)
 
-    change = next(r for r in third.results if r.check.expression.change is not None)
+    change = next(
+        r for r in third.results if r.check.clauses[0].expression.change is not None
+    )
     assert change.outcome.value == "pass", change.message
     assert (change.message or "").startswith(
         "1,000 → 950 rows since the run of 2026-10-04 23:30 UTC (same weekday)"
@@ -447,12 +450,13 @@ def test_the_last_runs_window_reads_the_same_on_both(
 
     project = load_project(root)
     [check] = project.checks
-    assert check.expression.change is not None
+    [clause] = check.clauses
+    assert clause.expression.change is not None
     now = t0 + timedelta(days=1)
-    request = request_for(check.expression.change, check.metric.name, now)
+    request = request_for(clause.expression.change, clause.metric.name, now)
     with open_store(store_url, root, create=False, migrate=False) as store:
-        samples = store.baselines(project.config.name, {check.id: request}, now)[
-            check.id
+        samples = store.baselines(project.config.name, {clause.id: request}, now)[
+            clause.id
         ]
 
     newest = sorted(
@@ -620,13 +624,15 @@ def test_every_bounded_column_holds_its_full_width(
 
 def test_a_run_at_the_widths_a_user_writes_records(
     store_url: str, tmp_path: Path
-) -> None:  # P15 through save(): a 200-character project, a 64-character id
+) -> None:  # P15 through save(): a 200-character project, a 64-character name
+    # D1: `id:` is gone, so the longest value a user still writes for a
+    # check is its name, capped at MAX_NAME_LENGTH (64).
     name = "p" * 200
-    check_id = "A" + "b" * 63
+    check_name = "a" * 64
     root = _project(
         tmp_path / "p",
         store_url,
-        f"  - row_count > 0:\n      id: {check_id}\n",
+        f"  {check_name}: row_count > 0\n",
         name=name,
     )
     run = _record_at(root, datetime(2026, 10, 4, tzinfo=UTC))
@@ -634,21 +640,37 @@ def test_a_run_at_the_widths_a_user_writes_records(
         row = store.run(name, run.id)
     assert row is not None
     assert row.project == name
-    assert [r.check_id for r in row.results] == [check_id]
+    assert [r.check_name for r in row.results if r.metric == "check"] == [check_name]
 
 
 # --- check-id prefixes keep case (P18) ---------------------------------------------
 
 
 def test_a_check_id_prefix_keeps_its_case(store_url: str, tmp_path: Path) -> None:
-    # P18
+    # P18. Ids are always lowercase hex now (sha1 hexdigest, D1): the
+    # loader itself can no longer write a mixed-case one (no `id:`), so
+    # this writes one directly into the store to exercise case-sensitive
+    # prefix matching at that layer.
     root = _project(
         tmp_path / "p",
         store_url,
-        "  - row_count > 0:\n      id: ABcd0001\n      name: upper\n"
-        "  - row_count > 1:\n      id: abef0001\n      name: lower\n",
+        "  upper: row_count > 0\n  lower: row_count > 1\n",
     )
-    _record_at(root, datetime(2026, 10, 4, tzinfo=UTC))
+    run = _record_at(root, datetime(2026, 10, 4, tzinfo=UTC))
+    engine = create_engine(store_url)
+    try:
+        with engine.begin() as con:
+            for check_name, new_id in (("upper", "ABcd0001"), ("lower", "abef0001")):
+                con.execute(
+                    text(
+                        "UPDATE tablewatch_check_results SET check_id = :new_id "
+                        "WHERE run_id = :run_id AND check_name = :check_name "
+                        "AND metric = 'check'"
+                    ),
+                    {"new_id": new_id, "run_id": run.id, "check_name": check_name},
+                )
+    finally:
+        engine.dispose()
     with open_store(store_url, root, create=False, migrate=False) as store:
         assert store.matching_check_ids("pg", "ab") == ["abef0001"]
         assert store.matching_check_ids("pg", "AB") == ["ABcd0001"]

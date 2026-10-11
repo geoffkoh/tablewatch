@@ -99,13 +99,13 @@ def test_p13_a_change_check_errors_naming_only_the_variable(
     _set_url(retail, "postgresql+psycopg://tw:${env:TW_STORE_PASSWORD}@localhost/tw")
     checks = retail / "checks" / "change.yml"
     checks.write_text(
-        f"dataset: {DATASET}\nchecks:\n  - change(row_count) > -50%\n",
+        f"dataset: {DATASET}\nchecks:\n  c1: change(row_count) > -50%\n",
         encoding="utf-8",
     )
     code, out, _ = invoke(retail, "run", "--no-store", "--output", "json")
     assert code == 2
     [result] = [
-        r for r in json.loads(out)["results"] if r["name"].startswith("change(")
+        r for r in json.loads(out)["results"] if r["expression"].startswith("change(")
     ]
     assert result["outcome"] == "error"
     assert "environment variable TW_STORE_PASSWORD is not set" in result["message"]
@@ -139,7 +139,7 @@ def test_a_password_needs_no_escaping(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_p16_long_values_record(retail: Path) -> None:
     folder = retail / "checks" / "long.yml"
     folder.write_text(
-        f"dataset: {'d' * 600}\nowner: {'o' * 400}\nchecks:\n  - row_count >= 0\n",
+        f"dataset: {'d' * 600}\nowner: {'o' * 400}\nchecks:\n  c1: row_count >= 0\n",
         encoding="utf-8",
     )
     run = tw.run(retail)
@@ -162,16 +162,18 @@ def test_p16_a_long_project_name(retail: Path) -> None:
 
 
 def test_p17_a_control_character_in_a_name(retail: Path) -> None:
+    # A control character in a clause's `name:` (D4/D6: validated the same
+    # way as a check's name, not a distinct "control characters" message).
     (retail / "checks" / "nul.yml").write_text(
-        f'dataset: {DATASET}\nchecks:\n  - row_count > 0:\n      name: "a\\0b"\n',
+        f'dataset: {DATASET}\nchecks:\n  c1:\n    clauses:\n      - row_count > 0:\n          name: "a\\0b"\n',
         encoding="utf-8",
     )
     code, out, err = invoke(retail, "validate")
     assert code == 3
     assert (
-        "checks/nul.yml:4:13: error: a check name cannot hold control characters"
-        in out + err
-    )
+        'checks/nul.yml:6:17: error: clause name "a\\x00b" is not valid — use '
+        'letters, digits, "_" and "-", starting with a letter'
+    ) in out + err
 
 
 def test_a_nul_from_the_data_is_replaced_and_a_bound_is_checked() -> None:

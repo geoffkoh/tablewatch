@@ -152,7 +152,7 @@ def test_the_safety_net_message_is_the_first_line_and_other_datasets_run(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # I4
     (project / "checks" / "other.yml").write_text(
-        "dataset: t\ndatasource: lite\nchecks:\n  - row_count > 0\n", encoding="utf-8"
+        "dataset: t\ndatasource: lite\nchecks:\n  c1: row_count > 0\n", encoding="utf-8"
     )
     _checks(project, "duck", "  - row_count > 0\n")
 
@@ -173,12 +173,16 @@ def test_the_safety_net_message_is_the_first_line_and_other_datasets_run(
 
 
 def _stored(root: Path) -> dict[str, tuple[str, str | None]]:
+    # D5: a summary row per check (metric = "check") plus one per clause;
+    # keyed by expression (the check's canonical text) to match the JSON
+    # report's per-check items.
     db = sqlite3.connect(root / ".tablewatch" / "results.db")
     try:
         return {
-            name: (outcome, message)
-            for name, outcome, message in db.execute(
-                "SELECT check_name, outcome, message FROM tablewatch_check_results"
+            expression: (outcome, message)
+            for expression, outcome, message in db.execute(
+                "SELECT expression, outcome, message FROM tablewatch_check_results "
+                "WHERE metric = 'check'"
             )
         }
     finally:
@@ -193,7 +197,9 @@ def test_json_and_history_agree_and_stdout_is_only_json(
     code, out, err = invoke(project, "run", "--output", "json")
     assert code == 2
     report = json.loads(out)  # stdout carries the report and nothing else
-    reported = {c["name"]: (c["outcome"], c["message"]) for c in report["results"]}
+    reported = {
+        c["expression"]: (c["outcome"], c["message"]) for c in report["results"]
+    }
     assert reported == _stored(project)
     assert reported["explodes(id) > 0"] == (
         "error",
@@ -202,10 +208,13 @@ def test_json_and_history_agree_and_stdout_is_only_json(
     assert (
         reported["row_count > 0"][0] == reported["missing_count(id) = 0"][0] == "pass"
     )
-    [check_id] = [
-        c["check_id"] for c in report["results"] if c["name"].startswith("explodes")
+    [clause_id] = [
+        cl["clause_id"]
+        for c in report["results"]
+        for cl in c["clauses"]
+        if cl["expression"].startswith("explodes")
     ]
-    assert "Traceback" in err and check_id in err
+    assert "Traceback" in err and clause_id in err
 
 
 def test_an_error_beside_a_failure_still_exits_2(

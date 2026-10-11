@@ -266,7 +266,7 @@ def _selector_options[F: Callable[..., Any]](command: F) -> F:
             "--check",
             "check_ids",
             multiple=True,
-            help="Only this check id (or prefix).",
+            help="Only this check: its name, or its id (or a prefix).",
         ),
     ]
     for option in reversed(options):
@@ -423,6 +423,9 @@ def list_checks(
                         "owner": c.dataset.owner,
                         "tags": list(c.dataset.tags),
                         "source": str(c.location),
+                        "clauses": [
+                            {"key": k.key, "expression": k.canonical} for k in c.clauses
+                        ],
                     }
                     for c in checks
                 ],
@@ -729,13 +732,27 @@ def runs(ctx: click.Context, limit: int) -> None:
 @click.option("--limit", type=click.IntRange(1, 1000), default=20, show_default=True)
 @click.pass_context
 def history(ctx: click.Context, check_id: str, limit: int) -> None:
-    """Outcomes and values of one check over its recent runs."""
+    """Outcomes and values of one check over its recent runs.
+
+    CHECK_ID is the check's name, or the first characters of its id.
+    """
     project = _project(ctx, require_valid=False)
     name = project.config.name
     if not check_id.strip():
-        _fail("history needs the first characters of a check id")
+        _fail("history needs a check name or the first characters of a check id")
+    named = [c for c in project.checks if c.name == check_id]
+    if len(named) > 1:
+        _fail(
+            f"{check_id} names a check on {len(named)} datasets — give its id: "
+            + ", ".join(f"{c.short_id} ({c.dataset.name})" for c in named)
+        )
     with _reading_store(project) as store:
-        matches = [] if store is None else store.matching_check_ids(name, check_id)
+        if store is None:
+            matches = []
+        elif named:
+            matches = [named[0].id]
+        else:
+            matches = store.matching_check_ids(name, check_id)
         entries = (
             store.history_page(name, matches[0], limit=limit)
             if store is not None and len(matches) == 1
@@ -745,6 +762,8 @@ def history(ctx: click.Context, check_id: str, limit: int) -> None:
         _fail(f"no recorded results for check {check_id} in project {name}")
     if len(matches) > 1:
         _fail(f"{check_id} is ambiguous: {', '.join(m[:12] for m in matches)}")
+    if not entries:
+        _fail(f"no recorded results for check {check_id} in project {name}")
     latest = entries[0][0]
     click.echo(f"{latest.check_name}  [{latest.dataset}]  {latest.source}\n")
     _table(

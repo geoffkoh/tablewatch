@@ -36,16 +36,20 @@ dataset: orders
 # filter: created_at >= CURRENT_DATE - INTERVAL 1 DAY   # check only recent rows
 
 checks:
-  - row_count > 0
-  - missing_count(order_id) = 0
-  - duplicate_count(order_id) = 0
-  - freshness(created_at) < 1d
-  - invalid_percent(status) < 1%:
-      valid_values: [pending, shipped, delivered, cancelled]
-  - row_count:
-      name: Order volume
-      warn: when < 100
-      fail: when = 0
+  # A named check: every clause must hold, and the check takes the worst outcome.
+  orders_usable:
+    clauses:
+      - row_count > 0
+      - missing_count(order_id) = 0
+      - duplicate_count(order_id) = 0
+      - invalid_percent(status) < 1%:
+          valid_values: [pending, shipped, delivered, cancelled]
+  orders_fresh: freshness(created_at) < 1d
+  order_volume:
+    clauses:
+      - row_count:
+          warn: when < 100
+          fail: when = 0
 """
 
 GITIGNORE = """\

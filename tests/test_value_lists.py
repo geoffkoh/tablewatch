@@ -19,6 +19,7 @@ from tablewatch.config.project import DuckDBDatasource
 from tablewatch.datasources import dialect_for
 from tablewatch.metrics.base import MetricContext, OptionValueError
 from tests.conftest import invoke
+from tests.named import named_checks
 
 BUILTIN = Path(__file__).parents[1] / "src" / "tablewatch" / "metrics" / "builtin"
 ROWS = [(1, "pending"), (2, "shipped"), (3, "shiped"), (4, None), (5, ""), (6, "NULL")]
@@ -50,7 +51,7 @@ def nulls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _write(root: Path, ds: str, body: str) -> None:
     (root / "checks" / "orders.yml").write_text(
-        f"datasource: {ds}\ndataset: orders\nchecks:\n{body}", encoding="utf-8"
+        f"datasource: {ds}\ndataset: orders\n{named_checks(body)}", encoding="utf-8"
     )
 
 
@@ -92,10 +93,10 @@ def test_a_list_without_null_is_unchanged(nulls: Path, ds: str) -> None:  # M1
 
 
 def _context(options: dict[str, Any]) -> MetricContext:
-    project_check = type("C", (), {})()
-    project_check.options = options
+    clause = type("C", (), {})()
+    clause.options = options
     context = MetricContext.__new__(MetricContext)
-    object.__setattr__(context, "check", project_check)
+    object.__setattr__(context, "clause", clause)
     return context
 
 
@@ -162,7 +163,7 @@ def test_a_nested_item_errors_only_its_own_check(nulls: Path) -> None:  # M5 (AP
         "      valid_values: [pending]\n",
     )
     project = tw.load(nulls)
-    project.checks[1].options["valid_values"] = ["pending", ["shipped"]]
+    project.checks[1].clauses[0].options["valid_values"] = ["pending", ["shipped"]]
     run = run_checks(project, project.checks, trigger="test", now=datetime.now(UTC))
     rows, bad = run.results
     assert rows.outcome is Outcome.PASS
@@ -201,7 +202,7 @@ def test_every_spelling_of_null(nulls: Path, spelling: str) -> None:  # M4
     code, _, err = invoke(nulls, "validate")
     assert code == 0
     assert err.startswith(
-        "checks/orders.yml:5:40: warning: `valid_values:` item 3 is null"
+        "checks/orders.yml:7:44: warning: `valid_values:` item 3 is null"
     )
     assert _only(nulls) == (Outcome.FAIL, 2.0)
 
@@ -215,14 +216,14 @@ def test_danas_check(nulls: Path, ds: str) -> None:  # N1
     code, out, err = invoke(nulls, "validate")
     assert code == 0
     assert err == (
-        "checks/orders.yml:5:40: warning: `valid_values:` item 3 is null and is "
+        "checks/orders.yml:7:44: warning: `valid_values:` item 3 is null and is "
         "ignored: NULL is always missing, never invalid (check it with "
         "missing_count). To match the text 'NULL', quote it\n"
     )
     assert out == "1 dataset, 1 check — no errors, 1 warning\n"
     code, _, err = _run(nulls)
     assert code == 1
-    assert "5:40: warning" in err
+    assert "7:44: warning" in err
     assert _only(nulls) == (Outcome.FAIL, 2.0)
     _, sql, _ = invoke(nulls, "compile")
     assert "('pending', 'shipped')" in sql and "NULL)" not in sql
@@ -240,7 +241,7 @@ def test_a_null_in_missing_values_on_invalid(nulls: Path, ds: str) -> None:  # N
     code, _, err = invoke(nulls, "validate")
     assert code == 0
     assert err.startswith(
-        "checks/orders.yml:6:28: warning: `missing_values:` item 2 is null and is "
+        "checks/orders.yml:8:32: warning: `missing_values:` item 2 is null and is "
         "ignored: NULL always counts as missing already. To match the text 'NULL', "
         "quote it"
     )
@@ -256,7 +257,7 @@ def test_sams_unquoted_null(nulls: Path, ds: str) -> None:  # N3
     )
     code, _, err = invoke(nulls, "validate")
     assert code == 0
-    assert err.startswith("checks/orders.yml:7:11: warning: `missing_values:` item 2")
+    assert err.startswith("checks/orders.yml:9:15: warning: `missing_values:` item 2")
     assert "To match the text 'NULL', quote it" in err
     assert _only(nulls) == (Outcome.FAIL, 2.0)
 
@@ -273,7 +274,7 @@ def test_a_list_of_only_nulls(nulls: Path, ds: str, values: str) -> None:  # N4
         assert "error: `valid_values:` has no values: null is not a value" in err
     assert "warning" not in err
     if values == "[null]":
-        assert err.startswith("checks/orders.yml:5:21: error:")
+        assert err.startswith("checks/orders.yml:7:25: error:")
     assert _run(nulls)[0] == 3
 
 
@@ -282,7 +283,7 @@ def test_missing_values_of_only_nulls_is_dropped(nulls: Path, ds: str) -> None: 
     _write(nulls, ds, "  - missing_count(status) = 0:\n      missing_values: [~]\n")
     code, _, err = invoke(nulls, "validate")
     assert code == 0
-    assert err.startswith("checks/orders.yml:5:24: warning: `missing_values:` item 1")
+    assert err.startswith("checks/orders.yml:7:28: warning: `missing_values:` item 1")
     assert _only(nulls) == (Outcome.FAIL, 1.0)
 
 
@@ -298,7 +299,7 @@ def test_an_empty_block_item(nulls: Path, ds: str, dash: str) -> None:  # N5
     code, _, err = invoke(nulls, "validate")
     assert code == 0
     assert err == (
-        "checks/orders.yml:7:9: warning: `valid_values:` item 2 is empty and is "
+        "checks/orders.yml:9:13: warning: `valid_values:` item 2 is empty and is "
         "ignored: a `-` with nothing after it is null in YAML. Fill in the value "
         "you meant, or delete the line\n"
     )
@@ -316,7 +317,7 @@ def test_several_nulls_one_load(nulls: Path, ds: str) -> None:  # N6
     )
     code, out, err = invoke(nulls, "validate")
     positions = re.findall(r"orders\.yml:(\d+:\d+): warning", err)
-    assert positions == ["5:22", "5:37"]
+    assert positions == ["7:26", "7:41"]
     assert out.endswith("no errors, 2 warnings\n")
     assert _only(nulls) == (Outcome.FAIL, 2.0)
     _write(
@@ -327,7 +328,7 @@ def test_several_nulls_one_load(nulls: Path, ds: str) -> None:  # N6
         "      missing_values: ['', ~]\n",
     )
     _, _, err = invoke(nulls, "validate")
-    assert re.findall(r"orders\.yml:(\d+:\d+): warning", err) == ["5:40", "6:28"]
+    assert re.findall(r"orders\.yml:(\d+:\d+): warning", err) == ["7:44", "8:32"]
     assert _only(nulls) == (Outcome.FAIL, 2.0)
 
 
@@ -340,8 +341,8 @@ def test_the_python_api_agrees(nulls: Path) -> None:  # N7
     assert location is not None
     assert (str(location.path), location.line, location.column) == (
         "checks/orders.yml",
-        5,
-        40,
+        7,
+        44,
     )
     assert project.ok
     assert _only(nulls) == (Outcome.FAIL, 2.0)
@@ -362,7 +363,7 @@ def test_a_nested_item_is_a_load_error(
     code, _, err = invoke(nulls, "validate")
     assert code == 3
     assert (
-        "checks/orders.yml:5:31: error: `valid_values:` items must be single values "
+        "checks/orders.yml:7:35: error: `valid_values:` items must be single values "
         f"(text, a number, true/false); item 2 is {kind}"
     ) in err
     assert "item 3 is null" in err  # reported in the same load

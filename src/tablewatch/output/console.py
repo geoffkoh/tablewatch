@@ -30,22 +30,24 @@ def render(run: RunResult, colour: bool = False) -> str:
     """The results table and the summary line.
 
     A run over more than one datasource gets a DATASOURCE column; rows that
-    still read alike (two unnamed `failed_rows`, say) get their source
-    location. Both are the console's only: names and ids are unchanged.
+    still read alike get their source location. Both are the console's
+    only: names and ids are unchanged. A check of several clauses is its row
+    (the tally as DETAIL) followed by one indented row per clause, in file
+    order; a check of one clause is one row with its clause's value.
     """
     sources = {r.check.dataset.datasource for r in run.results}
     wide = len(sources) > 1
     headers = ("OUTCOME", "DATASET", *(("DATASOURCE",) if wide else ()), "CHECK")
     headers = (*headers, "VALUE", "DETAIL")
-    rows = _rows(run.results, wide)
+    rows, outcomes = _rows(run.results, wide)
     widths = [
         max([len(headers[i]), *(len(row[i]) for row in rows)])
         for i in range(len(headers))
     ]
     lines = [_line(headers, widths, None, colour)]
     lines += [
-        _line(row, widths, result.outcome, colour)
-        for row, result in zip(rows, run.results, strict=True)
+        _line(row, widths, outcome, colour)
+        for row, outcome in zip(rows, outcomes, strict=True)
     ]
     lines.append("")
     lines.append(summary(run))
@@ -66,19 +68,23 @@ def summary(run: RunResult) -> str:
     return " · ".join(parts) + f"  (run {run.id[:12]})"
 
 
-def _rows(results: list[CheckResult], wide: bool) -> list[tuple[str, ...]]:
+def _rows(
+    results: list[CheckResult], wide: bool
+) -> tuple[list[tuple[str, ...]], list[Outcome]]:
     def key(result: CheckResult) -> tuple[str, str, str]:
         # The clipped cell is what reads alike, not the full name.
         dataset = result.check.dataset
         return (dataset.datasource, dataset.name, _clip(result.check.name, _MAX_CHECK))
 
     seen = Counter(key(r) for r in results)
-    rows = []
+    rows: list[tuple[str, ...]] = []
+    outcomes: list[Outcome] = []
     for result in results:
         check = _clip(result.check.name, _MAX_CHECK)
         if seen[key(result)] > 1:
             at = result.check.location
             check += f" ({at.path.as_posix()}:{at.line})"
+        several = result.single is None
         rows.append(
             (
                 str(result.outcome).upper(),
@@ -86,10 +92,40 @@ def _rows(results: list[CheckResult], wide: bool) -> list[tuple[str, ...]]:
                 *((result.check.dataset.datasource,) if wide else ()),
                 check,
                 result.display_value,
-                _clip(result.message or "", _MAX_DETAIL),
+                _clip(_tally(result) if several else result.message or "", _MAX_DETAIL),
             )
         )
-    return rows
+        outcomes.append(result.outcome)
+        if not several:
+            continue
+        for clause in result.clauses:
+            rows.append(
+                (
+                    f"  {clause.outcome}",
+                    "",
+                    *(("",) if wide else ()),
+                    _clip(clause.clause.canonical, _MAX_CHECK),
+                    clause.display_value,
+                    _clip(clause.message or "", _MAX_DETAIL),
+                )
+            )
+            outcomes.append(clause.outcome)
+    return rows, outcomes
+
+
+_TALLY_ORDER = (
+    Outcome.PASS,
+    Outcome.SKIPPED,
+    Outcome.WARN,
+    Outcome.FAIL,
+    Outcome.ERROR,
+)
+
+
+def _tally(result: CheckResult) -> str:
+    """`3 pass, 1 warn`: how many clauses ended each way, worst last."""
+    counts = Counter(c.outcome for c in result.clauses)
+    return ", ".join(f"{counts[o]} {o.value}" for o in _TALLY_ORDER if counts[o])
 
 
 def _line(
@@ -102,7 +138,8 @@ def _line(
         if outcome is None:
             padded = [click.style(cell, bold=True) for cell in padded]
         else:
-            padded[0] = click.style(padded[0], fg=_COLOURS[outcome], bold=True)
+            bold = not cells[0].startswith(" ")  # a clause's row is quieter
+            padded[0] = click.style(padded[0], fg=_COLOURS[outcome], bold=bold)
     return "  ".join(padded).rstrip()
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from tablewatch.config.loader import COMMON_CHECK_KEYS
+from tablewatch.config.loader import COMMON_CLAUSE_KEYS, MAX_NAME_LENGTH
 from tablewatch.config.project import ProjectConfig
 from tablewatch.metrics.base import Metric, OptionType
 from tablewatch.metrics.registry import all_metrics
@@ -43,12 +43,14 @@ _NOTIFY: dict[str, Any] = {
     "[] turns notifications off.",
 }
 
+_NAME = f"^[A-Za-z][A-Za-z0-9_-]{{0,{MAX_NAME_LENGTH - 1}}}$"
+
 _COMMON: dict[str, dict[str, Any]] = {
-    "name": {"type": "string", "description": "Human-readable name shown in results."},
-    "id": {
+    "name": {
         "type": "string",
-        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
-        "description": "Pin the check's identity so history survives edits.",
+        "pattern": _NAME,
+        "description": "The clause's key within its check; by default its "
+        "metric call, e.g. missing_count(customer_id).",
     },
     "warn": {
         "type": "string",
@@ -60,9 +62,8 @@ _COMMON: dict[str, dict[str, Any]] = {
         "pattern": "^\\s*when\\b",
         "description": "e.g. 'when = 0'",
     },
-    "notify": _NOTIFY,
 }
-assert set(_COMMON) == set(COMMON_CHECK_KEYS)
+assert set(_COMMON) == set(COMMON_CLAUSE_KEYS)
 
 
 def _starts_with_metric(name: str) -> str:
@@ -123,31 +124,53 @@ def check_file_schema() -> dict[str, Any]:
             },
             "notify": _NOTIFY,
             "checks": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "description": "Named checks: each name, unique in the dataset, "
+                "maps to one expression or to `clauses:`, all of which must hold.",
+                "propertyNames": {"pattern": _NAME},
+                "additionalProperties": {
                     "oneOf": [
-                        {
-                            "type": "string",
-                            "pattern": f"^\\s*({names})(?![A-Za-z0-9_])",
-                            "description": "A check expression, e.g. 'row_count > 0'.",
-                        },
+                        {"$ref": "#/$defs/_expression"},
                         {
                             "type": "object",
-                            "minProperties": 1,
-                            "maxProperties": 1,
-                            "patternProperties": {
-                                _starts_with_metric(m.name): {
-                                    "$ref": f"#/$defs/{m.name}"
-                                }
-                                for m in metrics
-                            },
+                            "required": ["clauses"],
                             "additionalProperties": False,
+                            "properties": {
+                                "clauses": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "items": {"$ref": "#/$defs/_clause"},
+                                },
+                                "notify": _NOTIFY,
+                            },
                         },
                     ]
                 },
             },
         },
-        "$defs": {m.name: _options_schema(m) for m in metrics},
+        "$defs": {
+            "_expression": {
+                "type": "string",
+                "pattern": f"^\\s*({names})(?![A-Za-z0-9_])",
+                "description": "A check expression, e.g. 'row_count > 0'.",
+            },
+            "_clause": {
+                "oneOf": [
+                    {"$ref": "#/$defs/_expression"},
+                    {
+                        "type": "object",
+                        "minProperties": 1,
+                        "maxProperties": 1,
+                        "patternProperties": {
+                            _starts_with_metric(m.name): {"$ref": f"#/$defs/{m.name}"}
+                            for m in metrics
+                        },
+                        "additionalProperties": False,
+                    },
+                ]
+            },
+            **{m.name: _options_schema(m) for m in metrics},
+        },
     }
 
 

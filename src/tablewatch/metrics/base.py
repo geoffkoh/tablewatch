@@ -26,7 +26,7 @@ from sqlalchemy.sql.expression import FromClause, TextClause
 from tablewatch.dsl import Condition
 
 if TYPE_CHECKING:
-    from tablewatch.checks.model import Check
+    from tablewatch.checks.model import Clause
 
 
 class Unit(StrEnum):
@@ -82,9 +82,9 @@ class Measurement:
 
 @dataclass(frozen=True)
 class MetricContext:
-    """Everything a metric needs to describe its measures for one check."""
+    """Everything a metric needs to describe its measures for one clause."""
 
-    check: Check
+    clause: Clause
     table: FromClause
     now: datetime
     timezone: ZoneInfo
@@ -92,23 +92,23 @@ class MetricContext:
 
     @property
     def args(self) -> tuple[str, ...]:
-        return self.check.expression.metric.args
+        return self.clause.expression.metric.args
 
     @property
     def options(self) -> Mapping[str, Any]:
-        return self.check.options
+        return self.clause.options
 
     def column(self, name: str) -> ColumnElement[Any]:
         return column(name)
 
     @property
     def scope(self) -> ColumnElement[bool] | None:
-        """The check's `where:` restriction, if any."""
-        return sql_condition(self.check.where) if self.check.where else None
+        """The clause's `where:` restriction, if any."""
+        return sql_condition(self.clause.where) if self.clause.where else None
 
     @property
     def dataset_filter(self) -> ColumnElement[bool] | None:
-        dataset_filter = self.check.dataset.filter
+        dataset_filter = self.clause.dataset.filter
         return sql_condition(dataset_filter) if dataset_filter else None
 
     def scoped(self, predicate: ColumnElement[bool]) -> ColumnElement[bool]:

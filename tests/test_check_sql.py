@@ -32,13 +32,15 @@ def prefixed(datasource: str, reason: str) -> str:
     return f"datasource '{datasource}' in tablewatch.yml: {reason}"
 
 
-PERCENT = "b1ceb8262d8b5441"
-ROW_COUNT_CUSTOMERS = "32c8f939b90f6367"
-DUPLICATES = "af0289a72fedd946"
-ORDER_VOLUME = "32867fbe86f483f3"
-SCHEMA = "fbc3aa0b93b66eee"
-RETURNS_AVG = "4a831091035ca6c6"
-LOST = "8e3148f570b166f3"
+# Spec 032: a check's name is its identity now, not a hash of the old
+# unnamed shorthand's canonical text — these are retail's current ids
+# (pinned in test_loader_wording_qa.py::test_l11_retail_ids_equal_mains).
+CONTACTABLE = "2532c1f31d28bf94"  # missing_percent(email), invalid_count(email)
+UNIQUE_CUSTOMERS = "0636fb49233028f0"  # duplicate_count(customer_id) = 0
+ORDER_VOLUME = "4a420be887e8984a"
+SCHEMA = "813017ce91016d84"  # orders_schema
+RETURNS_AVG = "20b243ab42217dd7"
+LOST = "f5f6cba102b01081"
 
 RETURNS_YML = """\
 # Returns feed from the OMS; owned by ops.
@@ -47,12 +49,16 @@ filter: status != 'test'
 
 checks:
   # Tier-1: paged out of hours.
-  - row_count > 0
-  - missing_count(order_id) = 0:
-      name: Every return has an order
-      # fail: when > 5   (restore after the CRM backfill)
-  - avg(amount) between 1 and 500:
-      where: reason != 'damaged'
+  c1: row_count > 0
+  c2:
+    clauses:
+      - missing_count(order_id) = 0:
+          name: every_return_has_an_order
+          # fail: when > 5   (restore after the CRM backfill)
+  c3:
+    clauses:
+      - avg(amount) between 1 and 500:
+          where: reason != 'damaged'
   # - duplicate_count(return_id) = 0   (off: known duplicates)
 # canary-tw-5f3a: not part of any check
 owner: returns@example.com
@@ -96,7 +102,7 @@ def filtered(retail: Path) -> Path:
 @pytest.fixture
 def broken(retail: Path) -> Path:
     (retail / "checks" / "sales" / "lost.yml").write_text(
-        "dataset: sales.lost\ndatasource: nowhere\nchecks:\n  - row_count > 0\n",
+        "dataset: sales.lost\ndatasource: nowhere\nchecks:\n  c1: row_count > 0\n",
         encoding="utf-8",
     )
     return retail
@@ -113,8 +119,10 @@ def remote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "# canary-tw-5f3a\nowner: ops@example.com\n", encoding="utf-8"
     )
     (root / "checks" / "pg" / "orders.yml").write_text(
-        "dataset: public.orders\ndatasource: pg\nchecks:\n  - row_count > 0\n"
-        "  - invalid_count(status) = 0:\n      valid_values: [open, closed]\n",
+        "dataset: public.orders\ndatasource: pg\nchecks:\n"
+        "  c1: row_count > 0\n"
+        "  c2:\n    clauses:\n      - invalid_count(status) = 0:\n"
+        "          valid_values: [open, closed]\n",
         encoding="utf-8",
     )
     for name, dataset in (
@@ -126,7 +134,7 @@ def remote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         datasource = "wh" if name == "events" else name
         (root / "checks" / "wh" / f"{name}.yml").write_text(
             f"dataset: {dataset}\ndatasource: {datasource}\n"
-            "checks:\n  - row_count > 0\n",
+            "checks:\n  c1: row_count > 0\n",
             encoding="utf-8",
         )
     return root
@@ -257,6 +265,9 @@ def test_dialect_for_echoes_only_a_well_formed_scheme(url: str) -> None:  # C3
 
 
 def test_a_percent_check_names_its_columns(retail: Path) -> None:  # S1
+    # "contactable" has two clauses (missing_percent, invalid_count): both
+    # share the dataset's one scan, so this check's own `uses` names three
+    # columns, not the solo check's two from before named checks.
     compiled = _compile_output(retail, "checks/sales/customers.yml")
     scan = next(
         s.rstrip(";\n")
@@ -265,8 +276,8 @@ def test_a_percent_check_names_its_columns(retail: Path) -> None:  # S1
     )
     scan_sql = scan.split("-- single scan: 4 measures\n", 1)[1]
     with served(retail) as client:
-        body = _sql(client, PERCENT)
-    assert body["check_id"] == PERCENT
+        body = _sql(client, CONTACTABLE)
+    assert body["check_id"] == CONTACTABLE
     assert (body["dataset"], body["datasource"], body["dialect"]) == (
         "sales.customers",
         "lake",
@@ -284,6 +295,13 @@ def test_a_percent_check_names_its_columns(retail: Path) -> None:  # S1
             "m1",
             "sum(CASE WHEN (email IS NULL OR email IN ('', 'N/A')) THEN 1 ELSE 0 END)",
         ),
+        (
+            "m2",
+            (
+                "sum(CASE WHEN (NOT (email IS NULL OR email IN ('', 'N/A')) AND NOT "
+                "regexp_matches(email, '^[^@]+@[^@]+\\.[a-z]+$')) THEN 1 ELSE 0 END)"
+            ),
+        ),
     ]
     for use in statement["uses"]:
         assert "agg:" not in use["sql"]
@@ -292,7 +310,7 @@ def test_a_percent_check_names_its_columns(retail: Path) -> None:  # S1
 def test_a_check_with_its_own_query(retail: Path) -> None:  # S2
     compiled = _compile_output(retail, "checks/sales/customers.yml")
     with served(retail) as client:
-        body = _sql(client, DUPLICATES)
+        body = _sql(client, UNIQUE_CUSTOMERS)
     [statement] = body["statements"]
     assert statement["kind"] == "query"
     assert "duplicate_groups" in statement["sql"]
@@ -308,24 +326,28 @@ def test_a_schema_check(retail: Path) -> None:  # S3
 
 
 def test_sharing(retail: Path) -> None:  # S4
+    # orders.yml's scan is now shared by 4 named checks (orders_usable,
+    # order_volume, average_amount, no_negative_amounts), not 6 unnamed
+    # clauses, and customers.yml's by 2 (contactable, customers_present).
     with served(retail) as client:
         volume = _sql(client, ORDER_VOLUME)
-        duplicates = _sql(client, DUPLICATES)
-        percent = _sql(client, PERCENT)
+        duplicates = _sql(client, UNIQUE_CUSTOMERS)
+        percent = _sql(client, CONTACTABLE)
     [scan] = volume["statements"]
     assert scan["measures"] == 8  # avg(amount)'s MIN/MAX type probes (spec 024)
-    assert scan["uses"] == [{"label": "m0", "sql": "count(*)", "shared_by": 2}]
-    assert scan["shared_by"] == 6
+    assert scan["uses"] == [{"label": "m0", "sql": "count(*)", "shared_by": 1}]
+    assert scan["shared_by"] == 3
     assert duplicates["statements"][0]["shared_by"] == 0
     [scan] = percent["statements"]
-    assert scan["shared_by"] == 3
-    assert [u["shared_by"] for u in scan["uses"]] == [1, 0]
+    assert scan["shared_by"] == 2
+    assert [u["shared_by"] for u in scan["uses"]] == [1, 0, 0]
 
 
 def test_a_check_with_scan_and_query(retail: Path) -> None:  # S10
     path = retail / "checks" / "sales" / "customers.yml"
     path.write_text(
-        path.read_text(encoding="utf-8") + "  - duplicate_percent(email) < 1%\n",
+        path.read_text(encoding="utf-8")
+        + "  email_dup_rate: duplicate_percent(email) < 1%\n",
         encoding="utf-8",
     )
     check_id = _id_on(retail, "sales.customers", "duplicate_percent(email) < 1%")
@@ -411,7 +433,7 @@ def test_cannot_compile_and_nothing_leaks(remote: Path) -> None:  # S6
 def test_an_unresolved_datasource(broken: Path) -> None:  # S12
     with served(broken) as client:
         lost = _sql(client, LOST)
-        percent = _sql(client, PERCENT)
+        percent = _sql(client, CONTACTABLE)
     assert lost["datasource"] == "nowhere"  # spec 014: the name as written
     assert lost["dialect"] is None
     assert lost["statements"] == []
@@ -430,8 +452,8 @@ def test_anything_unexpected_is_a_plain_500(
 
     monkeypatch.setattr(compiled_module, "render", fail)
     with served(retail) as client:
-        response = client.get(f"/api/v1/checks/{PERCENT}/sql")
-        assert client.get(f"/api/v1/checks/{PERCENT}").status_code == 200
+        response = client.get(f"/api/v1/checks/{CONTACTABLE}/sql")
+        assert client.get(f"/api/v1/checks/{CONTACTABLE}").status_code == 200
     body = assert_error(response, 500, "internal_error")
     assert body["error"]["message"] == "internal error — see the server log"
     assert "secret-canary-7c1e" not in response.text
@@ -510,7 +532,7 @@ def test_no_store_needed(
         monkeypatch.setattr(ResultStore, "latest_results", unavailable)
         monkeypatch.setattr(ResultStore, "history_page", unavailable)
         assert client.get("/api/v1/checks").status_code == 503
-        assert client.get(f"/api/v1/checks/{PERCENT}/sql").status_code == 200
+        assert client.get(f"/api/v1/checks/{CONTACTABLE}/sql").status_code == 200
 
 
 # --- security and exposure -------------------------------------------------------
@@ -519,7 +541,7 @@ def test_no_store_needed(
 @pytest.mark.parametrize("method", ["POST", "PUT", "DELETE"])
 def test_methods(retail: Path, method: str) -> None:  # X1
     with served(retail) as client:
-        response = client.request(method, f"/api/v1/checks/{PERCENT}/sql")
+        response = client.request(method, f"/api/v1/checks/{CONTACTABLE}/sql")
     assert_error(response, 405, "method_not_allowed")
 
 

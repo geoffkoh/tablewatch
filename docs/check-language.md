@@ -1,7 +1,8 @@
 # The check language
 
 Checks live in YAML files under `checks/`. Each file describes **one
-dataset** (a table) and the checks that run against it:
+dataset** (a table) and the **named checks** that run against it. A check is
+a set of **clauses**, every one of which must hold:
 
 ```yaml
 dataset: sales.orders            # table, optionally schema.table
@@ -11,10 +12,13 @@ owner: sales-data@example.com    # optional
 tags: [finance, tier-1]          # optional; a string or a list
 
 checks:
-  - row_count > 0
-  - missing_count(customer_id) = 0
-  - invalid_percent(status) < 1%:
-      valid_values: [pending, shipped, delivered, cancelled]
+  orders_usable:                 # the check's name: its identity
+    clauses:
+      - row_count > 0
+      - missing_count(customer_id) = 0
+      - invalid_percent(status) < 1%:
+          valid_values: [pending, shipped, delivered, cancelled]
+  orders_fresh: freshness(created_at) < 6h    # a check of one clause
 ```
 
 ## Folders and `_defaults.yml`
@@ -27,19 +31,57 @@ use it without saying so.
 
 ## Writing a check
 
-A check is either a bare expression:
+`checks:` maps each check's **name** to what it checks. A name is letters,
+digits, `_` and `-`, starts with a letter, is at most 64 characters, and is
+unique within its dataset. `.`, `:` and `/` are kept for referring to checks
+later (`orders.orders_usable`).
+
+A check of one clause can be written as just its expression:
 
 ```yaml
-  - freshness(created_at) < 6h
+  orders_fresh: freshness(created_at) < 6h
 ```
 
-or an expression with options:
+Anything else lists its clauses under `clauses:`. A clause is a bare
+expression, or an expression with options:
 
 ```yaml
-  - avg(amount) between 10 and 500:
-      name: Average order value in band
-      where: status != 'cancelled'
+  order_values_in_band:
+    clauses:
+      - avg(amount) between 10 and 500:
+          where: status != 'cancelled'
+      - max(amount) < 100000
 ```
+
+**All clauses must hold.** The check's outcome is the worst of its clauses'
+— `error`, then `fail`, then `warn`, then `pass`. A clause that is `skipped`
+(a `change()` with no history yet) neither passes nor spoils the check; a
+check whose clauses are all skipped is `skipped`. Every clause is evaluated,
+even after one fails, and each keeps its own value and message: the console
+shows the check, then one indented line per clause, in file order:
+
+```console
+OUTCOME  DATASET  CHECK                           VALUE  DETAIL
+FAIL     orders   orders_usable                          2 pass, 1 fail
+  pass            row_count > 0                   7 rows
+  fail            missing_count(customer_id) = 0       1  expected = 0
+  pass            invalid_percent(status) < 1%     0.00%
+```
+
+Each clause has a **key**, unique within its check: by default its metric
+call without the rule (`missing_count(customer_id)`, `change(row_count)`).
+Two clauses that measure the same thing need a `name:` on one of them:
+
+```yaml
+  volume:
+    clauses:
+      - row_count > 0
+      - row_count < 1000000:
+          name: not_exploded
+```
+
+The list shape of earlier versions (`checks:` as a list of unnamed
+expressions) is an error: every check is named.
 
 ### Expectations and triggers
 
@@ -50,13 +92,15 @@ For two levels of severity, leave the comparison off and give triggers.
 A trigger states a **problem**, which is what the `when` keyword signals:
 
 ```yaml
-  - row_count:
-      warn: when < 1000
-      fail: when = 0
+  order_volume:
+    clauses:
+      - row_count:
+          warn: when < 1000
+          fail: when = 0
 ```
 
 `fail` is tested first, then `warn`. Use either a comparison or triggers,
-never both on one check.
+never both on one clause.
 
 ### Comparisons
 
@@ -85,12 +129,18 @@ fraction meant as 5%; write `0.05%` to say you mean it.
 
 ### Common options
 
+On a clause:
+
 | Option | Meaning |
 | --- | --- |
-| `name` | Label shown in results. Defaults to the expression. |
-| `id` | Pins the check's identity (see below). Letters, digits, `.` `_` `:` `-`. |
+| `name` | The clause's key within its check (same rules as a check name). Defaults to its metric call. |
 | `warn`, `fail` | Triggers, as above. |
-| `where` | A SQL condition restricting the rows this check looks at. Not available on `schema` and `sql_metric`. |
+| `where` | A SQL condition restricting the rows this clause looks at. Not available on `schema` and `sql_metric`. |
+
+On a check, beside `clauses:`:
+
+| Key | Meaning |
+| --- | --- |
 | `notify` | Notifiers to tell when this check changes state, overriding its file's (see Notifications). |
 
 ## Metrics
@@ -200,8 +250,8 @@ paths. It comes in a later release.
 datasources:                           datasource: drop
   drop:                                dataset: orders.csv
     type: files                        checks:
-    root: landing                        - row_count = 5
-    timezone: UTC                        - missing_count(email) = 0
+    root: landing                        orders_landed: row_count = 5
+    timezone: UTC                        emails_present: missing_count(email) = 0
 ```
 
 - **Install:** `pip install 'tablewatch[duckdb]'`, with duckdb 1.5.0 or later
@@ -260,57 +310,49 @@ datasources:                           datasource: drop
 
 ## Check identity
 
-History, and in later phases alert state, follows a check by its **id**.
-Without an explicit `id:`, the id is derived from the file path, the dataset,
-the normalised expression and triggers, the `where:` scope and, for
-`failed_rows` and `sql_metric`, the `condition:` or `query:`. For those two
-metrics the SQL *is* the check, so two `failed_rows` checks with different
-conditions on one dataset are two checks, each with its own history.
+History, and in later phases alert state, follows a check by its **name**
+on its dataset and datasource. The id that `tablewatch list` shows is
+derived from those three, and nothing else.
 
-- Reformatting the expression (`row_count>0` → `row_count > 0`) keeps the id.
-- Reflowing `where:`, `condition:` or `query:` keeps the id: adding or
-  removing spaces, tabs and line breaks between words, or switching to a YAML
-  block (`|`, `>`) or to quotes. Any run of whitespace, including
-  non-breaking spaces, counts as one space, even inside a quoted string, so
-  `status = 'a  b'` and `status = 'a b'` share an id. A line break counts as
-  a space too, so moving one into or out of a `--` comment keeps the id even
-  though it changes what the SQL does. Any other edit to that SQL starts a new
-  history, including a change of letter case (`AND` → `and`), a `--`
-  comment added or edited, a `;`, parentheses, and removing the space
-  between two words (`total < 0` → `total<0`). tablewatch does not parse
-  your SQL, so it cannot tell that these mean the same.
-- Changing the expression, triggers, `where:`, `condition:` or `query:`, the
-  dataset, or moving the file starts a new history. The old results stay
-  readable under the old id (`tablewatch history <old id>`).
-- Other options still do not count: refining `valid_values`,
-  `missing_values` or `schema`'s column lists keeps the id. It's the same
-  check, stated better. `name:` does not count either.
-- Two checks that would get the same id are an error. Give one an `id:`.
-- To explain a check, use a YAML `# comment` or `name:`; neither touches the
-  id. Don't use a SQL `--` comment: in `condition:` it comments out the rest
-  of the dataset's scan and the check errors, and in `query:` it is part of
-  the id.
-- Before reformatting the SQL of a check whose history matters, pin its
-  current id: copy all 16 characters of its `id` from
-  `tablewatch list --output json` into `id:`. Not the 12 that
-  `tablewatch list` shows: a 12-character `id:` is accepted but starts a new
-  history.
-- An explicit `id:` is never derived, so edits to the check don't change it.
-  It uses letters, digits, `.`, `_`, `:` and `-`, starts with a letter or
-  digit, and is at most 64 characters.
+- Moving or renaming the file keeps the id and the history.
+- Editing, adding, removing or reordering clauses keeps the check's id: it is
+  the same check, stated better.
+- **Renaming a check starts a new history.** The old results stay readable
+  (`tablewatch history <old id>`). There is no rename mapping.
+- `id:` is not a key any more: a check's name is its identity.
+- Two checks with one name on one dataset are an error, even in two files.
+  The same name on two datasets is two checks.
+
+Each clause has its own history too, keyed by its check, its key, its
+`where:` and, for `failed_rows` and `sql_metric`, its `condition:` or
+`query:` — what it measures, not its rule:
+
+- Tightening a threshold (`< 1%` → `< 0.5%`), changing triggers, refining
+  options such as `valid_values`, or reordering clauses keeps the clause's
+  history (and a `change()` clause's baseline).
+- Changing what is measured — the metric call, `where:`, `condition:` or
+  `query:`, or the clause's `name:` — starts a new one. Text in `where:`,
+  `condition:` and `query:` is compared with any run of whitespace counted as
+  one space, so reflowing SQL keeps the history; any other edit to it,
+  letter case included, starts a new one.
+- To explain a check, use a YAML `# comment`. Don't use a SQL `--` comment:
+  in `condition:` it comments out the rest of the dataset's scan and the
+  clause errors, and in `query:` it is part of what is measured.
 
 ## Change over time
 
-`change(<metric>)` compares a check with the same check's previous recorded
+`change(<metric>)` compares a clause with the same clause's previous recorded
 run, so a threshold follows the data instead of being guessed:
 
 ```yaml
 checks:
-  - change(row_count) > -20%                 # no more than a 20% drop since the last run
-  - change(sum(amount)) between -5000 and 5000
-  - change(row_count):
-      warn: when < -10%
-      fail: when < -50%
+  volume_steady: change(row_count) > -20%     # no more than a 20% drop since the last run
+  revenue_steady: change(sum(amount)) between -5000 and 5000
+  volume_alarm:
+    clauses:
+      - change(row_count):
+          warn: when < -10%
+          fail: when < -50%
 ```
 
 - The value is **signed**, now minus then: a drop is negative and a rise shows
@@ -331,13 +373,13 @@ checks:
   is nothing meaningful to compare.
 - It reads the results store, also under `run --no-store` (which still writes
   nothing). If the store cannot be read, only the `change()` checks are
-  `error`. Editing a check (a new id) starts a new baseline; pin `id:` to keep
-  it.
+  `error`. Changing what a clause measures starts a new baseline; tightening
+  its rule keeps it (see Check identity).
 - **Baselines.** A second argument says what to compare with:
 
   ```yaml
-  - change(row_count, same weekday) > -20%    # the newest run on this weekday, 6+ days ago
-  - change(row_count, last 7 runs) > -20%     # the average of the 7 newest earlier runs
+  weekly_volume: change(row_count, same weekday) > -20%   # the newest run on this weekday, 6+ days ago
+  smoothed_volume: change(row_count, last 7 runs) > -20%  # the average of the 7 newest earlier runs
   ```
 
   Without one, it is the previous run, whatever its weekday, so a quiet
@@ -352,7 +394,7 @@ checks:
 
 tablewatch tells you when a check **changes state**, then stays quiet while
 it stays that way. Define notifiers in `tablewatch.yml` and name them with
-`notify:` in a check file, a `_defaults.yml`, or on one check:
+`notify:` in a check file, a `_defaults.yml`, or on one check (beside its `clauses:`):
 
 ```yaml
 # tablewatch.yml
@@ -388,7 +430,7 @@ its history:
 close a failure: `fail`, `error`, `fail` alerts once, and `fail`, `warn`,
 `pass` is a recovery. A check that fails on its first run alerts; one that
 passes does not. A run of some checks (`--path`, `--tag`) only considers
-those checks. Editing a check so that its id changes starts it afresh, so
+those checks. Renaming a check starts it afresh, so
 it alerts as new.
 
 **Delivery.** Each notifier gets one POST per run that has at least one

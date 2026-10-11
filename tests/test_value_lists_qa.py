@@ -21,6 +21,7 @@ from tablewatch.datasources import dialect_for
 from tablewatch.engine.runner import run_checks
 from tablewatch.metrics.base import MetricContext, OptionValueError
 from tests.conftest import invoke
+from tests.named import convert
 
 ROWS = [(1, "pending"), (2, "shipped"), (3, "shiped"), (4, None), (5, ""), (6, "NULL")]
 BACKENDS = pytest.mark.parametrize("ds", ["lake", "lite"])
@@ -60,7 +61,7 @@ def nulls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _write(root: Path, text: str, *, newline: str = "\n") -> None:
     (root / "checks" / "orders.yml").write_bytes(
-        text.replace("\n", newline).encode("utf-8")
+        convert(text).replace("\n", newline).encode("utf-8")
     )
 
 
@@ -78,10 +79,10 @@ def _results(root: Path) -> list[tuple[Outcome, float | None]]:
 
 
 def _context(options: dict[str, Any]) -> MetricContext:
-    check = type("C", (), {})()
-    check.options = options
+    clause = type("C", (), {})()
+    clause.options = options
     context = MetricContext.__new__(MetricContext)
-    object.__setattr__(context, "check", check)
+    object.__setattr__(context, "clause", clause)
     return context
 
 
@@ -138,8 +139,9 @@ def _mutated(root: Path, ds: str, body: str, **options: Any) -> list[Any]:
     project = tw.load(root)
     assert project.ok, project.diagnostics
     for check in project.checks:
-        if check.metric.name.startswith(("invalid", "missing")):
-            check.options.update(options)
+        for clause in check.clauses:
+            if clause.metric.name.startswith(("invalid", "missing")):
+                clause.options.update(options)
     run = run_checks(project, project.checks, trigger="test", now=datetime.now(UTC))
     return list(run.results)
 
@@ -183,7 +185,7 @@ def test_a_nested_item_errors_only_its_check_on_both_backends(
         "  - missing_count(status) = 1\n",
         **{option: ["pending", {"shipped": "secret"}]},
     )
-    by_metric = {r.check.metric.name: r for r in results}
+    by_metric = {r.check.clauses[0].metric.name: r for r in results}
     assert by_metric["row_count"].outcome is Outcome.PASS
     bad = by_metric["invalid_percent"]
     assert bad.outcome is Outcome.ERROR
@@ -220,8 +222,8 @@ def test_positions_survive_crlf(nulls: Path, newline: str) -> None:
         (s, line, col, m.split(" is ")[1][:5])
         for s, line, col, m in _diagnostics(nulls)
     ] == [
-        ("warning", 7, 9, "empty"),
-        ("warning", 8, 11, "null "),
+        ("warning", 9, 13, "empty"),
+        ("warning", 10, 15, "null "),
     ]
 
 
@@ -233,7 +235,7 @@ def test_an_empty_last_item_before_the_next_key(nulls: Path) -> None:
         "        -\n        # later\n      missing_values: ['']\n",
     )
     [(severity, line, col, message)] = _diagnostics(nulls)
-    assert (severity, line, col) == ("warning", 7, 9)
+    assert (severity, line, col) == ("warning", 9, 13)
     assert "item 2 is empty" in message
 
 
@@ -245,7 +247,7 @@ def test_a_block_null_in_valid_values_dbt_form(nulls: Path) -> None:  # N1 block
         "        - shipped\n        - null   # dbt said so\n      missing_values: ['']\n",
     )
     [(severity, line, col, message)] = _diagnostics(nulls)
-    assert (severity, line, col) == ("warning", 8, 11)
+    assert (severity, line, col) == ("warning", 10, 15)
     assert "item 3 is null" in message
     assert _results(nulls) == [(Outcome.FAIL, 2.0)]
 
@@ -257,7 +259,7 @@ def test_unicode_before_the_null_keeps_the_column(nulls: Path) -> None:
         + "  - invalid_count(status) = 0:\n      valid_values: [pending, 'ñé中', null]\n",
     )
     [(_, line, col, _message)] = _diagnostics(nulls)
-    assert (line, col) == (5, 38)
+    assert (line, col) == (7, 42)
 
 
 def test_an_explicitly_tagged_null_is_a_written_null(nulls: Path) -> None:
@@ -271,7 +273,7 @@ def test_an_explicitly_tagged_null_is_a_written_null(nulls: Path) -> None:
     )
     [(_, line, col, message)] = _diagnostics(nulls)
     assert "item 2 is null" in message
-    assert (line, col) == (7, 11)
+    assert (line, col) == (9, 15)
 
 
 def test_an_anchored_list_warns_once_at_the_anchor(nulls: Path) -> None:
@@ -287,7 +289,7 @@ def test_an_anchored_list_warns_once_at_the_anchor(nulls: Path) -> None:
         "      missing_values: ['']\n",
     )
     assert [(s, line, col) for s, line, col, _ in _diagnostics(nulls)] == [
-        ("warning", 5, 44)
+        ("warning", 7, 48)
     ]
     code, out, _ = invoke(nulls, "validate")
     assert code == 0
@@ -304,7 +306,7 @@ def test_an_anchored_list_positions_at_the_anchor(nulls: Path) -> None:
         "      valid_values: *ok\n"
         "      missing_values: ['']\n",
     )
-    assert {(line, col) for _, line, col, _ in _diagnostics(nulls)} == {(5, 44)}
+    assert {(line, col) for _, line, col, _ in _diagnostics(nulls)} == {(7, 48)}
     assert _results(nulls) == [
         (Outcome.FAIL, 2.0),
         (Outcome.FAIL, pytest.approx(200 / 6)),
@@ -319,7 +321,7 @@ def test_a_merged_option_with_a_null_warns_at_the_item(nulls: Path, ds: str) -> 
         "      <<: {valid_values: [pending, shipped, null], missing_values: ['']}\n",
     )
     [(severity, line, col, message)] = _diagnostics(nulls)
-    assert (severity, line, col) == ("warning", 5, 45)
+    assert (severity, line, col) == ("warning", 7, 49)
     assert "item 3 is null" in message
     assert _results(nulls) == [(Outcome.FAIL, 2.0)]
 
@@ -338,8 +340,8 @@ def test_a_check_level_merge_of_an_anchored_mapping(nulls: Path) -> None:
     )
     diagnostics = _diagnostics(nulls)
     assert all(s == "warning" for s, *_ in diagnostics)
-    assert (5, 44) in {(line, col) for _, line, col, _ in diagnostics}
-    assert (9, 28) in {(line, col) for _, line, col, _ in diagnostics}
+    assert (7, 48) in {(line, col) for _, line, col, _ in diagnostics}
+    assert (13, 32) in {(line, col) for _, line, col, _ in diagnostics}
     assert _results(nulls) == [
         (Outcome.FAIL, 2.0),
         (Outcome.PASS, 2.0),
@@ -358,7 +360,7 @@ def test_a_merged_scalar_option_is_reported_at_its_value(nulls: Path) -> None:
     [(severity, line, col, _)] = _diagnostics(nulls)
     assert severity == "error"
     assert (line, col) != (1, 1)
-    assert line == 5
+    assert line == 7
 
 
 def test_nulls_and_nested_items_mixed_report_all_without_data(nulls: Path) -> None:
@@ -372,12 +374,12 @@ def test_nulls_and_nested_items_mixed_report_all_without_data(nulls: Path) -> No
     kinds = sorted((s, line, col) for s, line, col, _ in diagnostics)
     assert kinds == sorted(
         [
-            ("warning", 5, 22),
-            ("error", 5, 25),
-            ("error", 5, 45),
-            ("warning", 5, 59),
-            ("warning", 6, 24),
-            ("error", 6, 30),
+            ("warning", 7, 26),
+            ("error", 7, 29),
+            ("error", 7, 49),
+            ("warning", 7, 63),
+            ("warning", 8, 28),
+            ("error", 8, 34),
         ]
     )
     assert not any("secret" in m for *_, m in diagnostics)
@@ -395,9 +397,9 @@ def test_missing_percent_of_only_nulls_keeps_its_number(nulls: Path, ds: str) ->
     )
     diagnostics = _diagnostics(nulls)
     assert [(s, col) for s, _, col, _ in diagnostics] == [
-        ("warning", 24),
-        ("warning", 30),
-        ("warning", 36),
+        ("warning", 28),
+        ("warning", 34),
+        ("warning", 40),
     ]
     [(outcome, value)] = _results(nulls)
     assert outcome is Outcome.FAIL
@@ -412,7 +414,7 @@ def test_invalid_percent_gets_its_true_value(nulls: Path, ds: str) -> None:  # N
         "      valid_values: [pending, shipped, null]\n      missing_values: ['']\n",
     )
     [(severity, line, col, message)] = _diagnostics(nulls)
-    assert (severity, line, col) == ("warning", 5, 40)
+    assert (severity, line, col) == ("warning", 7, 44)
     assert "check it with missing_count" in message
     [(outcome, value)] = _results(nulls)
     assert outcome is Outcome.FAIL
@@ -428,7 +430,7 @@ def test_invalid_percent_only_nulls_is_an_error(nulls: Path) -> None:  # N4
     code, _, err = invoke(nulls, "validate")
     assert code == 3
     assert err.startswith(
-        "checks/orders.yml:5:21: error: `valid_values:` has no values"
+        "checks/orders.yml:7:25: error: `valid_values:` has no values"
     )
 
 
@@ -466,7 +468,7 @@ def test_the_check_id_is_the_one_main_derived(nulls: Path) -> None:
         "      valid_values: [pending, shipped, null]\n      missing_values: ['']\n",
     )
     [check] = tw.load(nulls).checks
-    assert check.id == "411abd1075a5408b"
+    assert check.id == "7d11a1fbf2cf4bd0"
 
 
 def test_validate_with_errors_and_warnings_keeps_the_error_line(nulls: Path) -> None:

@@ -8,31 +8,37 @@ the command line, cron or Python, and keep a history of every result.
 dataset: sales.orders
 
 checks:
-  - row_count > 0
-  - missing_count(customer_id) = 0
-  - duplicate_count(order_id) = 0
-  - freshness(created_at) < 6h
-  - invalid_percent(status) < 1%:
-      valid_values: [pending, shipped, delivered, cancelled]
-  - row_count:
-      warn: when < 1000
-      fail: when = 0
+  orders_usable:                  # a named check: all its clauses must hold
+    clauses:
+      - row_count > 0
+      - missing_count(customer_id) = 0
+      - duplicate_count(order_id) = 0
+      - invalid_percent(status) < 1%:
+          valid_values: [pending, shipped, delivered, cancelled]
+  orders_fresh: freshness(created_at) < 6h
+  order_volume:
+    clauses:
+      - row_count:
+          warn: when < 1000
+          fail: when = 0
 ```
 
 ```console
 $ tablewatch run
-OUTCOME  DATASET       CHECK                                          VALUE  DETAIL
-PASS     sales.orders  row_count > 0                                      7
-FAIL     sales.orders  missing_count(customer_id) = 0                     1  expected = 0
-FAIL     sales.orders  duplicate_count(order_id) = 0                      1  expected = 0
-PASS     sales.orders  freshness(created_at) < 6h                     1h 8m  newest row at 2026-09-25 08:41:59 UTC
-FAIL     sales.orders  invalid_percent(status) < 1%                  14.29%  expected < 1%
-WARN     sales.orders  row_count | warn when < 1000 | fail when = 0       7  warn when < 1000
+OUTCOME  DATASET       CHECK                           VALUE  DETAIL
+FAIL     sales.orders  orders_usable                          1 pass, 3 fail
+  pass                 row_count > 0                  7 rows
+  fail                 missing_count(customer_id) = 0      1  expected = 0
+  fail                 duplicate_count(order_id) = 0       1  expected = 0
+  fail                 invalid_percent(status) < 1%   14.29%  expected < 1%
+PASS     sales.orders  orders_fresh                    1h 8m  newest row at 2026-09-25 08:41:59 UTC
+WARN     sales.orders  order_volume                   7 rows  warn when < 1000
 
-6 checks · 2 pass · 1 warn · 3 fail · 0.0s  (run d70214890cef)
+3 checks · 1 pass · 1 warn · 1 fail · 0.0s  (run d70214890cef)
 ```
 
-All of a table's aggregate checks run in **one table scan**, however many
+A check's name is its identity: its history follows it when the file moves
+or a clause is edited. All of a table's aggregate checks run in **one table scan**, however many
 there are.
 
 > **Status: alpha (`0.1.0`).** The engine and CLI are complete, and `serve`
@@ -108,13 +114,13 @@ The full language — every metric, option and rule — is in
 | `tablewatch run` | Run checks and record the results. |
 | `tablewatch test-connection` | Connect to each datasource. |
 | `tablewatch runs` | Show recent runs. |
-| `tablewatch history ID` | Show one check's outcomes over time. |
+| `tablewatch history NAME` | Show one check's outcomes over time (its name, or an id prefix). |
 | `tablewatch report` | Write a recorded run as one static HTML page ([below](#a-report-to-send)). |
 | `tablewatch schema` | Print the JSON Schema for check files. |
 | `tablewatch serve` | Serve checks and results as a web page and a read-only JSON API ([below](#serve-results-over-http)). |
 
 `list`, `compile` and `run` take selectors: paths (`checks/sales`), `--tag`,
-`--datasource`, `--exclude PATH_OR_GLOB`, and `--check ID`. Every selector
+`--datasource`, `--exclude PATH_OR_GLOB`, and `--check NAME_OR_ID`. Every selector
 must match at least one check: `tw run checks/sales checks/slaes` runs
 nothing and exits `3`, naming `checks/slaes`, so a typo never passes for a
 checked folder. Paths and excludes resolve from where you run the command,
@@ -408,9 +414,8 @@ folders and files you write, select with (`tw run checks/sales`) and inherit
 Click a check's name, or open `/checks/<id>` (for example
 `http://127.0.0.1:8765/checks/b1ceb8262d8b5441`), to see one check and its
 history. The address stays the same across reloads and restarts, so you
-can send it to a colleague. It changes if the check's id does: editing
-the expression of a check without an explicit `id:` gives it a new id and
-a new page. The old address then says the check is no longer in the
+can send it to a colleague. It changes if the check's id does: renaming
+a check gives it a new id and a new page. The old address then says the check is no longer in the
 loaded files and still shows its recorded results. The page shows:
 
 - **What the check is**: its name and expression, dataset, datasource,
@@ -457,7 +462,7 @@ How to read the chart:
   about the data. "No value" holds a fail with nothing to measure, such as
   an average over no rows or freshness with no timestamps: that is bad
   data. Neither is drawn at 0, and the line breaks across them.
-- **"Rule changed" marks a change of rule under an explicit `id:`.** Two
+- **"Rule changed" marks a change of rule.** Two
   consecutive results were judged by different expressions. The caption
   under the chart names both, with the two runs either side, because the
   history knows only that the edit happened between them. The band covers
@@ -487,11 +492,10 @@ How to read the chart:
   timezone`).
 
 Focus the chart and use the arrow keys, or hover, to read each result.
-If you edit the rule of a check with an explicit `id:` and restart `serve`
-before the next run, the page says that no run has used the new rule yet,
-draws no band, and notes that the latest result was judged by the earlier
-rule. (Without an `id:`, the edited check has a new id, and its page reads
-"No result recorded" until it runs.)
+If you edit the rule of a check and restart `serve` before the next run,
+the page says that no run has used the new rule yet, draws no band, and
+notes that the latest result was judged by the earlier rule. (A renamed
+check has a new id, and its page reads "No result recorded" until it runs.)
 
 How to read the SQL:
 
@@ -545,14 +549,14 @@ How to read the SQL:
 How to read the source:
 
 - **It shows the check's own lines, numbered as in the file.** That is the
-  check's entry under `checks:`, from its `-` to its last option, plus the
+  check's entry under `checks:`, from its name to its last clause, plus the
   comments that go with it. A comment goes with a check when it sits:
-  - directly above the check's `-`, with no blank line between. This is the
+  - directly above the check's name, with no blank line between. This is the
     place for the note that says why the rule is 5%;
   - directly below the check's last line, with no blank line between, and
-    indented further than its `-`, such as a commented-out option.
+    indented further than its name, such as a commented-out clause.
 
-  A comment after a blank line, or a comment at or left of the `-` after the
+  A comment after a blank line, or a comment at or left of the name after the
   last check, goes with no check and is not shown. A comment at the end of a
   line is always shown with that line. A `#` line inside a `query: |` block
   is part of the query, not a comment.
@@ -641,12 +645,11 @@ How to read the results:
   together. `latest.last_evaluated` then holds the last pass, warn or fail
   (`outcome`, `started_at`, `since`). It is `null` when `latest` is itself
   evaluated, or when the check has never been evaluated.
-- **`not_run` means no result is recorded for this check id.** Editing a
-  check's expression gives it a new id, so it matches `not_run` until it runs
-  again, and its old results stay under the old id's `history`. Treat
-  `not_run` as unknown, not healthy. An explicit `id:` keeps one history
-  across edits, and "failing since" with it
-  ([check language](docs/check-language.md)).
+- **`not_run` means no result is recorded for this check id.** Renaming a
+  check gives it a new id, so it matches `not_run` until it runs again, and
+  its old results stay under the old id's `history`. Treat `not_run` as
+  unknown, not healthy. Editing a check's clauses keeps its id, its history
+  and "failing since" ([check language](docs/check-language.md)).
 - **`value` is in the metric's unit, which `unit` names**: `count`, `percent`
   (`20.0` means 20%), `duration` (seconds), or `number`. Show
   `display_value` to people.
@@ -782,8 +785,9 @@ print(catalogue.exit_code(), catalogue.exit_code("fail"))   # 1 0
 - **Selectors** are lists (`paths`, `tags`, `datasources`, `excludes`,
   `check_ids`) and narrow the run as their CLI counterparts do. `paths` are
   relative to the project root, not the current directory. `check_ids`
-  match by prefix, as `--check` does, so `["a"]` selects every check whose
-  id starts with `a`.
+  take a check's name or an id prefix, as `--check` does: `["a"]` selects the
+  checks named `a` or, when no check has that name, every check whose id
+  starts with `a`.
 - **History.** `record=True`, the default, stores the run in the project's
   results store with `trigger` set to `"python"`. Pass `record=False` for
   exploratory runs: the store is not opened at all. If recording fails, the

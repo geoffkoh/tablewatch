@@ -37,6 +37,7 @@ from tablewatch.datasources.files import (
 )
 from tablewatch.engine.runner import run_checks
 from tests.conftest import invoke
+from tests.named import named_checks
 
 CREATED = (datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None)
 STAMP = CREATED.isoformat(sep=" ", timespec="seconds")
@@ -75,7 +76,7 @@ F4_CHECKS = """\
       valid_regex: '@'
   - freshness(created_at) < 6h
   - failed_rows:
-      name: negative amounts
+      name: negative_amounts
       condition: amount < 0
 """
 
@@ -129,8 +130,8 @@ def write_checks(
     folder = root / "checks" / "landing"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / name).write_text(
-        f"datasource: {datasource}\ndataset: {dataset}\nchecks:\n"
-        + textwrap.dedent(checks),
+        f"datasource: {datasource}\ndataset: {dataset}\n"
+        + named_checks(textwrap.dedent(checks)),
         encoding="utf-8",
     )
 
@@ -141,7 +142,8 @@ def run_json(root: Path, *args: str) -> tuple[int, dict[str, Any], str]:
 
 
 def by_name(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {r["name"]: r for r in report["results"]}
+    """Checks keyed by their clause's expression text (names are c1, c2, … here)."""
+    return {r["expression"]: r for r in report["results"]}
 
 
 def stored_messages(root: Path) -> list[str]:
@@ -247,10 +249,12 @@ def test_f5_compile_one_scan_with_a_relative_path(tmp_path: Path) -> None:
 
 def test_f6_filter_and_where(landing: Path) -> None:
     (landing / "checks" / "landing" / "orders.yml").write_text(
-        "datasource: drop\ndataset: orders.csv\nfilter: amount > 15\nchecks:\n"
-        "  - row_count = 4\n"
-        "  - missing_count(email) = 0:\n"
-        "      where: email IS NOT NULL\n",
+        "datasource: drop\ndataset: orders.csv\nfilter: amount > 15\n"
+        + named_checks(
+            "  - row_count = 4\n"
+            "  - missing_count(email) = 0:\n"
+            "      where: email IS NOT NULL\n"
+        ),
         encoding="utf-8",
     )
     code, report, _ = run_json(landing)
@@ -591,9 +595,10 @@ def test_i2_root_is_not_identity(landing: Path) -> None:
 
 
 def test_i3_table_ids_do_not_move(retail: Path) -> None:
-    # Pinned in test_server.py from main, before files existed.
+    # Pinned in test_server.py from main, before files existed; recomputed
+    # for spec 032 (derive_check_id(datasource, dataset, name)).
     ids = {c.id for c in tw.load(retail).checks}
-    assert {"b1ceb8262d8b5441", "41e58afff9c48a46", "32867fbe86f483f3"} <= ids
+    assert {"b0a39f0d9284fa3e", "f1bf8649135ba3ab", "a7bb2434f4ec6da4"} <= ids
 
 
 # --- U1 and leaks across every surface ------------------------------------------------

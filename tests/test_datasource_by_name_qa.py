@@ -13,6 +13,7 @@ import pytest
 
 import tablewatch as tw
 from tests.conftest import invoke
+from tests.named import named_checks
 from tests.test_server import served
 
 LEAKS = ("Pa55w0rd", "admin", "db.prod", "\x1b", "[2J")
@@ -35,7 +36,7 @@ def _project(tmp_path: Path, *files: tuple[str, str]) -> Path:
 
 
 def _orders(datasource_line: str = "") -> str:
-    return f"dataset: orders\n{datasource_line}checks:\n  - row_count > 0\n"
+    return f"dataset: orders\n{datasource_line}checks:\n  c1: row_count > 0\n"
 
 
 def _state(root: Path) -> tuple[str, str]:
@@ -148,7 +149,7 @@ def test_a_block_scalar_name_with_a_newline_is_not_a_name(tmp_path: Path) -> Non
         tmp_path,
         (
             "orders.yml",
-            "dataset: orders\ndatasource: |\n  warehous\nchecks:\n  - row_count > 0\n",
+            "dataset: orders\ndatasource: |\n  warehous\nchecks:\n  c1: row_count > 0\n",
         ),
     )
     assert _state(root) == ("", "not_a_name")
@@ -181,16 +182,26 @@ def test_an_empty_datasource_is_none_not_a_written_name(tmp_path: Path) -> None:
     assert _state(root) == ("", "none")
 
 
-def test_states_never_move_check_ids(tmp_path: Path) -> None:
-    ids = []
-    for written in ("warehouse", "warehous", '"a b"'):
-        root = _project(
-            tmp_path / written.strip('"'),
-            ("orders.yml", _orders(f"datasource: {written}\n")),
-        )
-        [dataset] = tw.load(root).datasets
-        ids.append(dataset.checks[0].id)
-    assert len(set(ids)) == 1
+def test_moving_the_file_or_tightening_the_rule_keeps_the_id(tmp_path: Path) -> None:
+    # Spec 032 (D1): identity is (datasource, dataset, name) — the written
+    # datasource text is now part of it, by design, so a typo there does
+    # start a new history. What must still not move it: the file's
+    # location, and tightening a clause's rule (S15, D4).
+    first = _project(tmp_path / "a", ("orders.yml", _orders("datasource: warehouse\n")))
+    moved = _project(
+        tmp_path / "b", ("nested/orders.yml", _orders("datasource: warehouse\n"))
+    )
+    tightened = _project(
+        tmp_path / "c",
+        (
+            "orders.yml",
+            _orders("datasource: warehouse\n").replace(
+                "row_count > 0", "row_count > 5"
+            ),
+        ),
+    )
+    ids = {tw.load(p).datasets[0].checks[0].id for p in (first, moved, tightened)}
+    assert len(ids) == 1
 
 
 # --- row units on both backends ---------------------------------------------------
@@ -219,7 +230,7 @@ def empty(request: pytest.FixtureRequest, tmp_path: Path) -> Path:
 
 def _write(root: Path, checks: str) -> None:
     (root / "checks" / "t.yml").write_text(
-        f"dataset: t\nchecks:\n{checks}", encoding="utf-8"
+        f"dataset: t\n{named_checks(checks)}", encoding="utf-8"
     )
 
 
@@ -284,7 +295,8 @@ def test_every_surface_carries_the_unit(empty: Path) -> None:
         ).fetchall()
     finally:
         con.close()
-    assert stored == [(1204.0, "1,204 rows")]
+    # D5: a summary row per check, plus one row per clause.
+    assert stored == [(1204.0, "1,204 rows"), (1204.0, "1,204 rows")]
 
 
 # --- C4: a result recorded before the change is served as stored -------------------

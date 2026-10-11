@@ -14,6 +14,7 @@ import tablewatch as tw
 from tablewatch.config import load_project
 from tablewatch.output import console
 from tests.conftest import invoke
+from tests.named import named_checks
 
 YML = """\
 name: wording
@@ -42,7 +43,9 @@ def p(tmp_path: Path) -> Path:
 
 def checks(root: Path, body: str, name: str = "a.yml", ds: str = "staging") -> None:
     _write(
-        root, f"checks/{name}", f"dataset: orders\ndatasource: {ds}\nchecks:\n{body}"
+        root,
+        f"checks/{name}",
+        f"dataset: orders\ndatasource: {ds}\n{named_checks(body)}",
     )
 
 
@@ -56,7 +59,7 @@ def test_l1_a_fraction_warns(p: Path) -> None:
     checks(p, "  - missing_percent(email) < 0.05\n")
     code, out, err = invoke(p, "validate")
     assert code == 0
-    assert f"checks/a.yml:4:5: {FRACTION}" in out + err
+    assert f"checks/a.yml:4:7: {FRACTION}" in out + err
     assert out.endswith("1 dataset, 1 check — no errors, 1 warning\n")
 
 
@@ -88,9 +91,9 @@ def test_l3_triggers_and_between(p: Path) -> None:
     code, out, err = invoke(p, "validate")
     assert code == 0
     text = out + err
-    assert text.count("checks/a.yml:4:5: warning: 0.01 on invalid_percent") == 1
-    assert text.count("checks/a.yml:4:5: warning: 0.1 on invalid_percent") == 1
-    assert text.count("checks/a.yml:8:5: warning: ") == 2
+    assert text.count("checks/a.yml:6:9: warning: 0.01 on invalid_percent") == 1
+    assert text.count("checks/a.yml:6:9: warning: 0.1 on invalid_percent") == 1
+    assert text.count("checks/a.yml:10:7: warning: ") == 2
 
 
 def test_l4_the_run_evaluates_it_as_written(p: Path) -> None:
@@ -128,46 +131,47 @@ def test_l7_plurals(p: Path) -> None:
     assert invoke(p, "validate")[1] == "2 datasets, 2 checks — no problems found\n"
 
 
-def test_l8_two_schema_checks(p: Path) -> None:
+def test_l8_two_checks_with_the_same_name(p: Path) -> None:
     checks(
         p,
-        "  - schema:\n      required_columns: [id]\n"
-        "  - schema:\n      required_columns: [email]\n",
+        "  schema_check:\n    clauses:\n      - schema:\n          required_columns: [id]\n"
+        "  schema_check:\n    clauses:\n      - schema:\n          required_columns: [email]\n",
     )
     code, out, err = invoke(p, "validate")
     assert code == 3
     assert (
-        "checks/a.yml:6:5: error: duplicate check (also at checks/a.yml:4:5) — put "
-        "both lists in one `schema` check, or give one of them an explicit `id:`"
+        'checks/a.yml:8:3: error: duplicate check name "schema_check" — names must '
+        "be unique within a dataset"
     ) in out + err
 
 
-def test_l9_an_explicit_id_used_twice(p: Path) -> None:
-    checks(
-        p,
-        "  - row_count > 0:\n      id: same\n  - row_count > 1:\n      id: same\n",
-    )
+def test_l9_names_are_scoped_to_datasource_and_dataset_not_the_project(
+    p: Path,
+) -> None:
+    checks(p, "  volume: row_count > 0\n")
+    checks(p, "  volume: row_count > 1\n", name="b.yml", ds="prod")
     code, out, err = invoke(p, "validate")
-    assert code == 3
-    assert (
-        "checks/a.yml:6:5: error: the id 'same' is already used at checks/a.yml:4:5 "
-        "— ids must be unique in the project"
-    ) in out + err
+    assert code == 0
+    assert "duplicate" not in out + err
 
 
 def test_l10_no_phantom_duplicate(p: Path) -> None:
-    checks(p, "  - row_count > 0:\n      where: [1]\n  - row_count > 0\n")
+    checks(
+        p,
+        "  volume:\n    clauses:\n      - row_count > 0:\n          where: [1]\n"
+        "      - row_count > 0\n",
+    )
     code, out, err = invoke(p, "validate")
     assert code == 3
     text = out + err
-    assert "checks/a.yml:5:14: error: `where:` must be a non-empty string" in text
+    assert "checks/a.yml:7:18: error: `where:` must be a non-empty string" in text
     assert "duplicate" not in text
 
 
 def test_l11_retail_ids_unchanged(retail: Path) -> None:
     # The ids are pinned in test_check_identity; this guards the loader path.
     ids = [c.id for c in load_project(retail).checks]
-    assert len(ids) == len(set(ids)) == 19
+    assert len(ids) == len(set(ids)) == 12
 
 
 def _table(root: Path, *args: str) -> list[str]:
@@ -177,8 +181,8 @@ def _table(root: Path, *args: str) -> list[str]:
 
 
 def test_c1_c4_two_datasources(p: Path) -> None:
-    checks(p, "  - row_count > 0\n")
-    checks(p, "  - row_count > 0\n", name="b.yml", ds="prod")
+    checks(p, "  row_count: row_count > 0\n")
+    checks(p, "  row_count: row_count > 0\n", name="b.yml", ds="prod")
     lines = _table(p)
     assert lines[0].split() == [
         "OUTCOME",
@@ -197,48 +201,42 @@ def test_c1_c4_two_datasources(p: Path) -> None:
 
 
 def test_c2_one_datasource_is_as_before(p: Path) -> None:
-    checks(p, "  - row_count > 0\n")
+    checks(p, "  row_count: row_count > 0\n")
     lines = _table(p)
     assert lines[0].split() == ["OUTCOME", "DATASET", "CHECK", "VALUE", "DETAIL"]
     assert lines[1].split()[:3] == ["PASS", "orders", "row_count"]
 
 
-def test_c3_alike_rows_get_their_location(p: Path) -> None:
-    checks(
-        p,
-        "  - failed_rows:\n      condition: amount < 0\n"
-        "  - failed_rows:\n      condition: amount > 100\n"
-        "  - row_count > 0\n",
-    )
-    text = "\n".join(_table(p))
-    assert "failed_rows (checks/a.yml:4)" in text
-    assert "failed_rows (checks/a.yml:6)" in text
-    assert "row_count > 0 (" not in text
-
-
 def test_c5_the_location_is_never_clipped(p: Path) -> None:
-    name = "n" * 60
+    # Names are unique, so an "alike" display only happens when two distinct
+    # names clip to the same text; the location (never clipped) tells them
+    # apart, and a check that does not collide gets no location suffix.
+    name1 = "n" * 47 + "aaa"
+    name2 = "n" * 47 + "bbb"
     checks(
         p,
-        f"  - row_count > 0:\n      name: {name}\n"
-        f"  - row_count > 1:\n      name: {name}\n",
+        f"  {name1}: row_count > 0\n"
+        f"  {name2}: row_count > 1\n"
+        "  row_count: row_count > 2\n",
     )
     text = "\n".join(_table(p))
     assert "n" * 47 + "… (checks/a.yml:4)" in text
-    assert "n" * 47 + "… (checks/a.yml:6)" in text
+    assert "n" * 47 + "… (checks/a.yml:5)" in text
+    assert "row_count (" not in text
 
 
 def test_c6_names_elsewhere_are_unchanged(p: Path) -> None:
-    checks(
-        p,
-        "  - failed_rows:\n      condition: amount < 0\n  - failed_rows:\n      condition: amount > 100\n",
-    )
-    checks(p, "  - row_count > 0\n", name="b.yml", ds="prod")
+    # The console clips and disambiguates for display; the JSON report and
+    # the Python API's Check.name stay the full, unclipped names.
+    name1 = "n" * 47 + "aaa"
+    name2 = "n" * 47 + "bbb"
+    checks(p, f"  {name1}: row_count > 0\n  {name2}: row_count > 1\n")
+    checks(p, "  row_count: row_count > 0\n", name="b.yml", ds="prod")
     _, out, _ = invoke(p, "run", "--no-store", "--output", "json")
     names = [r["name"] for r in json.loads(out)["results"]]
-    assert sorted(names) == ["failed_rows", "failed_rows", "row_count > 0"]
+    assert sorted(names) == sorted([name1, name2, "row_count"])
     run = tw.run(p, record=False)
-    assert [r.check.name for r in run.results].count("failed_rows") == 2
+    assert [r.check.name for r in run.results].count(name1) == 1
     assert "DATASOURCE" in console.render(run)
 
 

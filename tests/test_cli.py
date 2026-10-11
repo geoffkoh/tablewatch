@@ -33,7 +33,7 @@ def test_version_matches_the_package() -> None:
 def test_validate_example(retail: Path) -> None:
     code, output = invoke(retail, "validate")
     assert code == 0
-    assert "3 datasets, 19 checks — no problems found" in output
+    assert "3 datasets, 12 checks — no problems found" in output
 
 
 def test_run_example_reports_every_planted_defect(retail: Path) -> None:
@@ -42,16 +42,14 @@ def test_run_example_reports_every_planted_defect(retail: Path) -> None:
     report = json.loads(output)
     failing = {r["name"] for r in report["results"] if r["outcome"] == "fail"}
     assert failing == {
-        "missing_percent(email) < 5%",
-        "invalid_count(country) = 0",
-        "missing_count(customer_id) = 0",
-        "duplicate_count(order_id) = 0",
-        "invalid_percent(status) < 1%",
-        "No negative amounts",
+        "contactable",
+        "known_countries",
+        "orders_usable",
+        "no_negative_amounts",
     }
     warned = {r["name"] for r in report["results"] if r["outcome"] == "warn"}
-    assert warned == {"Order volume", "Price feed freshness"}
-    assert report["run"]["counts"] == {"fail": 6, "pass": 11, "warn": 2}
+    assert warned == {"order_volume", "price_feed_fresh"}
+    assert report["run"]["counts"] == {"fail": 4, "pass": 6, "warn": 2}
 
 
 def test_warnings_pass_unless_fail_on_warn(retail: Path) -> None:
@@ -83,11 +81,11 @@ def test_nothing_selected_means_nothing_ran(retail: Path) -> None:
 
 def test_invalid_project_exits_3_with_location(retail: Path) -> None:
     (retail / "checks" / "broken.yml").write_text(
-        "dataset: x\nchecks:\n  - row_count >\n"
+        "dataset: x\nchecks:\n  c1: row_count >\n"
     )
     code, output = invoke(retail, "run")
     assert code == 3
-    assert "checks/broken.yml:3:16: error: expected a number" in output
+    assert "checks/broken.yml:3:18: error: expected a number" in output
     assert invoke(retail, "validate")[0] == 3
 
 
@@ -103,12 +101,12 @@ def test_junit_output_file(retail: Path, tmp_path: Path) -> None:
         str(report),
     )
     assert code == 1
-    assert "5 checks" in output  # summary still shown
+    assert "4 checks" in output  # summary still shown
     suite = ET.parse(report).getroot().find("testsuite")
     assert suite is not None
     assert (suite.get("name"), suite.get("tests"), suite.get("failures")) == (
         "sales.customers",
-        "5",
+        "4",
         "2",
     )
 
@@ -121,10 +119,10 @@ def test_runs_are_recorded_and_history_reads_them(retail: Path) -> None:
     assert len(output.strip().splitlines()) == 2  # header + one stored run
 
     code, output = invoke(retail, "list", "checks/inventory", "--output", "json")
-    [freshness] = [c for c in json.loads(output) if c["name"] == "Price feed freshness"]
+    [freshness] = [c for c in json.loads(output) if c["name"] == "price_feed_fresh"]
     code, output = invoke(retail, "history", freshness["id"][:8])
     assert code == 0
-    assert "Price feed freshness  [inventory.products]" in output
+    assert "price_feed_fresh  [inventory.products]" in output
     assert "WARN" in output
 
 
@@ -145,7 +143,7 @@ def test_quiet_run_prints_only_the_summary(retail: Path) -> None:
     result = CliRunner().invoke(
         cli, ["-q", "--project-dir", str(retail), "run", "checks/inventory"]
     )
-    assert result.output.strip().startswith("5 checks · 4 pass · 1 warn")
+    assert result.output.strip().startswith("3 checks · 2 pass · 1 warn")
 
 
 def test_init_creates_a_valid_project(tmp_path: Path) -> None:

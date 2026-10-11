@@ -105,7 +105,8 @@ def test_last_n_runs(project: Path, ds: str) -> None:  # S6
         "expected > -20%; average 1,000 of the last 3 runs ("
     )
     assert (r.message or "").endswith(" UTC) → 500 rows")
-    assert r.previous is not None and r.previous.runs == 3
+    assert r.single is not None and r.single.previous is not None
+    assert r.single.previous.runs == 3
 
 
 @BOTH
@@ -179,16 +180,22 @@ def test_one_scan(project: Path) -> None:  # S16
 
 
 def test_json_previous(project: Path) -> None:  # S20, S21
-    write(project, "lite", LAST3 + WEEKDAY + "  - change(row_count) > -90%\n")
+    write(
+        project,
+        "lite",
+        "  last3: change(row_count, last 3 runs) > -20%\n"
+        "  weekday: change(row_count, same weekday) > -20%\n"
+        "  plain: change(row_count) > -90%\n",
+    )
     _history(project, [(900, WEEK), (1000, 2 * DAY), (1100, DAY)])
     code, out, _ = invoke(project, "run", "--no-store", "--output", "json")
-    by_name = {r["name"]: r for r in json.loads(out)["results"]}
-    last = by_name["change(row_count, last 3 runs) > -20%"]["previous"]
+    by_name = {r["name"]: r["clauses"][0] for r in json.loads(out)["results"]}
+    last = by_name["last3"]["previous"]
     assert (last["value"], last["baseline"], last["runs"]) == (1000, "last 3 runs", 3)
     assert isinstance(last["run_id"], str)
-    same = by_name["change(row_count, same weekday) > -20%"]["previous"]
+    same = by_name["weekday"]["previous"]
     assert (same["value"], same["baseline"], same["runs"]) == (900, "same weekday", 1)
-    plain = by_name["change(row_count) > -90%"]["previous"]
+    plain = by_name["plain"]["previous"]
     assert (plain["baseline"], plain["runs"]) == ("previous run", 1)
 
 
@@ -197,13 +204,14 @@ def test_reads_at_most_n(project: Path) -> None:  # S22
     _history(project, [(n, (10 - n) * DAY) for n in range(1, 8)])
     url = load_project(project).config.results.url
     [check] = load_project(project).checks
+    clause_id = check.clauses[0].id
     from tablewatch.engine.baselines import BaselineRequest
 
     with ResultStore.open(url, project) as store:
         got = store.baselines(
-            "changes", {check.id: BaselineRequest("row_count", 2)}, datetime.now(UTC)
+            "changes", {clause_id: BaselineRequest("row_count", 2)}, datetime.now(UTC)
         )
-    assert [s.value for s in got[check.id]] == [7, 6]
+    assert [s.value for s in got[clause_id]] == [7, 6]
 
 
 def test_choose_is_pure() -> None:  # D3

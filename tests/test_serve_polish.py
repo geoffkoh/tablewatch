@@ -41,7 +41,7 @@ def test_the_startup_host(bound: str, url_host: str, note: str) -> None:  # S1â€
 
 def test_diagnostics_and_failures_are_json_lines(retail: Path) -> None:  # S4, S4b
     broken = retail / "checks" / "broken.yml"
-    broken.write_text("dataset: t\nchecks:\n  - nosuchmetric > 0\n", encoding="utf-8")
+    broken.write_text("dataset: t\nchecks:\n  c1: nosuchmetric > 0\n", encoding="utf-8")
     code, _, err = invoke(retail, "--log-format", "json", "list")
     assert code == 3
     lines = [line for line in err.splitlines() if line.strip()]

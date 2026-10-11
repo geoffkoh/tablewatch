@@ -17,8 +17,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query, Request
 
 from tablewatch._version import __version__
-from tablewatch.checks.model import Check
-from tablewatch.config.loader import ID_PATTERN, MAX_ID_LENGTH
+from tablewatch.checks.model import ID_PATTERN, Check
 from tablewatch.config.loader import Project as LoadedProject
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.jsonvalues import utc
@@ -201,7 +200,7 @@ def get_run(context: Context, run_id: str) -> schemas.RunDetail:
 
 
 def _is_check_id(value: str) -> bool:
-    return len(value) <= MAX_ID_LENGTH and ID_PATTERN.match(value) is not None
+    return ID_PATTERN.fullmatch(value) is not None
 
 
 def _not_found(what: str) -> ApiError:

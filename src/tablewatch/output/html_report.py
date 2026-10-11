@@ -95,7 +95,7 @@ def view_from_rows(
 ) -> ReportView:
     """The view of a stored run; `states` are each check's state as of that run."""
     results = []
-    for row in run.results:
+    for row in run.check_results:
         outcome = recorded(row.outcome)
         state = states.get(row.check_id)
         results.append(

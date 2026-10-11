@@ -16,6 +16,7 @@ import pytest
 
 from tablewatch.checks.model import Outcome
 from tests.conftest import BACKENDS, Workspace
+from tests.named import named_checks
 
 pytestmark = pytest.mark.parametrize("backend", BACKENDS)
 
@@ -147,8 +148,8 @@ def test_schema_of_missing_table_is_an_error(
 ) -> None:
     workspace.write(
         "checks/t.yml",
-        f"dataset: no_such_table\ndatasource: {backend}\nchecks:\n"
-        "  - schema:\n      required_columns: [id]\n",
+        f"dataset: no_such_table\ndatasource: {backend}\n"
+        + named_checks("  - schema:\n      required_columns: [id]\n"),
     )
     project = workspace.load()
     from tablewatch.engine.runner import run_checks

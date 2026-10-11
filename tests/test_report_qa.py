@@ -254,7 +254,7 @@ def test_every_stored_field_is_escaped(retail: Path, run_a: str) -> None:
     assert 'x="y"' not in out
     assert "&amp;amp;" in out  # escaped once more, not passed through
     rows = _rows(out)
-    assert len(rows) == 19 and all(len(r) == 11 for r in rows)
+    assert len(rows) == 12 and all(len(r) == 11 for r in rows)
     escaped = "&lt;i x=&quot;y&quot;&gt;&amp;amp;&lt;/i&gt;"
     for row in rows:
         for column in (1, 2, 3, 4, 5, 8, 10):

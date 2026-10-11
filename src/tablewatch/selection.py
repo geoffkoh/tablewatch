@@ -78,7 +78,7 @@ class Selection:
         for tag in self.tags:
             check("tag", tag, any(tag in c.dataset.tags for c in checks))
         for prefix in self.check_ids:
-            check("check id", prefix, any(c.id.startswith(prefix) for c in checks))
+            check("check", prefix, any(_names(c, prefix, checks) for c in checks))
         for name in self.datasources:
             check("datasource", name, any(c.dataset.datasource == name for c in checks))
         excludes: list[str] = []
@@ -122,11 +122,22 @@ def select_checks(project: Project, selection: Selection) -> list[Check]:
         if any(_excluded(dataset.path, pattern) for pattern in selection.excludes):
             continue
         if selection.check_ids and not any(
-            check.id.startswith(i) for i in selection.check_ids
+            _names(check, i, project.checks) for i in selection.check_ids
         ):
             continue
         chosen.append(check)
     return chosen
+
+
+def _names(check: Check, value: str, checks: Iterable[Check]) -> bool:
+    """`--check` takes a check's name, or a prefix of its id.
+
+    A name wins: when some check has that name, it is not read as an id
+    prefix too (as `history` reads it).
+    """
+    if any(c.name == value for c in checks):
+        return check.name == value
+    return check.id.startswith(value)
 
 
 def _relative_to_project(project: Project, arg: str, cwd: Path) -> Path:

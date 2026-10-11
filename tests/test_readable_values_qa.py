@@ -25,6 +25,7 @@ from tablewatch.metrics import base
 from tablewatch.metrics.base import MetricContext, Unit
 from tablewatch.metrics.builtin.freshness import Freshness
 from tablewatch.output import console, json_report, junit
+from tests.named import convert
 from tests.test_readable_values import NOW, _build
 
 ROOT = Path(__file__).parents[1]
@@ -44,14 +45,14 @@ def _project(root: Path, datasources: str, checks: str) -> RunResult:
         f"name: qa\ndatasources:\n{datasources}", encoding="utf-8"
     )
     (root / "checks").mkdir(exist_ok=True)
-    (root / "checks" / "t.yml").write_text(checks, encoding="utf-8")
+    (root / "checks" / "t.yml").write_text(convert(checks), encoding="utf-8")
     project = load_project(root)
     assert project.ok, project.diagnostics
     return run_checks(project, project.checks, trigger="test", now=NOW)
 
 
 def _by_name(run: RunResult) -> dict[str, Any]:
-    return {r.check.name: r for r in run.results}
+    return {r.check.canonical: r for r in run.results}
 
 
 # --- documentation `must`s (D1, D4) ------------------------------------------------
@@ -120,7 +121,7 @@ def test_an_empty_table_and_an_all_null_column_fail_not_error(
     )
     run = _project(tmp_path, ds, checks)
     (tmp_path / "checks" / "n.yml").write_text(
-        "dataset: nulls\ndatasource: d\nchecks:\n  - freshness(loaded_at) < 6h\n",
+        "dataset: nulls\ndatasource: d\nchecks:\n  c1: freshness(loaded_at) < 6h\n",
         encoding="utf-8",
     )
     project = load_project(tmp_path)
@@ -182,8 +183,11 @@ def test_duckdb_infinity_is_a_placeholder_not_an_error(tmp_path: Path) -> None:
     run = _project(
         tmp_path,
         "  d: {type: duckdb, path: i.duckdb, timezone: America/New_York}\n",
-        "dataset: t\ndatasource: d\nchecks:\n  - row_count > 0\n"
-        "  - freshness(ts) < 6h\n  - freshness(d) < 6h\n",
+        "dataset: t\ndatasource: d\n"
+        + convert(
+            "checks:\n  - row_count > 0\n"
+            "  - freshness(ts) < 6h\n  - freshness(d) < 6h\n"
+        ),
     )
     results = _by_name(run)
     assert results["row_count > 0"].outcome is Outcome.PASS
@@ -437,8 +441,14 @@ def test_backends_agree_on_every_shared_check(fixture_run: RunResult) -> None:
 
 def test_console_shows_200_whole_and_clips_201(fixture_run: RunResult) -> None:  # E1
     first = fixture_run.results[0]
-    exact = dataclasses.replace(first, message="a" * 199 + "Z")
-    over = dataclasses.replace(first, message="b" * 200 + "Y")
+    exact = dataclasses.replace(
+        first,
+        clauses=[dataclasses.replace(first.clauses[0], message="a" * 199 + "Z")],
+    )
+    over = dataclasses.replace(
+        first,
+        clauses=[dataclasses.replace(first.clauses[0], message="b" * 200 + "Y")],
+    )
     run = dataclasses.replace(fixture_run, results=[exact, over])
     lines = console.render(run).splitlines()
     assert lines[1].endswith("a" * 199 + "Z")
@@ -479,7 +489,7 @@ def test_a_mixed_sqlite_column_orders_as_text(tmp_path: Path) -> None:
     run = _project(
         tmp_path,
         "  d: {type: sqlite, path: m.db}\n",
-        "dataset: t\ndatasource: d\nchecks:\n  - freshness(at) < 2d\n",
+        "dataset: t\ndatasource: d\nchecks:\n  c1: freshness(at) < 2d\n",
     )
     [result] = run.results
     assert result.message == "newest row at 2026-09-26 08:00:00 UTC"

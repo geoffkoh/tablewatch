@@ -20,12 +20,10 @@ from tablewatch.selection import Selection
 SRC = Path(__file__).parent.parent / "src" / "tablewatch"
 
 PLANTED_DEFECTS = {
-    "missing_percent(email) < 5%",
-    "invalid_count(country) = 0",
-    "missing_count(customer_id) = 0",
-    "duplicate_count(order_id) = 0",
-    "invalid_percent(status) < 1%",
-    "No negative amounts",
+    "contactable",
+    "known_countries",
+    "orders_usable",
+    "no_negative_amounts",
 }
 
 DEMO_YML = """\
@@ -87,15 +85,15 @@ ROW_CNT = """\
 dataset: orders
 datasource: lake
 checks:
-  - row_cnt > 0
-  - missing_count(id) = 0
+  c1: row_cnt > 0
+  c2: missing_count(id) = 0
 """
 
 ON_WH = """\
 dataset: orders
 datasource: wh
 checks:
-  - row_count > 0
+  c1: row_count > 0
 """
 
 
@@ -107,7 +105,7 @@ def test_load_runs_nothing(retail: Path) -> None:  # L1
     project = tw.load(retail)
     assert project.ok is True
     assert len(project.datasets) == 3
-    assert len(project.checks) == 19
+    assert len(project.checks) == 12
     assert project.diagnostics == []
     assert not (retail / "retail.duckdb").exists()
     assert not (retail / ".tablewatch").exists()
@@ -117,7 +115,7 @@ def test_check_file_mistakes_are_diagnostics(tmp_path: Path) -> None:  # L2
     project = tw.load(demo(tmp_path / "demo", **{"orders.yml": ROW_CNT}))
     assert project.ok is False
     assert [str(d) for d in project.diagnostics] == [
-        "checks/orders.yml:4:5: error: unknown metric 'row_cnt' — did you mean 'row_count'?"
+        "checks/orders.yml:4:7: error: unknown metric 'row_cnt' — did you mean 'row_count'?"
     ]
 
 
@@ -140,7 +138,7 @@ def test_load_defaults_to_the_enclosing_project(
     retail: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # L5
     monkeypatch.chdir(retail / "checks" / "sales")
-    assert len(tw.load().checks) == 19
+    assert len(tw.load().checks) == 12
 
 
 def test_no_project_above_the_cwd_raises(
@@ -157,7 +155,7 @@ def test_no_project_above_the_cwd_raises(
 
 
 def test_load_accepts_the_project_file(retail: Path) -> None:  # L7
-    assert len(tw.load(retail / "tablewatch.yml").checks) == 19
+    assert len(tw.load(retail / "tablewatch.yml").checks) == 12
 
 
 # --- running -----------------------------------------------------------------
@@ -166,9 +164,9 @@ def test_load_accepts_the_project_file(retail: Path) -> None:  # L7
 def test_run_returns_typed_outcomes(retail: Path) -> None:  # R1
     result = tw.run(retail, record=False)
     assert isinstance(result, tw.RunResult)
-    assert len(result.results) == 19
-    assert result.count(tw.Outcome.FAIL) == 6
-    assert result.count(tw.Outcome.PASS) == 11
+    assert len(result.results) == 12
+    assert result.count(tw.Outcome.FAIL) == 4
+    assert result.count(tw.Outcome.PASS) == 6
     assert result.count(tw.Outcome.WARN) == 2
     assert result.outcome is tw.Outcome.FAIL
     as_text: str = result.outcome  # an Outcome is a str
@@ -192,29 +190,29 @@ def test_paths_are_relative_to_the_project(
     monkeypatch.chdir(other)
 
     result = tw.run(retail, paths=["checks/sales"], record=False)
-    assert len(result.results) == 14
-    assert (result.count(tw.Outcome.FAIL), result.count(tw.Outcome.PASS)) == (6, 7)
+    assert len(result.results) == 9
+    assert (result.count(tw.Outcome.FAIL), result.count(tw.Outcome.PASS)) == (4, 4)
     assert result.count(tw.Outcome.WARN) == 1
     assert result.selection == {"paths": ["checks/sales"]}
 
     absolute = tw.run(retail, paths=[str(retail / "checks" / "sales")], record=False)
-    assert len(absolute.results) == 14
+    assert len(absolute.results) == 9
     as_path = tw.run(retail, paths=[Path("checks/sales")], record=False)
-    assert len(as_path.results) == 14
+    assert len(as_path.results) == 9
 
 
 def test_every_cli_selector_is_available(retail: Path) -> None:  # R3
     catalogue = tw.run(retail, tags=["catalogue"], record=False)
     assert {r.check.dataset.name for r in catalogue.results} == {"inventory.products"}
-    assert len(catalogue.results) == 5
-    assert catalogue.count(tw.Outcome.PASS) == 4
+    assert len(catalogue.results) == 3
+    assert catalogue.count(tw.Outcome.PASS) == 2
     assert catalogue.count(tw.Outcome.WARN) == 1
     assert catalogue.exit_code() == 0
     assert catalogue.exit_code("warn") == 1
 
     excluded = tw.run(retail, excludes=["checks/sales"], record=False)
-    assert len(excluded.results) == 5
-    assert len(tw.run(retail, datasources=["lake"], record=False).results) == 19
+    assert len(excluded.results) == 3
+    assert len(tw.run(retail, datasources=["lake"], record=False).results) == 12
 
     one = tw.load(retail).checks[0]
     by_id = tw.run(retail, check_ids=[one.id], record=False)
@@ -240,7 +238,7 @@ def test_an_invalid_project_runs_nothing(tmp_path: Path) -> None:  # R5
     with pytest.raises(tw.ProjectError) as caught:
         tw.run(project)
     assert [str(d) for d in caught.value.diagnostics] == [
-        "checks/orders.yml:4:5: error: unknown metric 'row_cnt' — did you mean 'row_count'?"
+        "checks/orders.yml:4:7: error: unknown metric 'row_cnt' — did you mean 'row_count'?"
     ]
     assert isinstance(caught.value, tw.TablewatchError)
     assert not (project / ".tablewatch").exists()
@@ -279,8 +277,8 @@ def test_load_once_run_many(retail: Path) -> None:  # R7
     b = tw.run(project, record=False)
     assert a.id != b.id
     assert [r.outcome for r in a.results] == [r.outcome for r in b.results]
-    assert len(a.results) == len(b.results) == 19
-    assert len(project.checks) == 19
+    assert len(a.results) == len(b.results) == 12
+    assert len(project.checks) == 12
 
 
 def test_the_library_is_quiet(retail: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -331,7 +329,7 @@ def test_results_read_well_in_a_notebook(retail: Path) -> None:  # R11
     assert len(text) < 300
     assert "retail-example" in text
     assert "outcome=fail" in text
-    assert "fail=6" in text
+    assert "fail=4" in text
     first = repr(result.results[0])
     assert "\n" not in first
     assert "inventory.products" in first or "sales." in first
@@ -357,12 +355,13 @@ def test_a_recorded_run_is_marked_as_from_python(retail: Path) -> None:  # S2
     assert (run_id, trigger, total, failed, exit_code) == (
         result.id,
         "python",
-        19,
-        6,
+        12,
+        4,
         1,
     )
     assert selection == "{}"
-    assert stored_result_count(retail) == 19
+    # D5: a summary row per check (12) plus one row per clause (19).
+    assert stored_result_count(retail) == 31
 
     CliRunner().invoke(cli, ["--project-dir", str(retail), "run"])
     assert sorted(row[1] for row in stored_runs(retail)) == ["cli", "python"]
@@ -380,7 +379,7 @@ def test_a_recording_failure_is_exit_2_not_a_crash(
     break_store(retail)
     with caplog.at_level(logging.WARNING, logger="tablewatch"):
         result = tw.run(retail, tags=["catalogue"])
-    assert result.count(tw.Outcome.PASS) == 4
+    assert result.count(tw.Outcome.PASS) == 2
     assert result.count(tw.Outcome.WARN) == 1
     assert result.outcome is tw.Outcome.WARN
     assert result.exit_code() == 2
@@ -403,7 +402,7 @@ def test_the_cli_survives_an_unusable_store_path(retail: Path) -> None:  # S4
     assert "tablewatch: could not record the run: " in outcome.stderr
     assert "Traceback" not in outcome.output
     assert outcome.exception is None or isinstance(outcome.exception, SystemExit)
-    assert "Price feed freshness" in outcome.stdout
+    assert "price_feed_fresh" in outcome.stdout
     assert outcome.stderr.count("could not record the run") == 1
 
 
@@ -421,7 +420,7 @@ def test_the_cli_survives_an_unreachable_store(retail: Path) -> None:  # S4
     )
     assert outcome.exit_code == 2
     assert "tablewatch: could not record the run: " in outcome.stderr
-    assert "Price feed freshness" in outcome.stdout
+    assert "price_feed_fresh" in outcome.stdout
 
 
 def test_where_results_go_is_replaceable(retail: Path) -> None:  # S5
@@ -437,7 +436,7 @@ def test_where_results_go_is_replaceable(retail: Path) -> None:  # S5
         cwd=project.root,
     )
     assert received == [result]
-    assert len(received[0].results) == 19
+    assert len(received[0].results) == 12
     assert not (retail / ".tablewatch").exists()
 
 
@@ -473,7 +472,7 @@ def test_one_failing_sink_does_not_stop_the_others(retail: Path) -> None:  # S6
         cwd=project.root,
     )
     assert received == [result]
-    assert result.count(tw.Outcome.PASS) == 4
+    assert result.count(tw.Outcome.PASS) == 2
     assert result.exit_code() == 2
     assert result.record_errors == ["boom"]
 

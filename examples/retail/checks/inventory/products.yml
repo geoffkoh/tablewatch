@@ -2,13 +2,16 @@ dataset: inventory.products
 tags: [catalogue]
 
 checks:
-  - row_count between 1 and 10000
-  - duplicate_count(sku) = 0
-  - min(price) > 0
-  - freshness(updated_at):
-      name: Price feed freshness
-      warn: when > 1d
-      fail: when > 7d
+  catalogue_sane:
+    clauses:
+      - row_count between 1 and 10000
+      - duplicate_count(sku) = 0
+      - min(price) > 0
+  price_feed_fresh:
+    clauses:
+      - freshness(updated_at):
+          warn: when > 1d
+          fail: when > 7d
   # A zoned (TIMESTAMPTZ) column: its age is exact whatever the datasource's
   # timezone, which only changes how the newest row is shown.
-  - freshness(stock_synced_at) < 1h
+  stock_sync_fresh: freshness(stock_synced_at) < 1h

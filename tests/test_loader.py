@@ -9,6 +9,7 @@ import pytest
 from tablewatch.config import find_project_root, load_project
 from tablewatch.diagnostics import ProjectError
 from tests.conftest import Workspace
+from tests.named import named_checks
 
 
 def messages(ws: Workspace) -> list[str]:
@@ -26,10 +27,11 @@ def test_defaults_cascade_nearest_wins_and_tags_accumulate(
     )
     workspace.write(
         "checks/sales/orders.yml",
-        "dataset: t\ntags: [tier-1]\nchecks:\n  - row_count > 0\n",
+        "dataset: t\ntags: [tier-1]\nchecks:\n  c1: row_count > 0\n",
     )
     workspace.write(
-        "checks/other.yml", "dataset: t\ndatasource: lite\nchecks:\n  - row_count > 0\n"
+        "checks/other.yml",
+        "dataset: t\ndatasource: lite\nchecks:\n  c1: row_count > 0\n",
     )
     project = workspace.load()
     assert project.ok, messages(workspace)
@@ -46,13 +48,13 @@ def test_single_datasource_is_implied(tmp_path: Path) -> None:
     ws.write(
         "tablewatch.yml", "name: x\ndatasources:\n  only: {type: sqlite, path: a.db}\n"
     )
-    ws.write("checks/a.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    ws.write("checks/a.yml", "dataset: t\nchecks:\n  c1: row_count > 0\n")
     [dataset] = ws.load().datasets
     assert dataset.datasource == "only"
 
 
 def test_ambiguous_datasource_is_an_error(workspace: Workspace) -> None:
-    workspace.write("checks/a.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    workspace.write("checks/a.yml", "dataset: t\nchecks:\n  c1: row_count > 0\n")
     assert messages(workspace) == [
         (
             "checks/a.yml:1:1: error: no datasource for this dataset — "
@@ -66,11 +68,11 @@ def test_ambiguous_datasource_is_an_error(workspace: Workspace) -> None:
     [
         (
             "  - row_cont > 0\n",
-            "4:5: error: unknown metric 'row_cont' — did you mean 'row_count'?",
+            "4:7: error: unknown metric 'row_cont' — did you mean 'row_count'?",
         ),
-        ("  - row_count >\n", "4:16: error: expected a number"),
-        ('  - "row_count >"\n', "4:17: error: expected a number"),
-        ("  - row_count\n", "4:14: error: expected a comparison after 'row_count'"),
+        ("  - row_count >\n", "4:18: error: expected a number"),
+        ('  - "row_count >"\n', "4:19: error: expected a number"),
+        ("  - row_count\n", "4:16: error: expected a comparison after 'row_count'"),
         ("  - missing_count(a) < 1%\n", "did you mean missing_percent?"),
         ("  - freshness(ts) < 6\n", "freshness is a duration — give a unit"),
         ("  - row_count < 6h\n", "'6h' is a duration, but row_count is not"),
@@ -83,24 +85,29 @@ def test_ambiguous_datasource_is_an_error(workspace: Workspace) -> None:
         ("  - failed_rows\n", "failed_rows needs a condition"),
         (
             "  - avg(a) > 0:\n      whre: a > 0\n",
-            "5:7: error: unknown option for avg 'whre'",
+            "7:11: error: unknown option for avg 'whre'",
         ),
         ("  - schema:\n      where: a > 0\n", "unknown option for schema 'where'"),
         ("  - row_count > 0:\n      warn: when < 5\n", "not both"),
         (
             "  - row_count:\n      warn: < 5\n",
-            "5:13: error: a trigger starts with 'when'",
+            "7:17: error: a trigger starts with 'when'",
         ),
         (
             "  - invalid_count(x) = 0:\n      valid_min: ten\n",
             "`valid_min:` must be a number",
         ),
-        ("  - row_count > 0:\n      id: 'has space'\n", "invalid id 'has space'"),
-        ("  - [row_count > 0]\n", "a check is an expression"),
+        (
+            "  - row_count > 0:\n      id: 'has space'\n",
+            '"id:" is not used here — a check\'s name is its identity',
+        ),
+        ("  - [row_count > 0]\n", "a clause is an expression"),
     ],
 )
 def test_check_diagnostics(workspace: Workspace, checks: str, expected: str) -> None:
-    workspace.write("checks/t.yml", "dataset: t\ndatasource: duck\nchecks:\n" + checks)
+    workspace.write(
+        "checks/t.yml", "dataset: t\ndatasource: duck\n" + named_checks(checks)
+    )
     found = messages(workspace)
     assert len(found) == 1, found
     assert expected in found[0]
@@ -110,7 +117,7 @@ def test_check_diagnostics(workspace: Workspace, checks: str, expected: str) -> 
 def test_file_level_diagnostics(workspace: Workspace) -> None:
     workspace.write("checks/a.yml", "datasets: t\nchecks: []\n")
     workspace.write(
-        "checks/b.yml", "dataset: t\ndatasource: nope\nchecks:\n  - row_count > 0\n"
+        "checks/b.yml", "dataset: t\ndatasource: nope\nchecks:\n  c1: row_count > 0\n"
     )
     workspace.write("checks/c.yml", "dataset: [t\n")
     found = messages(workspace)
@@ -127,7 +134,7 @@ def test_file_level_diagnostics(workspace: Workspace) -> None:
 def test_all_problems_are_reported_in_one_pass(workspace: Workspace) -> None:
     workspace.write(
         "checks/t.yml",
-        "dataset: t\ndatasource: duck\nchecks:\n  - row_cont > 0\n  - row_count >\n  - row_count > 0\n",
+        "dataset: t\ndatasource: duck\nchecks:\n  c1: row_cont > 0\n  c2: row_count >\n  c3: row_count > 0\n",
     )
     project = workspace.load()
     assert len(project.diagnostics) == 2
@@ -135,26 +142,50 @@ def test_all_problems_are_reported_in_one_pass(workspace: Workspace) -> None:
 
 
 def test_identity_is_stable_and_scoped(workspace: Workspace) -> None:
-    body = "dataset: t\ndatasource: duck\nchecks:\n  - row_count > 0\n  - row_count > 0:\n      where: grp = 'a'\n"
+    body = (
+        "dataset: t\ndatasource: duck\nchecks:\n"
+        "  orders_usable:\n    clauses:\n      - row_count > 0\n"
+        "      - row_count > 0:\n          where: grp = 'a'\n"
+        "          name: scoped\n"
+    )
     workspace.write("checks/t.yml", body)
-    first = [c.id for c in workspace.load().checks]
-    workspace.write("checks/t.yml", body.replace("row_count > 0\n", "row_count>0\n", 1))
-    second = [c.id for c in workspace.load().checks]
+    [check] = workspace.load().checks
+    first = [c.id for c in check.clauses]
+    workspace.write("checks/t.yml", body.replace("row_count > 0", "row_count>0"))
+    [check] = workspace.load().checks
+    second = [c.id for c in check.clauses]
     assert first == second  # canonical text, not source text
-    assert len(set(first)) == 2  # where: makes them distinct checks
+    assert len(set(first)) == 2  # where: makes them distinct clauses
 
 
-def test_duplicate_checks_need_an_explicit_id(workspace: Workspace) -> None:
+def test_duplicate_check_names_across_files_in_one_dataset(
+    workspace: Workspace,
+) -> None:
+    workspace.write(
+        "checks/a.yml",
+        "dataset: t\ndatasource: duck\nchecks:\n  orders_usable: row_count > 0\n",
+    )
+    workspace.write(
+        "checks/b.yml",
+        "dataset: t\ndatasource: duck\nchecks:\n  orders_usable: row_count > 1\n",
+    )
+    found = messages(workspace)
+    assert any(
+        'duplicate check name "orders_usable" — names must be unique within a '
+        "dataset (first at checks/a.yml:4:3)" in m
+        for m in found
+    ), found
+
+
+def test_id_is_rejected_at_check_level_too(workspace: Workspace) -> None:
     workspace.write(
         "checks/t.yml",
-        "dataset: t\ndatasource: duck\nchecks:\n  - row_count > 0\n  - row_count > 0\n",
+        "dataset: t\ndatasource: duck\nchecks:\n"
+        "  c1:\n    clauses:\n      - row_count > 0\n    id: mine\n",
     )
-    assert "duplicate check (also at checks/t.yml:4:5)" in messages(workspace)[0]
-    workspace.write(
-        "checks/t.yml",
-        "dataset: t\ndatasource: duck\nchecks:\n  - row_count > 0\n  - row_count > 0:\n      id: again\n",
-    )
-    assert [c.id for c in workspace.load().checks][1] == "again"
+    found = messages(workspace)
+    assert len(found) == 1, found
+    assert '"id:" is not used here — a check\'s name is its identity' in found[0]
 
 
 def test_env_references_are_not_resolved_at_load(tmp_path: Path) -> None:
@@ -163,7 +194,7 @@ def test_env_references_are_not_resolved_at_load(tmp_path: Path) -> None:
         "tablewatch.yml",
         "name: x\ndatasources:\n  pg: {type: postgres, host: '${env:TW_UNSET_HOST}', database: d}\n",
     )
-    ws.write("checks/a.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    ws.write("checks/a.yml", "dataset: t\nchecks:\n  c1: row_count > 0\n")
     assert ws.load().ok
 
 

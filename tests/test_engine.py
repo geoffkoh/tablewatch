@@ -12,6 +12,7 @@ from tablewatch.engine.planner import DatasetPlan, plan_dataset
 from tablewatch.engine.runner import RunResult, run_checks
 from tablewatch.metrics.base import Measurement
 from tests.conftest import NOW, Workspace
+from tests.named import named_checks
 
 MANY_AGGREGATES = """\
   - row_count > 0
@@ -28,7 +29,7 @@ MANY_AGGREGATES = """\
 
 
 def _plan(ws: Workspace, checks: str) -> DatasetPlan:
-    ws.write("checks/t.yml", "dataset: t\ndatasource: lite\nchecks:\n" + checks)
+    ws.write("checks/t.yml", "dataset: t\ndatasource: lite\n" + named_checks(checks))
     project = ws.load()
     assert project.ok, project.diagnostics
     [dataset] = project.datasets
@@ -73,7 +74,7 @@ def test_one_bad_column_errors_only_its_own_check(workspace: Workspace) -> None:
 
 def test_unreachable_datasource_errors_every_check(workspace: Workspace) -> None:
     workspace.write(
-        "checks/t.yml", "dataset: t\ndatasource: lite\nchecks:\n  - row_count > 0\n"
+        "checks/t.yml", "dataset: t\ndatasource: lite\nchecks:\n  c1: row_count > 0\n"
     )
     project = workspace.load()
 
@@ -94,7 +95,7 @@ def test_missing_env_variable_is_a_check_error_not_a_crash(
         "tablewatch.yml",
         "name: x\ndatasources:\n  pg: {type: postgres, host: '${env:TW_UNSET}', database: d}\n",
     )
-    workspace.write("checks/t.yml", "dataset: t\nchecks:\n  - row_count > 0\n")
+    workspace.write("checks/t.yml", "dataset: t\nchecks:\n  c1: row_count > 0\n")
     project = workspace.load()
     [result] = run_checks(project, project.checks, trigger="test", now=NOW).results
     assert result.outcome is Outcome.ERROR
@@ -105,10 +106,10 @@ def test_datasources_run_in_parallel_results_keep_file_order(
     workspace: Workspace,
 ) -> None:
     workspace.write(
-        "checks/a.yml", "dataset: t\ndatasource: lite\nchecks:\n  - row_count = 5\n"
+        "checks/a.yml", "dataset: t\ndatasource: lite\nchecks:\n  c1: row_count = 5\n"
     )
     workspace.write(
-        "checks/b.yml", "dataset: t\ndatasource: duck\nchecks:\n  - row_count = 5\n"
+        "checks/b.yml", "dataset: t\ndatasource: duck\nchecks:\n  c1: row_count = 5\n"
     )
     project = workspace.load()
     run = run_checks(project, project.checks, trigger="test", now=NOW)
@@ -135,7 +136,7 @@ def test_exit_codes(workspace: Workspace) -> None:
 
 
 def _load(ws: Workspace, checks: str) -> Project:
-    ws.write("checks/t.yml", "dataset: t\ndatasource: lite\nchecks:\n" + checks)
+    ws.write("checks/t.yml", "dataset: t\ndatasource: lite\n" + named_checks(checks))
     return ws.load()
 
 

@@ -18,7 +18,7 @@ from sqlalchemy.exc import CompileError
 from sqlalchemy.sql import ClauseElement, Select
 from sqlalchemy.sql.expression import FromClause
 
-from tablewatch.checks.model import Check, Dataset
+from tablewatch.checks.model import Clause, Dataset
 from tablewatch.metrics.base import (
     AggregateMeasure,
     Measure,
@@ -40,10 +40,10 @@ class DatasetPlan:
     aggregates: dict[str, AggregateMeasure] = field(default_factory=dict)
     queries: dict[str, QueryMeasure] = field(default_factory=dict)
     needs_schema: bool = False
-    # check id -> (role -> measure key)
+    # clause id -> (role -> measure key)
     wiring: dict[str, dict[str, str]] = field(default_factory=dict)
     contexts: dict[str, MetricContext] = field(default_factory=dict)
-    # check id -> why the check could not be planned (an OptionValueError)
+    # clause id -> why the clause could not be planned (an OptionValueError)
     errors: dict[str, str] = field(default_factory=dict)
 
     def scan(self) -> Select[tuple[object, ...]] | None:
@@ -82,25 +82,27 @@ def plan_dataset(
     dialect: Dialect,
     now: datetime,
     timezone: ZoneInfo,
-    checks: list[Check] | None = None,
+    clauses: list[Clause] | None = None,
 ) -> DatasetPlan:
     target = table_clause(dataset)
     plan = DatasetPlan(dataset=dataset, table=target)
-    for check in checks if checks is not None else dataset.checks:
+    if clauses is None:
+        clauses = [clause for check in dataset.checks for clause in check.clauses]
+    for clause in clauses:
         ctx = MetricContext(
-            check=check, table=target, now=now, timezone=timezone, dialect=dialect
+            clause=clause, table=target, now=now, timezone=timezone, dialect=dialect
         )
-        plan.contexts[check.id] = ctx
+        plan.contexts[clause.id] = ctx
         wiring: dict[str, str] = {}
         try:
-            measures = check.metric.measures(ctx)
+            measures = clause.metric.measures(ctx)
         except OptionValueError as exc:
-            # This check cannot be built; the others on the dataset still run.
-            plan.errors[check.id] = str(exc)
+            # This clause cannot be built; the others on the dataset still run.
+            plan.errors[clause.id] = str(exc)
             measures = {}
         for role, measure in measures.items():
             wiring[role] = _add(plan, measure, dialect)
-        plan.wiring[check.id] = wiring
+        plan.wiring[clause.id] = wiring
     return plan
 
 

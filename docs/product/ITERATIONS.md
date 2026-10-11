@@ -10,6 +10,43 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 32 — Named checks with clauses, part 1: the language and evaluation (I-46 part 1), 2026-10-09
+
+- **Spec:** [032-named-checks-part-1](specs/032-named-checks-part-1.md). **Branch:** `iter/032`.
+  Full track. No items added (freeze).
+- **PLAN** split I-46 three ways: part 1 the language and evaluation; part 2 the registry (surrogate
+  id, per-clause rows) planned with I-49 so the store migrates once; part 3 lifecycle and sync.
+- **REFINE.** Architect → Q1, Q2, Q4, Q5: today's `Check` becomes `Clause`, a new `Check` holds the
+  name and clauses, one fold (`CheckResult.outcome`); planner keyed by clause id, executor unchanged
+  (one scan); clause key = `name:` or the metric call; part 1 keeps the store schema: a summary row per
+  check plus a row per clause under an independent hash. Data-steward → Q3, Q4: the console layout,
+  names `^[A-Za-z][A-Za-z0-9_-]*$` (reserving `.` `:` `/`), clause history surviving a threshold edit.
+  Tech lead added D9 (`name: <expression>` for one clause) and D2 (all-skipped → skipped).
+- **Shipped:** `checks:` maps names to an expression or `clauses:`; the check takes its worst clause;
+  the name is the identity (file moves and clause edits keep it); `id:` and the list shape are
+  diagnostics; `--check`/`history` take a name; JSON `schema_version` 2; JUnit one testcase per check;
+  `/api/v1/checks` adds `clauses` (unit null for several). The retail example, `init` template, docs
+  and README moved. Suite: **2588 passed, 44 skipped, 16 xfailed**.
+- **Test migration.** 1,191 tests broke on the language change; a converter (`tests/named.py`) and
+  three Sonnet agents moved the fixtures. Three usage-limit stops cost resumes, not rework.
+- **Reviewer findings and resolution:**
+  - *architect (targeted re-check) — approve-with-followups; fixed:* unit null for several clauses,
+    `CHECK_METRIC` imported in the server, one id pattern, tally moved to the console, a check-level
+    `id:` no longer hides its clauses' diagnostics. Not fixed (accepted): a duplicate key still stops
+    the rest of that file, as before.
+  - *qa-engineer — pass; 33 tests, 5 strict xfails, all fixed:* typed keys (`true:`, `~:`) echoed as
+    written, a bare `clauses:` pointed at its key, a name now wins over an id prefix in `--check`
+    (as in `history`), clause ids pinned in a golden test; it also confirmed the `history_page`
+    filter stops a clause's history leaking through `/checks/{id}/history`.
+  - *data-steward — accept; 15/15 must scenarios via the CLI.* Spec said exit 2 for invalid files;
+    the contract is 3 (fixed in the spec). DuckDB's binder text in a missing-column message is
+    pre-existing.
+- **Not added (backlog freeze):** clause-level views in the web UI — part 2 ("API and UI follow").
+- **Lesson:** a language change is mostly a test-fixture migration; a converter that keeps a one-line
+  item on its own line kept most `file:line` expectations stable.
+- **Backlog:** I-46 stays in progress — part 2 (registry, with I-49) next. The owner asked to stop
+  after this iteration.
+
 ## Iteration 31 — Postgres results store, part 1: verified in CI, shared safely (I-14 part 1), 2026-10-04
 
 - **Spec:** [031-postgres-results-store](specs/031-postgres-results-store.md). **Branch:**

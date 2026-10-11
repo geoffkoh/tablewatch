@@ -22,11 +22,12 @@ from ruamel.yaml.nodes import MappingNode
 from tablewatch.checks.model import (
     DATASOURCE_NAME,
     Check,
+    Clause,
     Dataset,
     DatasourceState,
     SourceSpan,
-    canonical_text,
     derive_check_id,
+    derive_clause_id,
 )
 from tablewatch.checks.sources import FileSource, file_format
 from tablewatch.config.project import (
@@ -64,14 +65,18 @@ CHECK_FILE_SUFFIXES = frozenset({".yml", ".yaml"})
 
 DATASET_KEYS = ("dataset", "datasource", "filter", "owner", "tags", "notify", "checks")
 DEFAULTS_KEYS = ("datasource", "owner", "tags", "notify")
-COMMON_CHECK_KEYS = ("name", "id", "warn", "fail", "notify")
+CHECK_KEYS = ("clauses", "notify")
+COMMON_CLAUSE_KEYS = ("name", "warn", "fail")
+# Check and clause names. `.`, `:` and `/` are kept out for references to
+# checks and clauses (`orders.usable`, `orders.usable.row_count`); a name
+# starts with a letter so it never reads as a number.
+NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
+MAX_NAME_LENGTH = 64
+ID_UNUSED = '"id:" is not used here — a check\'s name is its identity'
 # Notifier names: echoed in diagnostics and on stderr, so nothing that could
 # be a URL or a secret. `owner` is kept for routing to a check's owner (I-11).
 NOTIFIER_NAME = DATASOURCE_NAME
 RESERVED_NOTIFIER = "owner"
-ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
-# The results store's check_id column is this wide.
-MAX_ID_LENGTH = 64
 
 
 @dataclass
@@ -413,11 +418,25 @@ class _ChecksLoader:
         checks = node.get("checks")
         if checks is None:
             self.diagnostics.append(
-                error("missing `checks:` list", source.of_key(node, "dataset"))
+                error(
+                    "missing `checks:` — a mapping of check name to clauses",
+                    source.of_key(node, "dataset"),
+                )
             )
-        elif not isinstance(checks, CommentedSeq):
+        elif isinstance(checks, CommentedSeq):
             self.diagnostics.append(
-                error("`checks:` must be a list", source.of_value(node, "checks"))
+                error(
+                    '"checks:" is a mapping of name to clauses — a list is the old '
+                    "unnamed shorthand, no longer supported",
+                    source.of_key(node, "checks"),
+                )
+            )
+        elif not isinstance(checks, CommentedMap):
+            self.diagnostics.append(
+                error(
+                    "`checks:` must be a mapping of check name to clauses",
+                    source.of_value(node, "checks"),
+                )
             )
         else:
             if not checks:
@@ -425,8 +444,8 @@ class _ChecksLoader:
                     warning("`checks:` is empty", source.of_key(node, "checks"))
                 )
             root = _composed(source.text or "")
-            for index in range(len(checks)):
-                check = self._load_check(source, dataset, checks, index)
+            for index, name in enumerate(checks):
+                check = self._load_check(source, dataset, checks, name)
                 if check is not None:
                     if root is not None:
                         check.span = _span(dataset.source_lines, root, index)
@@ -536,13 +555,119 @@ class _ChecksLoader:
     # -- checks --
 
     def _load_check(
-        self, source: YAMLSource, dataset: Dataset, checks: CommentedSeq, index: int
+        self, source: YAMLSource, dataset: Dataset, checks: CommentedMap, name: Any
     ) -> Check | None:
-        item = checks[index]
+        """One named check: `name: <expression>` or `name: {clauses: [...]}`."""
+        name_at = source.of_key(checks, name)
+        written = None if isinstance(name, str) else _key_text(source, name_at)
+        if not self._name_ok(name, "check", name_at, written):
+            return None
+        value = checks[name]
+        items: list[tuple[Any, SourceLocation]]
+        own_notify: tuple[str, ...] | None = None
+        clean = True
+        if isinstance(value, str):
+            items = [(value, source.of_value(checks, name))]
+        elif isinstance(value, CommentedMap) and "clauses" in value:
+            clean = "id" not in value
+            if not clean:
+                # Reported, and its clauses still checked: one pass (rule 5).
+                self.diagnostics.append(error(ID_UNUSED, source.of_key(value, "id")))
+            self._reject_unknown(source, value, (*CHECK_KEYS, "id"), "key for a check")
+            own_notify = self._notify(source, value)
+            clauses = value["clauses"]
+            if not isinstance(clauses, CommentedSeq) or not clauses:
+                self.diagnostics.append(
+                    error(
+                        "`clauses:` must be a list of one or more expressions",
+                        source.of_key(value, "clauses")
+                        if clauses is None
+                        else source.of_value(value, "clauses"),
+                    )
+                )
+                return None
+            items = [
+                (clauses[i], source.of_item(clauses, i)) for i in range(len(clauses))
+            ]
+        else:
+            self.diagnostics.append(
+                error(
+                    f'check "{name}" needs an expression, or `clauses:` with a list '
+                    "of them",
+                    source.of_value(checks, name) if value is not None else name_at,
+                )
+            )
+            return None
+
+        check = Check(
+            id=derive_check_id(dataset.datasource, dataset.name, name),
+            name=name,
+            dataset=dataset,
+            location=name_at,
+            notify=dataset.notify if own_notify is None else own_notify,
+        )
+        if check.id in self._ids:
+            self.diagnostics.append(
+                error(
+                    f'duplicate check name "{name}" — names must be unique within '
+                    f"a dataset (first at {self._ids[check.id]})",
+                    name_at,
+                )
+            )
+            return None
+        self._ids[check.id] = name_at
+
+        keys: set[str] = set()
+        for item, item_at in items:
+            clause = self._load_clause(source, check, item, item_at)
+            if clause is None:
+                clean = False
+                continue
+            if clause.key in keys:
+                self.diagnostics.append(
+                    error(
+                        f'duplicate clause "{clause.key}" in check "{name}" — '
+                        "give one of them a name:",
+                        clause.location,
+                    )
+                )
+                clean = False
+                continue
+            keys.add(clause.key)
+            check.clauses.append(clause)
+        return check if clean else None
+
+    def _name_ok(
+        self, name: Any, kind: str, at: SourceLocation, written: str | None = None
+    ) -> bool:
+        if isinstance(name, str) and len(name) > MAX_NAME_LENGTH:
+            self.diagnostics.append(
+                error(
+                    f"{kind} name is {len(name)} characters — at most "
+                    f"{MAX_NAME_LENGTH}",
+                    at,
+                )
+            )
+            return False
+        if not isinstance(name, str) or not NAME_PATTERN.fullmatch(name):
+            self.diagnostics.append(
+                error(
+                    f'{kind} name "{_printable(written or str(plain(name)))}" is not '
+                    "valid — "
+                    'use letters, digits, "_" and "-", starting with a letter',
+                    at,
+                )
+            )
+            return False
+        return True
+
+    def _load_clause(
+        self, source: YAMLSource, check: Check, item: Any, item_at: SourceLocation
+    ) -> Clause | None:
         options_node: CommentedMap
         if isinstance(item, str):
             text = str(item)
-            text_at = source.of_item(checks, index).shifted(quote_offset(item))
+            text_at = item_at.shifted(quote_offset(item))
             options_node = CommentedMap()
         elif isinstance(item, CommentedMap) and len(item) == 1:
             key = next(iter(item))
@@ -564,8 +689,8 @@ class _ChecksLoader:
         else:
             self.diagnostics.append(
                 error(
-                    "a check is an expression, or one `expression: {options}` mapping",
-                    source.of_item(checks, index),
+                    "a clause is an expression, or one `expression: {options}` mapping",
+                    item_at,
                 )
             )
             return None
@@ -603,8 +728,11 @@ class _ChecksLoader:
                 return None
         self._check_arguments(metric, expression.metric.args, text_at)
 
+        if "id" in options_node:
+            self.diagnostics.append(error(ID_UNUSED, source.of_key(options_node, "id")))
+            return None
         allowed = (
-            *COMMON_CHECK_KEYS,
+            *COMMON_CLAUSE_KEYS,
             *(("where",) if metric.scoped else ()),
             *metric.options,
         )
@@ -695,77 +823,30 @@ class _ChecksLoader:
         ):
             return None
 
-        canonical = canonical_text(expression, warn, fail)
-        check_id = self._string(source, options_node, "id")
-        if check_id is not None and not ID_PATTERN.match(check_id):
-            self.diagnostics.append(
-                error(
-                    f"invalid id '{check_id}' — use letters, digits, '.', '_', ':' or '-'",
-                    source.of_value(options_node, "id"),
-                )
-            )
-            return None
-        if check_id is not None and len(check_id) > MAX_ID_LENGTH:
-            self.diagnostics.append(
-                error(
-                    f"id is {len(check_id)} characters — at most {MAX_ID_LENGTH}",
-                    source.of_value(options_node, "id"),
-                )
-            )
-            return None
-        explicit_id = check_id is not None
         where = self._string(source, options_node, "where")
         if where is None and "where" in options_node:
-            # Reported by _string; without its scope this check would also
-            # collide with the same check unscoped — a second, phantom error.
+            # Reported by _string; without its scope this clause would also
+            # collide with the same clause unscoped — a second, phantom error.
             return None
-        name = self._string(source, options_node, "name")
-        if name is not None and any(ord(c) < 32 or ord(c) == 127 for c in name):
-            # Postgres refuses a NUL outright; stripping it would change the
-            # name the steward wrote without saying so.
-            self.diagnostics.append(
-                error(
-                    "a check name cannot hold control characters",
-                    source.of_value(options_node, "name"),
-                )
-            )
-            return None
-        own_notify = self._notify(source, options_node)
-        check_id = check_id or derive_check_id(
-            dataset.path,
-            dataset.name,
-            canonical,
-            where,
-            identity=[
-                (name, str(options[name]))
-                for name in metric.identity_options
-                if name in options
-            ],
-        )
-        if check_id in self._ids:
-            if explicit_id:
-                message = (
-                    f"the id '{check_id}' is already used at {self._ids[check_id]} — "
-                    "ids must be unique in the project"
-                )
-            else:
-                fix = (
-                    "put both lists in one `schema` check, or "
-                    if metric.name == "schema"
-                    else ""
-                )
-                message = (
-                    f"duplicate check (also at {self._ids[check_id]}) — "
-                    f"{fix}give one of them an explicit `id:`"
-                )
-            self.diagnostics.append(error(message, text_at))
-            return None
-        self._ids[check_id] = text_at
-
-        return Check(
-            id=check_id,
-            name=name or canonical,
-            dataset=dataset,
+        key = expression.subject
+        if "name" in options_node:
+            name = options_node["name"]
+            if not self._name_ok(name, "clause", source.of_value(options_node, "name")):
+                return None
+            key = name
+        return Clause(
+            id=derive_clause_id(
+                check.id,
+                key,
+                where,
+                identity=[
+                    (option, str(options[option]))
+                    for option in metric.identity_options
+                    if option in options
+                ],
+            ),
+            key=key,
+            check=check,
             metric=metric,
             expression=expression,
             location=text_at,
@@ -774,7 +855,6 @@ class _ChecksLoader:
             fail=fail,
             where=where,
             options=options,
-            notify=dataset.notify if own_notify is None else own_notify,
         )
 
     def _check_arguments(
@@ -1125,6 +1205,21 @@ def _own_key_line(source: YAMLSource, node: CommentedMap, key: str) -> int | Non
     """The 1-based line of a key written in this mapping; None if absent or merged."""
     own = source.of_own_key(node, key)
     return own.line if own is not None else None
+
+
+def _key_text(source: YAMLSource, at: SourceLocation) -> str | None:
+    """A mapping key as written (`true`, `~`), not as YAML typed it."""
+    lines = split_lines(source.text or "")
+    if not 1 <= at.line <= len(lines):
+        return None
+    rest = lines[at.line - 1][at.column - 1 :]
+    key, colon, _ = rest.partition(":")
+    return key.strip() if colon and key.strip() else None
+
+
+def _printable(text: str) -> str:
+    """A name as it may be echoed: control characters shown escaped."""
+    return "".join(c if c.isprintable() else repr(c)[1:-1] for c in text)
 
 
 def _article(noun: str) -> str:

@@ -1,12 +1,16 @@
 dataset: sales.customers
 
 checks:
-  - row_count > 0
-  - duplicate_count(customer_id) = 0
-  - missing_percent(email) < 5%:
-      missing_values: ['', 'N/A']
-  - invalid_count(country) = 0:
-      valid_values: [SG, MY, ID, TH, VN, PH]
-  - invalid_count(email) = 0:
-      valid_regex: '^[^@]+@[^@]+\.[a-z]+$'
-      missing_values: ['', 'N/A']
+  customers_present: row_count > 0
+  unique_customers: duplicate_count(customer_id) = 0
+  contactable:
+    clauses:
+      - missing_percent(email) < 5%:
+          missing_values: ['', 'N/A']
+      - invalid_count(email) = 0:
+          valid_regex: '^[^@]+@[^@]+\.[a-z]+$'
+          missing_values: ['', 'N/A']
+  known_countries:
+    clauses:
+      - invalid_count(country) = 0:
+          valid_values: [SG, MY, ID, TH, VN, PH]

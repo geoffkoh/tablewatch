@@ -22,7 +22,7 @@ import pytest
 import tablewatch as tw
 from tablewatch.checks.model import Outcome
 from tablewatch.config import load_project
-from tablewatch.engine.runner import CheckResult, RunResult
+from tablewatch.engine.runner import CheckResult, ClauseResult, RunResult
 from tablewatch.notify.base import NotifyError
 from tablewatch.notify.http import post_json
 from tablewatch.results.store import PageKey, ResultStore
@@ -400,17 +400,19 @@ def test_an_empty_list_on_one_check_silences_only_that_check(
     _write(
         project,
         "checks/sales/orders.yml",
-        ORDERS.replace("name: has a", "name: has a\n          notify: []"),
+        ORDERS.replace(
+            "has_a:\n        clauses:", "has_a:\n        notify: []\n        clauses:"
+        ),
     )
     checks = {c.name: c.notify for c in load_project(project).checks}
     assert checks == {
-        "has a": (),
-        "has b": ("data-alerts",),
-        "has c": ("data-alerts",),
+        "has_a": (),
+        "has_b": ("data-alerts",),
+        "has_c": ("data-alerts",),
     }
     set_rows(project)
     tw.run(project)
-    assert sorted(_names(hook)) == [("has b", "failing"), ("has c", "failing")]
+    assert sorted(_names(hook)) == [("has_b", "failing"), ("has_c", "failing")]
 
 
 def test_a_duplicate_name_sends_one_event(project: Path, hook: Hook) -> None:
@@ -422,7 +424,7 @@ def test_a_duplicate_name_sends_one_event(project: Path, hook: Hook) -> None:
     set_rows(project, "b", "c")
     tw.run(project)
     assert len(hook.bodies) == 1
-    assert _names(hook) == [("has a", "failing")]
+    assert _names(hook) == [("has_a", "failing")]
 
 
 def test_off_in_a_folder_and_back_on_in_a_dataset(project: Path, hook: Hook) -> None:
@@ -437,19 +439,19 @@ def test_off_in_a_folder_and_back_on_in_a_dataset(project: Path, hook: Hook) -> 
     _write(
         project,
         "checks/sales/other.yml",
-        "dataset: orders\ndatasource: lite\nchecks:\n  - row_count > 5\n",
+        "dataset: orders\ndatasource: lite\nchecks:\n  other_order_count: row_count > 5\n",
     )
     _write(
         project,
         "checks/top.yml",
-        "dataset: orders\ndatasource: lite\nchecks:\n  - row_count > 6\n",
+        "dataset: orders\ndatasource: lite\nchecks:\n  top_order_count: row_count > 6\n",
     )
     loaded = load_project(project)
     assert loaded.ok, loaded.diagnostics
     by_file = {(c.dataset.path.as_posix(), c.name): c.notify for c in loaded.checks}
-    assert by_file[("checks/sales/orders.yml", "has a")] == ("data-alerts",)
-    assert by_file[("checks/sales/other.yml", "row_count > 5")] == ()
-    assert by_file[("checks/top.yml", "row_count > 6")] == ("backup",)
+    assert by_file[("checks/sales/orders.yml", "has_a")] == ("data-alerts",)
+    assert by_file[("checks/sales/other.yml", "other_order_count")] == ()
+    assert by_file[("checks/top.yml", "top_order_count")] == ("backup",)
 
 
 @pytest.mark.parametrize(
@@ -466,7 +468,7 @@ def test_more_malformed_notify(project: Path, value: str, column: int) -> None: 
     _write(
         project,
         "checks/sales/orders.yml",
-        f"dataset: orders\ndatasource: lite\nnotify: {value}\nchecks:\n  - row_count > 0\n",
+        f"dataset: orders\ndatasource: lite\nnotify: {value}\nchecks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3
@@ -481,7 +483,7 @@ def test_an_empty_notify_is_a_diagnostic(project: Path) -> None:  # N14: `notify
     _write(
         project,
         "checks/sales/orders.yml",
-        "dataset: orders\ndatasource: lite\nnotify:\nchecks:\n  - row_count > 0\n",
+        "dataset: orders\ndatasource: lite\nnotify:\nchecks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3, out + err
@@ -503,12 +505,15 @@ def test_a_check_level_mapping_is_a_diagnostic(project: Path) -> None:  # N14, D
         project,
         "checks/sales/orders.yml",
         "dataset: orders\ndatasource: lite\nchecks:\n"
-        "  - row_count > 0:\n      notify: {to: [data-alerts]}\n",
+        "  big_order_count:\n"
+        "    clauses:\n"
+        "      - row_count > 0\n"
+        "    notify: {to: [data-alerts]}\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3
     assert (
-        "checks/sales/orders.yml:5:15: error: `notify:` must be a notifier name"
+        "checks/sales/orders.yml:7:13: error: `notify:` must be a notifier name"
     ) in out + err
 
 
@@ -518,20 +523,23 @@ def test_every_notify_mistake_in_one_pass(project: Path) -> None:  # N13, rule 5
         project,
         "checks/sales/orders.yml",
         "dataset: orders\ndatasource: lite\nnotify: 3\nchecks:\n"
-        "  - row_count > 0:\n      notify: [nope2]\n",
+        "  big_order_count:\n"
+        "    clauses:\n"
+        "      - row_count > 0\n"
+        "    notify: [nope2]\n",
     )
     _write(
         project,
         "checks/b.yml",
         "dataset: orders\ndatasource: lite\nnotify: [data-alerts, nope3]\n"
-        "checks:\n  - row_count > 0\n",
+        "checks:\n  c1: row_count > 0\n",
     )
     code, out, err = invoke(project, "validate")
     assert code == 3
     text = out + err
     assert "checks/sales/_defaults.yml:1:9: error: unknown notifier 'nope1'" in text
     assert "checks/sales/orders.yml:3:9: error: `notify:` must be" in text
-    assert "checks/sales/orders.yml:6:16: error: unknown notifier 'nope2'" in text
+    assert "checks/sales/orders.yml:8:14: error: unknown notifier 'nope2'" in text
     assert "checks/b.yml:3:23: error: unknown notifier 'nope3'" in text
 
 
@@ -602,7 +610,10 @@ def _seed(
         trigger="test",
         finished_at=started_at,
         results=[
-            CheckResult(c, Outcome(outcomes[c.name]), None, None)
+            CheckResult(
+                c,
+                [ClauseResult(c.clauses[0], Outcome(outcomes[c.name]), None, None)],
+            )
             for c in loaded.checks
             if c.name in outcomes
         ],
@@ -613,12 +624,12 @@ def _seed(
 
 def test_previous_results_orders_by_time_then_id(project: Path) -> None:  # D4, PageKey
     t = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
-    _seed(project, {"has a": "pass"}, t - timedelta(hours=1), "1" * 32)
-    _seed(project, {"has a": "fail"}, t, "2" * 32)  # same moment, lower id: before
-    _seed(project, {"has a": "error"}, t, "8" * 32)  # same moment, higher id: after
-    _seed(project, {"has a": "warn"}, t + timedelta(microseconds=1), "0" * 32)
+    _seed(project, {"has_a": "pass"}, t - timedelta(hours=1), "1" * 32)
+    _seed(project, {"has_a": "fail"}, t, "2" * 32)  # same moment, lower id: before
+    _seed(project, {"has_a": "error"}, t, "8" * 32)  # same moment, higher id: after
+    _seed(project, {"has_a": "warn"}, t + timedelta(microseconds=1), "0" * 32)
     loaded = load_project(project)
-    check = next(c.id for c in loaded.checks if c.name == "has a")
+    check = next(c.id for c in loaded.checks if c.name == "has_a")
     with ResultStore.open(loaded.config.results.url, project) as store:
         found = store.previous_results(
             loaded.config.name, [check], PageKey(t, "5" * 32)
@@ -631,26 +642,26 @@ def test_a_later_concurrent_run_is_not_this_runs_history(
 ) -> None:  # D4: runs at or after this one are left out
     # Another run, started an hour from now, already recorded `fail`.
     future = datetime.now(UTC) + timedelta(hours=1)
-    _seed(project, {"has a": "pass"}, future - timedelta(days=1), uuid.uuid4().hex)
-    _seed(project, {"has a": "fail"}, future, uuid.uuid4().hex)
+    _seed(project, {"has_a": "pass"}, future - timedelta(days=1), uuid.uuid4().hex)
+    _seed(project, {"has_a": "fail"}, future, uuid.uuid4().hex)
     set_rows(project, "b", "c")
     tw.run(project)
-    assert _names(hook) == [("has a", "failing")]
+    assert _names(hook) == [("has_a", "failing")]
     assert hook.events[0]["previous_outcome"] == "pass"
 
 
 @pytest.mark.parametrize(
     ("earlier", "rows", "expected"),
     [
-        (("fail", "error"), ("a", "b", "c"), [("has a", "recovered", "fail")]),  # N6
+        (("fail", "error"), ("a", "b", "c"), [("has_a", "recovered", "fail")]),  # N6
         (("error", "skipped"), (), []),  # N27: now error, table dropped
-        (("fail", "warn"), ("a", "b", "c"), [("has a", "recovered", "fail")]),  # N28
+        (("fail", "warn"), ("a", "b", "c"), [("has_a", "recovered", "fail")]),  # N28
         (("pass", "error"), ("a", "b", "c"), []),  # N30
         (("pass", "warn"), ("a", "b", "c"), []),  # N34
         (("fail", "warn"), ("b", "c"), []),  # N34
         (("fail", "skipped"), ("b", "c"), []),  # N8
         (("fail", "error", "skipped", "warn", "error"), ("b", "c"), []),  # deep
-        (("pass",) + ("warn",) * 30, ("b", "c"), [("has a", "failing", "pass")]),
+        (("pass",) + ("warn",) * 30, ("b", "c"), [("has_a", "failing", "pass")]),
     ],
 )
 def test_the_rule_through_the_store(
@@ -663,7 +674,7 @@ def test_the_rule_through_the_store(
     start = datetime.now(UTC) - timedelta(days=1)
     for i, outcome in enumerate(earlier):
         _seed(
-            project, {"has a": outcome}, start + timedelta(minutes=i), uuid.uuid4().hex
+            project, {"has_a": outcome}, start + timedelta(minutes=i), uuid.uuid4().hex
         )
     if rows:
         set_rows(project, *rows)
@@ -673,7 +684,7 @@ def test_the_rule_through_the_store(
     got = [
         (e["check"]["name"], e["event"], e["previous_outcome"])
         for e in hook.events
-        if e["check"]["name"] == "has a"
+        if e["check"]["name"] == "has_a"
     ]
     assert got == expected
 
@@ -688,17 +699,17 @@ def test_a_path_run_ignores_an_unrun_check_and_history_continues(
         project,
         "checks/marketing/leads.yml",
         "dataset: orders\ndatasource: lite\nnotify: data-alerts\nchecks:\n"
-        "  - row_count > 3\n",
+        "  big_order_count: row_count > 3\n",
     )
     code, _, _ = invoke(project, "run")
     assert code == 1
-    assert _names(hook) == [("row_count > 3", "failing")]
+    assert _names(hook) == [("big_order_count", "failing")]
     set_rows(project, "a", "b", "c", "d")  # marketing now passes; sales unchanged
     code, _, _ = invoke(project, "run", str(project / "checks" / "sales"))
     assert code == 0
     assert len(hook.bodies) == 1
     code, _, _ = invoke(project, "run")
-    assert _names(hook)[-1] == ("row_count > 3", "recovered")
+    assert _names(hook)[-1] == ("big_order_count", "recovered")
 
 
 def test_no_store_says_why_on_the_cli(project: Path, hook: Hook) -> None:  # N17
@@ -735,11 +746,13 @@ def test_no_notify_uses_up_the_change(project: Path, hook: Hook) -> None:  # N19
 # --- payload ----------------------------------------------------------------------
 
 
-def test_unicode_names_and_tags_travel_intact(project: Path, hook: Hook) -> None:
+def test_unicode_tags_and_owner_travel_intact(
+    project: Path, hook: Hook
+) -> None:  # check/clause names are ASCII-only now (D6); tags and owner are not
     _write(
         project,
         "checks/sales/orders.yml",
-        ORDERS.replace("name: has a", 'name: "有 a — ünï ✓"').replace(
+        ORDERS.replace(
             "datasource: lite",
             "datasource: lite\n    tags: [ventas, 売上]\n    owner: dña@example.com",
         ),
@@ -748,11 +761,11 @@ def test_unicode_names_and_tags_travel_intact(project: Path, hook: Hook) -> None
     set_rows(project, "b", "c")
     result = tw.run(project)
     event = hook.events[0]
-    assert event["check"]["name"] == "有 a — ünï ✓"
+    assert event["check"]["name"] == "has_a"
     assert event["check"]["tags"] == ["ventas", "売上"]
     assert event["check"]["owner"] == "dña@example.com"
     assert event["check"]["id"] == next(
-        r.check.id for r in result.results if r.check.name == "有 a — ünï ✓"
+        r.check.id for r in result.results if r.check.name == "has_a"
     )
 
 
@@ -776,10 +789,10 @@ def test_the_docs_describe_notifications() -> None:  # N26
 
 def test_previous_results_reads_past_the_first_chunk(project: Path) -> None:  # D4
     t = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
-    _seed(project, {"has a": "pass"}, t - timedelta(hours=2), uuid.uuid4().hex)
-    _seed(project, {"has a": "error"}, t - timedelta(hours=1), uuid.uuid4().hex)
+    _seed(project, {"has_a": "pass"}, t - timedelta(hours=2), uuid.uuid4().hex)
+    _seed(project, {"has_a": "error"}, t - timedelta(hours=1), uuid.uuid4().hex)
     loaded = load_project(project)
-    check = next(c.id for c in loaded.checks if c.name == "has a")
+    check = next(c.id for c in loaded.checks if c.name == "has_a")
     wanted = [f"missing-{i}" for i in range(1100)]
     wanted.insert(1050, check)
     with ResultStore.open(loaded.config.results.url, project) as store:

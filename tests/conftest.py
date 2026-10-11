@@ -25,6 +25,7 @@ from tablewatch.cli.main import cli
 from tablewatch.config import Project, load_project
 from tablewatch.engine.runner import CheckResult, run_checks
 from tests import postgres
+from tests.named import named_checks
 from tests.postgres import pg_admin, pg_schema  # noqa: F401  (fixtures)
 
 NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
@@ -127,7 +128,7 @@ class Workspace:
         header = f"dataset: t\ndatasource: {backend}\n"
         if filter:
             header += f"filter: {filter}\n"
-        self.write("checks/t.yml", header + "checks:\n" + textwrap.dedent(checks))
+        self.write("checks/t.yml", header + named_checks(textwrap.dedent(checks)))
         project = self.load()
         assert project.ok, "\n".join(str(d) for d in project.diagnostics)
         return run_checks(project, project.checks, trigger="test", now=NOW).results

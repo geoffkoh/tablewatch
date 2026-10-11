@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateTable
 
 import tablewatch as tw
-from tablewatch.checks.model import derive_check_id
+from tablewatch.checks.model import derive_check_id, derive_clause_id
 from tablewatch.config import load_project
 from tablewatch.dsl.ast import Baseline, Change
 from tablewatch.dsl.parser import parse_check
@@ -106,24 +106,17 @@ def run_count(root: Path) -> int:
 
 # --- identity ---------------------------------------------------------------------
 
-# Computed with `main` (5f0ffef) before this iteration: part 1 ids must not move.
-GOLDEN = {
-    "change(row_count) > -20%": "34e02709cb45ea15",
-    "change(sum(amount)) between -5000 and 5000": "8a5f2cccff8134c5",
-    "change(missing_percent(email)) < 1%": "a4c67e6aeaafd4ea",
-    "change(row_count) < 100": "7d104742244988bd",
-    "change(avg(amount)) > -10%": "7c33be69494ca95e",
-    "row_count > 0": "bf60e0de98af522e",
-    "change(missing_count(last)) < 1": "25b76d1516601cc6",
-}
 
-
-@pytest.mark.parametrize(("text", "expected"), GOLDEN.items())
-def test_part_one_ids_are_golden(text: str, expected: str) -> None:  # S11
-    canonical = str(parse_check(text))
-    assert derive_check_id(Path("checks/orders.yml"), "orders", canonical, None) == (
-        expected
-    )
+# Spec 032 (D1-D3) made a check's name its only identity, breaking with no
+# migration (owner's 2026-09-27 precedent): the expression-based ids golden
+# under `main` before this iteration no longer apply. What must hold now is
+# that the id depends only on (datasource, dataset, name).
+def test_a_checks_id_depends_only_on_datasource_dataset_and_name() -> None:  # D1
+    base = derive_check_id("lite", "orders", "orders_usable")
+    assert derive_check_id("lite", "orders", "orders_usable") == base
+    assert derive_check_id("duck", "orders", "orders_usable") != base
+    assert derive_check_id("lite", "customers", "orders_usable") != base
+    assert derive_check_id("lite", "orders", "other_name") != base
 
 
 @pytest.mark.parametrize(
@@ -149,14 +142,16 @@ def test_spellings_of_one_baseline_share_an_id(a: str, b: str) -> None:
 
 
 def test_every_baseline_is_its_own_id() -> None:  # S11, S12
+    # Within one check, each baseline spelling is a distinct clause key
+    # (D4: the default key is the metric call, which for `change()` includes
+    # its baseline), so each gets its own clause id.
+    check_id = derive_check_id("s", "d", "c")
     texts = [
         "change(row_count) > 1",
         "change(row_count, same weekday) > 1",
         *(f"change(row_count, last {n} runs) > 1" for n in range(2, 101)),
     ]
-    ids = {
-        derive_check_id(Path("c.yml"), "d", str(parse_check(t)), None) for t in texts
-    }
+    ids = {derive_clause_id(check_id, parse_check(t).subject, None) for t in texts}
     assert len(ids) == len(texts)
 
 
@@ -189,48 +184,45 @@ def test_columns_named_like_the_baseline_words(project: Path, ds: str) -> None:
     write(
         project,
         ds,
-        "  - missing_count(last) >= 0\n"
-        "  - missing_count(same) >= 0\n"
-        "  - missing_count(runs) >= 0\n"
-        "  - change(missing_count(weekday), same weekday) between -1 and 1\n"
-        "  - change(missing_count(last), last 2 runs) between -1 and 1\n",
+        "  last_ok: missing_count(last) >= 0\n"
+        "  same_ok: missing_count(same) >= 0\n"
+        "  runs_ok: missing_count(runs) >= 0\n"
+        "  weekday_change: change(missing_count(weekday), same weekday) between -1 and 1\n"
+        "  last_change: change(missing_count(last), last 2 runs) between -1 and 1\n",
     )
     run = tw.run(project, record=False)
     got = results(run)
-    assert got["missing_count(last) >= 0"].display_value == "1,000"
-    assert got["missing_count(same) >= 0"].outcome.value == "pass"
-    assert got["missing_count(runs) >= 0"].outcome.value == "pass"
-    for name in (
-        "change(missing_count(weekday), same weekday) between -1 and 1",
-        "change(missing_count(last), last 2 runs) between -1 and 1",
-    ):
+    assert got["last_ok"].display_value == "1,000"
+    assert got["same_ok"].outcome.value == "pass"
+    assert got["runs_ok"].outcome.value == "pass"
+    for name in ("weekday_change", "last_change"):
         assert got[name].outcome.value == "skipped", got[name].message
 
 
 @pytest.mark.parametrize(
     ("check", "message", "col"),
     [
-        # `  - ` puts the expression at column 5; the number in
-        # `change(row_count, last ` is at column 28.
-        ("change(row_count, last 1 runs) > 1", "whole number from 2 to 100", 28),
-        ("change(row_count, last 0 runs) > 1", "whole number from 2 to 100", 28),
-        ("change(row_count, last 101 runs) > 1", "whole number from 2 to 100", 28),
-        ("change(row_count, last 2.5 runs) > 1", "whole number from 2 to 100", 28),
-        ("change(row_count, last 7% runs) > 1", "whole number from 2 to 100", 28),
-        ("change(row_count, last 7d runs) > 1", "whole number from 2 to 100", 28),
-        ("change(row_count, last -3 runs) > 1", "whole number from 2 to 100", 28),
-        ("change(row_count, same day) > 1", "expected a baseline after", 23),
-        ("change(row_count, last 7) > 1", "expected a baseline after", 23),
-        ("change(row_count, weekly) > 1", "expected a baseline after", 23),
-        ("change(row_count, ) > 1", "expected a baseline after", 23),
-        ("change(row_count, 'same weekday') > 1", "expected a baseline after", 23),
-        ("change(row_count, Same Weekday) > 1", "expected a baseline after", 23),
+        # `  c1: ` puts the expression at column 7; the number in
+        # `change(row_count, last ` is at column 30.
+        ("change(row_count, last 1 runs) > 1", "whole number from 2 to 100", 30),
+        ("change(row_count, last 0 runs) > 1", "whole number from 2 to 100", 30),
+        ("change(row_count, last 101 runs) > 1", "whole number from 2 to 100", 30),
+        ("change(row_count, last 2.5 runs) > 1", "whole number from 2 to 100", 30),
+        ("change(row_count, last 7% runs) > 1", "whole number from 2 to 100", 30),
+        ("change(row_count, last 7d runs) > 1", "whole number from 2 to 100", 30),
+        ("change(row_count, last -3 runs) > 1", "whole number from 2 to 100", 30),
+        ("change(row_count, same day) > 1", "expected a baseline after", 25),
+        ("change(row_count, last 7) > 1", "expected a baseline after", 25),
+        ("change(row_count, weekly) > 1", "expected a baseline after", 25),
+        ("change(row_count, ) > 1", "expected a baseline after", 25),
+        ("change(row_count, 'same weekday') > 1", "expected a baseline after", 25),
+        ("change(row_count, Same Weekday) > 1", "expected a baseline after", 25),
         (
             "change(row_count, same weekday, last 7 runs) > 1",
             "change() takes one baseline",
-            35,
+            37,
         ),
-        ("change(row_count, last 7 runs, ) > 1", "change() takes one baseline", 34),
+        ("change(row_count, last 7 runs, ) > 1", "change() takes one baseline", 36),
     ],
 )
 def test_baseline_diagnostics_point_at_the_problem(
@@ -591,7 +583,7 @@ def test_too_few_with_errors_in_between(project: Path, ds: str) -> None:  # S7, 
     assert r.message == (
         "2 of 3 earlier results recorded; this check starts comparing after 1 more run"
     )
-    assert r.previous is None
+    assert r.single is not None and r.single.previous is None
 
 
 @BOTH
@@ -610,25 +602,26 @@ def test_another_projects_runs_are_never_averaged(
     set_rows(project, 500)
     [r] = tw.run(project, record=False).results
     assert (r.outcome.value, r.display_value) == ("fail", "-50.00%")
-    assert r.previous is not None and r.previous.run_id == ids[2]
+    assert r.single is not None and r.single.previous is not None
+    assert r.single.previous.run_id == ids[2]
 
 
 def test_json_previous_for_every_baseline(project: Path) -> None:  # S20, S21
     write(
         project,
         "lite",
-        "  - change(row_count, last 3 runs) > -20%\n"
-        "  - change(row_count, same weekday) > -20%\n"
-        "  - change(row_count) > -90%\n"
-        "  - change(row_count, last 9 runs) > -20%\n",
+        "  last3: change(row_count, last 3 runs) > -20%\n"
+        "  weekday: change(row_count, same weekday) > -20%\n"
+        "  plain: change(row_count) > -90%\n"
+        "  last9: change(row_count, last 9 runs) > -20%\n",
     )
     ids = history(project, [(900, WEEK), (1000, 2 * DAY), (1100, DAY)])
     set_rows(project, 500)
     code, out, _ = invoke(project, "run", "--no-store", "--output", "json")
     doc = strict_json(out)
-    assert doc["schema_version"] == 1
-    by = {r["name"]: r for r in doc["results"]}
-    last = by["change(row_count, last 3 runs) > -20%"]["previous"]
+    assert doc["schema_version"] == 2
+    by = {r["name"]: r["clauses"][0] for r in doc["results"]}
+    last = by["last3"]["previous"]
     assert last["value"] == 1000
     assert (last["baseline"], last["runs"], last["run_id"]) == (
         "last 3 runs",
@@ -637,17 +630,17 @@ def test_json_previous_for_every_baseline(project: Path) -> None:  # S20, S21
     )
     started = datetime.fromisoformat(last["started_at"])
     assert started.utcoffset() == timedelta(0)
-    same = by["change(row_count, same weekday) > -20%"]["previous"]
+    same = by["weekday"]["previous"]
     assert (same["value"], same["run_id"], same["baseline"], same["runs"]) == (
         900,
         ids[0],
         "same weekday",
         1,
     )
-    plain = by["change(row_count) > -90%"]["previous"]
+    plain = by["plain"]["previous"]
     assert (plain["value"], plain["run_id"]) == (1100, ids[2])
     assert (plain["baseline"], plain["runs"]) == ("previous run", 1)
-    waiting = by["change(row_count, last 9 runs) > -20%"]
+    waiting = by["last9"]
     assert (waiting["outcome"], waiting["previous"]) == ("skipped", None)
     assert code == 1
 
@@ -669,10 +662,10 @@ def test_unreadable_store_errors_every_baseline(project: Path) -> None:  # S18
     write(
         project,
         "lite",
-        "  - change(row_count) > -20%\n"
-        "  - change(row_count, same weekday) > -20%\n"
-        "  - change(row_count, last 5 runs) > -20%\n"
-        "  - row_count > 0\n",
+        "  plain_change: change(row_count) > -20%\n"
+        "  weekday_change: change(row_count, same weekday) > -20%\n"
+        "  last5_change: change(row_count, last 5 runs) > -20%\n"
+        "  plain: row_count > 0\n",
     )
     store = store_path(project)
     store.parent.mkdir()
@@ -681,7 +674,7 @@ def test_unreadable_store_errors_every_baseline(project: Path) -> None:  # S18
     by = {r["name"]: r for r in strict_json(out)["results"]}
     assert code == 2
     for name, r in by.items():
-        if name.startswith("change("):
+        if name.endswith("_change"):
             assert r["outcome"] == "error", name
             assert r["message"].startswith("could not read this check's history")
         else:
@@ -699,8 +692,8 @@ def test_offline_commands_never_open_the_store(project: Path) -> None:  # S19
     )
     (project / "checks" / "pg.yml").write_text(
         "dataset: public.orders\ndatasource: pg\nchecks:\n"
-        "  - change(row_count, same weekday) > -20%\n"
-        "  - change(row_count, last 7 runs) > -20%\n",
+        "  weekday: change(row_count, same weekday) > -20%\n"
+        "  last7: change(row_count, last 7 runs) > -20%\n",
         encoding="utf-8",
     )
     write(project, "lite", "  - change(row_count, last 3 runs) > -20%\n")
@@ -729,13 +722,13 @@ def test_a_bad_neighbour_never_costs_a_baseline(project: Path) -> None:
     write(
         project,
         "lite",
-        "  - missing_count(no_such_column) = 0\n"
-        "  - change(row_count, last 2 runs) > -20%\n",
+        "  broken: missing_count(no_such_column) = 0\n"
+        "  changing: change(row_count, last 2 runs) > -20%\n",
     )
     history(project, [(1000, 2 * DAY), (1000, DAY)])
     got = results(tw.run(project, record=False))
-    assert got["missing_count(no_such_column) = 0"].outcome.value == "error"
-    assert got["change(row_count, last 2 runs) > -20%"].outcome.value == "pass"
+    assert got["broken"].outcome.value == "error"
+    assert got["changing"].outcome.value == "pass"
 
 
 def test_the_window_counts_only_this_check(project: Path) -> None:
@@ -743,15 +736,16 @@ def test_the_window_counts_only_this_check(project: Path) -> None:
     write(
         project,
         "lite",
-        "  - change(row_count, last 2 runs) > -20%\n"
-        "  - change(row_count, last 3 runs) > -20%\n",
+        "  last2: change(row_count, last 2 runs) > -20%\n"
+        "  last3: change(row_count, last 3 runs) > -20%\n",
     )
     history(project, [(10, 3 * DAY), (1000, 2 * DAY), (1000, DAY)])
     got = results(tw.run(project, record=False))
-    two = got["change(row_count, last 2 runs) > -20%"]
-    three = got["change(row_count, last 3 runs) > -20%"]
+    two = got["last2"]
+    three = got["last3"]
     assert (two.outcome.value, two.display_value) == ("pass", "0.00%")
-    assert three.previous is not None and three.previous.value == 670
+    assert three.single is not None and three.single.previous is not None
+    assert three.single.previous.value == 670
     url = load_project(project).config.results.url
     with ResultStore.open(url, project) as store, Session(store.engine) as s:
         assert s.scalar(select(func.count()).select_from(RunRow)) == 3

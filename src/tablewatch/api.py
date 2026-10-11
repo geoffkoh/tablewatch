@@ -180,7 +180,8 @@ def read_baselines(
     """
     changes = {
         c.id: request_for(c.expression.change, c.metric.name, now)
-        for c in checks
+        for check in checks
+        for c in check.clauses
         if c.expression.change is not None
     }
     if not changes:

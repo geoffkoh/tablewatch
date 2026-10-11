@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tablewatch.checks.model import Check, Outcome
+from tablewatch.checks.model import Clause, Outcome
 from tablewatch.dsl.ast import Baseline
 from tablewatch.engine.baselines import Sample
 from tablewatch.jsonvalues import utc
@@ -10,7 +10,7 @@ from tablewatch.metrics.base import Measurement, Unit
 from tablewatch.metrics.base import format_duration as format_duration
 
 
-def evaluate(check: Check, measurement: Measurement) -> tuple[Outcome, str | None]:
+def evaluate(check: Clause, measurement: Measurement) -> tuple[Outcome, str | None]:
     value = measurement.value
     detail = measurement.detail
     if value is None:
@@ -32,7 +32,7 @@ FIRST_RUN = "no earlier result to compare with; this run is the baseline"
 
 
 def change_of(
-    check: Check, current: float | None, previous: Sample | None
+    check: Clause, current: float | None, previous: Sample | None
 ) -> Measurement | str:
     """The change since `previous`, or why there is none to evaluate (skipped).
 
