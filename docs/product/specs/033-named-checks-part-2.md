@@ -107,10 +107,11 @@ builds.
   beside it) and drops `measured` (always NULL there) and `metric` (always
   `check`). `CHECK_METRIC` filters and `RunRow.check_results` go; the API's
   `metric` on run and history items stays the literal `check` (S6).
-- **D4 (architect).** Recording looks a check up in the registry by
-  `(project, check_hash)` and inserts it if missing inside a savepoint; a
-  unique violation from a concurrent first run re-reads the winner's row
-  instead of failing the run. Portable across backends (no dialect upsert).
+- **D4 (architect; as built).** Recording looks a check up in the
+  registry by `(project, check_hash)` and, if missing, inserts it with
+  `ON CONFLICT DO NOTHING` (SQLite, Postgres) — a savepoint on any other
+  backend — then re-reads the row, so a concurrent first run uses the
+  winner's row instead of failing.
 - **D5 (tech lead).** `id:` was removed in spec 032, so a registry row's
   natural key cannot drift from its hash; recording never updates it.
   Unique index on `(project, check_hash)` only.

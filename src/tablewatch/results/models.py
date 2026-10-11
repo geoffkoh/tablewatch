@@ -94,8 +94,10 @@ class CheckResultRow(Base):
     run_id: Mapped[str] = mapped_column(
         ForeignKey("tablewatch_runs.id", ondelete="CASCADE"), index=True
     )
+    # The registry id, not the public one: that is `public_id`.
     check_id: Mapped[int] = mapped_column(
-        ForeignKey("tablewatch_checks.id"), index=True
+        ForeignKey("tablewatch_checks.id", name="fk_tablewatch_check_results_check_id"),
+        index=True,
     )
     check_name: Mapped[str] = mapped_column(Text)
     expression: Mapped[str] = mapped_column(Text)

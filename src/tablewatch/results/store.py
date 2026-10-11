@@ -26,7 +26,6 @@ from sqlalchemy import (
     ColumnElement,
     Engine,
     Float,
-    Insert,
     String,
     Subquery,
     and_,
@@ -43,7 +42,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import insert as sa_insert
 from sqlalchemy.dialects import postgresql, sqlite
-from sqlalchemy.exc import NoSuchModuleError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, NoSuchModuleError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from tablewatch.checks.model import Check, Outcome
@@ -334,14 +333,20 @@ def _register(session: Session, project: str, check: Check) -> int:
         c.key: getattr(row, c.key) for c in CheckRow.__table__.columns if c.key != "id"
     }
     dialect = session.get_bind().dialect.name
-    insert: Insert
     if dialect == "postgresql":
-        insert = postgresql.insert(CheckRow).values(values).on_conflict_do_nothing()
+        session.execute(
+            postgresql.insert(CheckRow).values(values).on_conflict_do_nothing()
+        )
     elif dialect == "sqlite":
-        insert = sqlite.insert(CheckRow).values(values).on_conflict_do_nothing()
+        session.execute(sqlite.insert(CheckRow).values(values).on_conflict_do_nothing())
     else:
-        insert = sa_insert(CheckRow).values(values)
-    session.execute(insert)
+        # A backend without ON CONFLICT: the losing insert fails in its own
+        # savepoint, and the winner's row is read below.
+        try:
+            with session.begin_nested():
+                session.execute(sa_insert(CheckRow).values(values))
+        except IntegrityError:
+            pass
     return session.scalars(lookup).one()
 
 
@@ -667,9 +672,9 @@ class ResultStore:
         wanted = list(requests)
         found: dict[str, list[Sample]] = {}
         with _reading(self.engine), Session(self.engine) as session:
+            measures = (_legacy_measures if legacy else _measures)(project, before)
             for start in range(0, len(wanted), _CHUNK):
                 chunk = wanted[start : start + _CHUNK]
-                measures = (_legacy_measures if legacy else _measures)(project, before)
                 groups: dict[tuple[str, datetime | None], list[str]] = {}
                 for check in chunk:
                     request = requests[check]
@@ -819,7 +824,8 @@ def _measures(project: str, before: datetime) -> Subquery:
 
 
 # Revisions 0002 and 0003: clause rows shared the results table, keyed by
-# the clause id in `check_id`; only they carry `measured`.
+# the clause id in `check_id`; only they carry `measured`. Remove this and
+# `older_than` once 0004 is the oldest store a release reads baselines from.
 _LEGACY_RESULTS = table(
     "tablewatch_check_results",
     table_column("run_id", String()),
