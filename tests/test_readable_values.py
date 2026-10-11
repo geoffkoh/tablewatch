@@ -650,12 +650,12 @@ def test_old_results_are_shown_as_recorded(
     old = "newest 2026-09-26T09:47:30.654321+00:00"
     db.execute(
         "UPDATE tablewatch_check_results SET message = ? WHERE run_id = ? "
-        "AND check_id = ?",
+        "AND check_id = (SELECT id FROM tablewatch_checks WHERE check_hash = ?)",
         (old, yesterday.id, fresh.id),
     )
     db.execute(
         "UPDATE tablewatch_check_results SET display_value = '0' WHERE run_id = ? "
-        "AND check_id = ?",
+        "AND check_id = (SELECT id FROM tablewatch_checks WHERE check_hash = ?)",
         (yesterday.id, schema.id),
     )
     db.commit()

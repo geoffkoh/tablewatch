@@ -181,8 +181,7 @@ def _stored(root: Path) -> dict[str, tuple[str, str | None]]:
         return {
             expression: (outcome, message)
             for expression, outcome, message in db.execute(
-                "SELECT expression, outcome, message FROM tablewatch_check_results "
-                "WHERE metric = 'check'"
+                "SELECT expression, outcome, message FROM tablewatch_check_results"
             )
         }
     finally:

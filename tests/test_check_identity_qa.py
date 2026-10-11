@@ -81,7 +81,11 @@ def _stored_ids(root: Path) -> list[str]:
     db = sqlite3.connect(root / ".tablewatch" / "results.db")
     try:
         return sorted(
-            r for (r,) in db.execute("SELECT check_id FROM tablewatch_check_results")
+            r
+            for (r,) in db.execute(
+                "SELECT check_hash FROM tablewatch_checks UNION ALL "
+                "SELECT clause_id FROM tablewatch_clause_results"
+            )
         )
     finally:
         db.close()
@@ -104,7 +108,7 @@ def test_m1_runs_and_records_on_both_backends(
         ("7d11a1fbf2cf4bd0", "fail"),
         ("286af89acf93faf3", "fail"),
     ]
-    # D5: a run stores one summary row per check plus one row per clause.
+    # The registry holds each check's id, the clause rows each clause's.
     assert _stored_ids(root) == sorted(
         [
             "7d11a1fbf2cf4bd0",

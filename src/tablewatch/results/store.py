@@ -25,19 +25,28 @@ from sqlalchemy import (
     URL,
     ColumnElement,
     Engine,
+    Float,
+    Insert,
     String,
+    Subquery,
     and_,
     create_engine,
     func,
     make_url,
     or_,
     select,
+    table,
     text,
 )
+from sqlalchemy import (
+    column as table_column,
+)
+from sqlalchemy import insert as sa_insert
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.exc import NoSuchModuleError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
-from tablewatch.checks.model import Outcome
+from tablewatch.checks.model import Check, Outcome
 from tablewatch.config.project import (
     ENV_REFERENCE,
     MissingEnvironmentVariableError,
@@ -47,10 +56,11 @@ from tablewatch.engine.baselines import BaselineRequest, Sample
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import ResultSink, RunResult
 from tablewatch.results.models import (
-    CHECK_METRIC,
     VERSION_TABLE,
     Base,
     CheckResultRow,
+    CheckRow,
+    ClauseResultRow,
     RunRow,
 )
 from tablewatch.results.state import Entry, State, current_state
@@ -299,6 +309,42 @@ def _fit(row: Base) -> None:
             )
 
 
+def _register(session: Session, project: str, check: Check) -> int:
+    """The registry id of `check` in `project`, added on its first run.
+
+    Two runs recording the same new check at once both try to add it; the
+    insert ignores the conflict and both read the one row, rather than one
+    run failing (spec 033 D4).
+    """
+    lookup = select(CheckRow.id).where(
+        CheckRow.project == project, CheckRow.check_hash == check.id
+    )
+    found = session.scalar(lookup)
+    if found is not None:
+        return found
+    row = CheckRow(
+        project=project,
+        datasource=check.dataset.datasource,
+        dataset=check.dataset.name,
+        name=check.name,
+        check_hash=check.id,
+    )
+    _fit(row)
+    values = {
+        c.key: getattr(row, c.key) for c in CheckRow.__table__.columns if c.key != "id"
+    }
+    dialect = session.get_bind().dialect.name
+    insert: Insert
+    if dialect == "postgresql":
+        insert = postgresql.insert(CheckRow).values(values).on_conflict_do_nothing()
+    elif dialect == "sqlite":
+        insert = sqlite.insert(CheckRow).values(values).on_conflict_do_nothing()
+    else:
+        insert = sa_insert(CheckRow).values(values)
+    session.execute(insert)
+    return session.scalars(lookup).one()
+
+
 @contextmanager
 def _reading(engine: Engine) -> Iterator[None]:
     try:
@@ -375,6 +421,11 @@ class ResultStore:
         if schema == "newer":
             raise NewerStoreError(f"results store: {NEWER}")
 
+    def older_than(self, revision: str) -> bool:
+        """Whether this store's schema predates `revision`, without migrating."""
+        current, known = self._revisions()
+        return current in known and known.index(current) < known.index(revision)
+
     def close(self) -> None:
         self.engine.dispose()
 
@@ -429,34 +480,27 @@ class ResultStore:
         row.results = []
         for r in run.results:
             check, single = r.check, r.single
-            row.results.append(
-                CheckResultRow(
-                    check_id=check.id,
-                    check_name=check.name,
-                    expression=check.canonical,
-                    metric=CHECK_METRIC,
-                    dataset=check.dataset.name,
-                    datasource=check.dataset.datasource,
-                    outcome=str(r.outcome),
-                    value=r.value,
-                    display_value=r.display_value,
-                    message=r.message,
-                    measured=None,
-                    unit=str(single.clause.unit) if single else None,
-                    source=str(check.location),
-                    owner=check.dataset.owner,
-                    tags=list(check.dataset.tags),
-                    duration_ms=r.duration_ms,
-                )
+            result = CheckResultRow(
+                check_name=check.name,
+                expression=check.canonical,
+                dataset=check.dataset.name,
+                datasource=check.dataset.datasource,
+                outcome=str(r.outcome),
+                value=r.value,
+                display_value=r.display_value,
+                message=r.message,
+                unit=str(single.clause.unit) if single else None,
+                source=str(check.location),
+                owner=check.dataset.owner,
+                tags=list(check.dataset.tags),
+                duration_ms=r.duration_ms,
             )
-            row.results.extend(
-                CheckResultRow(
-                    check_id=c.clause.id,
-                    check_name=f"{check.name}: {c.clause.key}",
+            result.clauses = [
+                ClauseResultRow(
+                    clause_id=c.clause.id,
+                    clause_key=c.clause.key,
                     expression=c.clause.canonical,
                     metric=c.clause.metric.name,
-                    dataset=check.dataset.name,
-                    datasource=check.dataset.datasource,
                     outcome=str(c.outcome),
                     value=c.value,
                     display_value=c.display_value,
@@ -464,16 +508,22 @@ class ResultStore:
                     measured=c.measured,
                     unit=str(c.clause.unit),
                     source=str(c.clause.location),
-                    owner=check.dataset.owner,
-                    tags=list(check.dataset.tags),
                     duration_ms=c.duration_ms,
                 )
                 for c in r.clauses
-            )
+            ]
+            row.results.append(result)
         _fit(row)
         for result in row.results:
             _fit(result)
+            for clause in result.clauses:
+                _fit(clause)
         with Session(self.engine) as session, session.begin():
+            registered: dict[str, int] = {}
+            for r, result in zip(run.results, row.results, strict=True):
+                if r.check.id not in registered:
+                    registered[r.check.id] = _register(session, run.project, r.check)
+                result.check_id = registered[r.check.id]
             session.add(row)
 
     # --- reads, every one scoped to one project: a store can be shared ---
@@ -496,7 +546,7 @@ class ResultStore:
         statement = (
             select(RunRow)
             .where(RunRow.project == project, RunRow.id == run_id)
-            .options(selectinload(RunRow.results))
+            .options(selectinload(RunRow.results).selectinload(CheckResultRow.clauses))
         )
         with _reading(self.engine), Session(self.engine) as session:
             return session.scalars(statement).one_or_none()
@@ -516,25 +566,20 @@ class ResultStore:
         order, then the head rows. `as_of` reads history as it stood when
         that run was recorded: it and older runs only.
         """
-        scope = [
-            RunRow.project == project,
-            CheckResultRow.metric == CHECK_METRIC,
-            *_not_newer_than(as_of),
-        ]
+        scope = [RunRow.project == project, *_not_newer_than(as_of)]
         if check_id is not None:
-            scope.append(CheckResultRow.check_id == check_id)
+            scope.append(CheckRow.check_hash == check_id)
         outcomes = (
             select(
-                CheckResultRow.check_id,
+                CheckRow.check_hash,
                 CheckResultRow.outcome,
                 RunRow.started_at,
                 CheckResultRow.id,
             )
             .join(RunRow, CheckResultRow.run_id == RunRow.id)
+            .join(CheckRow, CheckResultRow.check_id == CheckRow.id)
             .where(*scope)
-            .order_by(
-                CheckResultRow.check_id, RunRow.started_at.desc(), RunRow.id.desc()
-            )
+            .order_by(CheckRow.check_hash, RunRow.started_at.desc(), RunRow.id.desc())
         )
         with _reading(self.engine), Session(self.engine) as session:
             histories: dict[str, list[Entry]] = {}
@@ -552,10 +597,10 @@ class ResultStore:
                 .where(CheckResultRow.id.in_(heads))
             )
             return {
-                result.check_id: Latest(
-                    result, run, current_state(histories[result.check_id])
+                result.public_id: Latest(
+                    result, run, current_state(histories[result.public_id])
                 )
-                for result, run in rows
+                for result, run in rows.unique()
             }
 
     def previous_results(
@@ -575,18 +620,19 @@ class ResultStore:
             for start in range(0, len(wanted), _CHUNK):
                 statement = (
                     select(
-                        CheckResultRow.check_id,
+                        CheckRow.check_hash,
                         CheckResultRow.outcome,
                         RunRow.started_at,
                     )
                     .join(RunRow, CheckResultRow.run_id == RunRow.id)
+                    .join(CheckRow, CheckResultRow.check_id == CheckRow.id)
                     .where(
                         RunRow.project == project,
-                        CheckResultRow.check_id.in_(wanted[start : start + _CHUNK]),
+                        CheckRow.check_hash.in_(wanted[start : start + _CHUNK]),
                         *_older_than(before),
                     )
                     .order_by(
-                        CheckResultRow.check_id,
+                        CheckRow.check_hash,
                         RunRow.started_at.desc(),
                         RunRow.id.desc(),
                     )
@@ -604,19 +650,26 @@ class ResultStore:
         project: str,
         requests: Mapping[str, BaselineRequest],
         before: datetime,
+        *,
+        legacy: bool = False,
     ) -> dict[str, tuple[Sample, ...]]:
-        """Each `change()` check's earlier measurements, newest first.
+        """Each `change()` clause's earlier measurements, newest first.
 
         Only this project's runs that started before `before`, with a
-        measured value of the request's metric (a result of another metric,
-        under an `id:` kept across an edit, is never a baseline), and at most
-        `limit` per check, cut in SQL so a long history is never read whole.
+        measured value of the request's metric (a result of another metric
+        under the same clause id is never a baseline), and at most `limit`
+        per clause, cut in SQL so a long history is never read whole.
+
+        `legacy` reads a store from before revision 0004 as it is (see
+        `older_than`): a run reads its baselines before recording migrates
+        the store, and `--no-store` never migrates it (spec 033 D8).
         """
         wanted = list(requests)
         found: dict[str, list[Sample]] = {}
         with _reading(self.engine), Session(self.engine) as session:
             for start in range(0, len(wanted), _CHUNK):
                 chunk = wanted[start : start + _CHUNK]
+                measures = (_legacy_measures if legacy else _measures)(project, before)
                 groups: dict[tuple[str, datetime | None], list[str]] = {}
                 for check in chunk:
                     request = requests[check]
@@ -626,9 +679,13 @@ class ResultStore:
                 eligible = or_(
                     *(
                         and_(
-                            CheckResultRow.metric == metric,
-                            CheckResultRow.check_id.in_(ids),
-                            *([RunRow.started_at <= not_after] if not_after else []),
+                            measures.c.metric == metric,
+                            measures.c.clause_id.in_(ids),
+                            *(
+                                [measures.c.started_at <= not_after]
+                                if not_after
+                                else []
+                            ),
                         )
                         for (metric, not_after), ids in groups.items()
                     )
@@ -636,38 +693,35 @@ class ResultStore:
                 rank = (
                     func.row_number()
                     .over(
-                        partition_by=CheckResultRow.check_id,
-                        order_by=(RunRow.started_at.desc(), RunRow.id.desc()),
+                        partition_by=measures.c.clause_id,
+                        order_by=(
+                            measures.c.started_at.desc(),
+                            measures.c.run_id.desc(),
+                        ),
                     )
                     .label("rank")
                 )
                 ranked = (
                     select(
-                        CheckResultRow.check_id,
-                        CheckResultRow.measured,
-                        RunRow.started_at,
-                        RunRow.id.label("run_id"),
+                        measures.c.clause_id,
+                        measures.c.measured,
+                        measures.c.started_at,
+                        measures.c.run_id,
                         rank,
                     )
-                    .join(RunRow, CheckResultRow.run_id == RunRow.id)
-                    .where(
-                        RunRow.project == project,
-                        CheckResultRow.measured.is_not(None),
-                        RunRow.started_at < before,
-                        eligible,
-                    )
+                    .where(eligible)
                     .subquery()
                 )
                 most = max(requests[check].limit for check in chunk)
                 statement = (
                     select(
-                        ranked.c.check_id,
+                        ranked.c.clause_id,
                         ranked.c.measured,
                         ranked.c.started_at,
                         ranked.c.run_id,
                     )
                     .where(ranked.c.rank <= most)
-                    .order_by(ranked.c.check_id, ranked.c.rank)
+                    .order_by(ranked.c.clause_id, ranked.c.rank)
                 )
                 for check, measured, started_at, run_id in session.execute(statement):
                     samples = found.setdefault(check, [])
@@ -683,18 +737,15 @@ class ResultStore:
         Case is kept: an explicit `id:` can be mixed-case.
         """
         statement = (
-            select(CheckResultRow.check_id)
-            .join(RunRow, CheckResultRow.run_id == RunRow.id)
+            select(CheckRow.check_hash)
             .where(
-                RunRow.project == project,
-                CheckResultRow.metric == CHECK_METRIC,
-                CheckResultRow.check_id.startswith(prefix, autoescape=True),
+                CheckRow.project == project,
+                CheckRow.check_hash.startswith(prefix, autoescape=True),
                 # SQLite's LIKE ignores ASCII case, Postgres's does not: the
                 # exact comparison makes both keep it (spec 031, P18).
-                func.substr(CheckResultRow.check_id, 1, len(prefix)) == prefix,
+                func.substr(CheckRow.check_hash, 1, len(prefix)) == prefix,
             )
-            .distinct()
-            .order_by(CheckResultRow.check_id)
+            .order_by(CheckRow.check_hash)
             .limit(limit)
         )
         with _reading(self.engine), Session(self.engine) as session:
@@ -725,20 +776,78 @@ class ResultStore:
         statement = (
             select(CheckResultRow, RunRow)
             .join(RunRow, CheckResultRow.run_id == RunRow.id)
+            .join(CheckRow, CheckResultRow.check_id == CheckRow.id)
             .where(
                 RunRow.project == project,
-                CheckResultRow.metric == CHECK_METRIC,
-                CheckResultRow.check_id == check_id,
+                CheckRow.check_hash == check_id,
                 *_older_than(before),
             )
             .order_by(RunRow.started_at.desc(), RunRow.id.desc())
             .limit(limit)
         )
         with _reading(self.engine), Session(self.engine) as session:
-            return [(result, run) for result, run in session.execute(statement)]
+            return [
+                (result, run) for result, run in session.execute(statement).unique()
+            ]
 
 
 _CHUNK = 500
+
+# The first revision with its own table of clause results.
+CLAUSE_ROWS_SINCE = "0004"
+
+
+def _measures(project: str, before: datetime) -> Subquery:
+    """Every measured clause result in `project` before `before`."""
+    return (
+        select(
+            ClauseResultRow.clause_id,
+            ClauseResultRow.metric,
+            ClauseResultRow.measured,
+            RunRow.started_at,
+            RunRow.id.label("run_id"),
+        )
+        .join(CheckResultRow, ClauseResultRow.check_result_id == CheckResultRow.id)
+        .join(RunRow, CheckResultRow.run_id == RunRow.id)
+        .where(
+            RunRow.project == project,
+            ClauseResultRow.measured.is_not(None),
+            RunRow.started_at < before,
+        )
+        .subquery()
+    )
+
+
+# Revisions 0002 and 0003: clause rows shared the results table, keyed by
+# the clause id in `check_id`; only they carry `measured`.
+_LEGACY_RESULTS = table(
+    "tablewatch_check_results",
+    table_column("run_id", String()),
+    table_column("check_id", String()),
+    table_column("metric", String()),
+    table_column("measured", Float()),
+)
+
+
+def _legacy_measures(project: str, before: datetime) -> Subquery:
+    """`_measures` on a store from before revision 0004."""
+    old = _LEGACY_RESULTS.c
+    return (
+        select(
+            old.check_id.label("clause_id"),
+            old.metric,
+            old.measured,
+            RunRow.started_at,
+            RunRow.id.label("run_id"),
+        )
+        .join(RunRow, old.run_id == RunRow.id)
+        .where(
+            RunRow.project == project,
+            old.measured.is_not(None),
+            RunRow.started_at < before,
+        )
+        .subquery()
+    )
 
 
 def _older_than(before: PageKey | None) -> list[ColumnElement[bool]]:

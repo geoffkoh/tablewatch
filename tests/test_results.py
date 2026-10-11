@@ -34,7 +34,13 @@ def test_migrations_match_the_models(store_url: str) -> None:
 def test_store_uses_its_own_version_table(store_url: str) -> None:
     with ResultStore(create_engine(store_url)) as store:
         tables = set(inspect(store.engine).get_table_names())
-    assert tables == {VERSION_TABLE, "tablewatch_runs", "tablewatch_check_results"}
+    assert tables == {
+        VERSION_TABLE,
+        "tablewatch_runs",
+        "tablewatch_checks",
+        "tablewatch_check_results",
+        "tablewatch_clause_results",
+    }
 
 
 def test_opening_twice_is_idempotent(store_url: str) -> None:

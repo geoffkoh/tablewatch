@@ -8,6 +8,15 @@ All notable changes to tablewatch. The format follows
 
 ### Changed — breaking
 
+- **The results store registers each named check.** A new table,
+  `tablewatch_checks`, gives every check a store-assigned id keyed by
+  project, datasource, dataset and name; results point at it, and each
+  clause's result is a row of its own in `tablewatch_clause_results`
+  under its check's result. The store migrates on open (revision 0004):
+  history and `change()` baselines carry across, and results recorded
+  before named checks are dropped (history already hid them). The public
+  check id, the API and the reports are unchanged (spec 033).
+
 - **Named checks with clauses.** `checks:` is now a mapping of check name to what it checks:
   `orders_fresh: freshness(created_at) < 6h` for one rule, or `orders_usable: {clauses: [...]}`
   for several, all of which must hold — the check takes its worst clause's outcome. The name is

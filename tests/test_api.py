@@ -360,8 +360,8 @@ def test_a_recorded_run_is_marked_as_from_python(retail: Path) -> None:  # S2
         1,
     )
     assert selection == "{}"
-    # D5: a summary row per check (12) plus one row per clause (19).
-    assert stored_result_count(retail) == 31
+    # Spec 033 S4: a row per check (12); the clauses' 19 rows are their own.
+    assert stored_result_count(retail) == 12
 
     CliRunner().invoke(cli, ["--project-dir", str(retail), "run"])
     assert sorted(row[1] for row in stored_runs(retail)) == ["cli", "python"]

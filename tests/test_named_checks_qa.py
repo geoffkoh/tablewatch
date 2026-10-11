@@ -376,7 +376,8 @@ def test_renaming_the_check_starts_the_clause_baseline_over(
 
 def test_a_summary_row_is_never_a_baseline(workspace: Workspace) -> None:
     # A one-clause check's summary row carries its value; only the clause row
-    # holds `measured`, so the baseline is read from the clause id alone.
+    # holds `measured` (spec 033 D3), so the baseline is read from the clause
+    # id alone.
     _load(workspace, "  n: change(row_count) < 50%\n")
     for _ in range(2):
         invoke(workspace.root, "run")
@@ -384,7 +385,7 @@ def test_a_summary_row_is_never_a_baseline(workspace: Workspace) -> None:
     check = project.checks[0]
     with open_store(project.config.results.url, project.root) as store:
         rows = store.history_page("test", check.id, limit=5)
-    assert rows and all(r.measured is None for r, _ in rows)
+    assert rows and not hasattr(rows[0][0], "measured")
 
 
 # --- identity pins ----------------------------------------------------------------

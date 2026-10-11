@@ -57,11 +57,15 @@ def test_every_surface_reads_the_same_with_the_contract_exit_codes(
     db = sqlite3.connect(root / ".tablewatch" / "results.db")
     try:
         stored = [
-            m for (m,) in db.execute("SELECT message FROM tablewatch_check_results")
+            m
+            for (m,) in db.execute(
+                "SELECT message FROM tablewatch_check_results UNION ALL "
+                "SELECT message FROM tablewatch_clause_results"
+            )
         ]
     finally:
         db.close()
-    # D5: a summary row per check, plus one row per clause.
+    # The check's row, then its clause's (spec 033 S4).
     assert stored == [P + reason, P + reason]
 
     code, out, err = invoke(root, "test-connection")
@@ -132,7 +136,10 @@ def test_s7_a_resolved_env_url_leaks_nowhere(
     try:
         stored = [
             m or ""
-            for (m,) in db.execute("SELECT message FROM tablewatch_check_results")
+            for (m,) in db.execute(
+                "SELECT message FROM tablewatch_check_results UNION ALL "
+                "SELECT message FROM tablewatch_clause_results"
+            )
         ]
     finally:
         db.close()

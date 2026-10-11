@@ -20,7 +20,7 @@ import pytest
 from sqlalchemy import event, insert
 
 import tablewatch as tw
-from tablewatch.results.models import CheckResultRow, RunRow
+from tablewatch.results.models import CheckResultRow, CheckRow, RunRow
 from tablewatch.results.state import Entry, current_state
 from tablewatch.results.store import ResultStore, StoreError
 from tests.conftest import Recorded, invoke
@@ -175,7 +175,8 @@ def _set_outcome(root: Path, run_id: str, check_id: str, outcome: str) -> None:
     try:
         db.execute(
             "UPDATE tablewatch_check_results SET outcome = ? "
-            "WHERE run_id = ? AND check_id = ?",
+            "WHERE run_id = ? AND "
+            "check_id = (SELECT id FROM tablewatch_checks WHERE check_hash = ?)",
             (outcome, run_id, check_id),
         )
         db.commit()
@@ -309,6 +310,20 @@ def _write_runs(root: Path, ids: list[str], runs: int) -> None:
     base = datetime(2026, 9, 1, tzinfo=UTC)
     try:
         with store.engine.begin() as connection:
+            connection.execute(
+                insert(CheckRow),
+                [
+                    {
+                        "id": n + 1,
+                        "project": "big",
+                        "datasource": "lake",
+                        "dataset": "t",
+                        "name": check,
+                        "check_hash": check,
+                    }
+                    for n, check in enumerate(ids)
+                ],
+            )
             for r in range(runs):
                 run_id = f"{r:032x}"
                 started = base + timedelta(hours=r)
@@ -340,10 +355,9 @@ def _write_runs(root: Path, ids: list[str], runs: int) -> None:
                     [
                         {
                             "run_id": run_id,
-                            "check_id": check,
+                            "check_id": n + 1,
                             "check_name": check,
                             "expression": "row_count > 0",
-                            "metric": "check",
                             "dataset": "t",
                             "datasource": "lake",
                             "outcome": ("fail", "error", "pass")[(r + n) % 3],

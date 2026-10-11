@@ -807,7 +807,8 @@ def _set_result_value(root: Path, run_id: str, check_id: str, **values: Any) -> 
         assignments = ", ".join(f"{k} = ?" for k in values)
         db.execute(
             f"UPDATE tablewatch_check_results SET {assignments} "
-            "WHERE run_id = ? AND check_id = ?",
+            "WHERE run_id = ? AND "
+            "check_id = (SELECT id FROM tablewatch_checks WHERE check_hash = ?)",
             (*values.values(), run_id, check_id),
         )
         db.commit()

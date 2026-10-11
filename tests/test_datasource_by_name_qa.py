@@ -291,11 +291,12 @@ def test_every_surface_carries_the_unit(empty: Path) -> None:
     con = sqlite3.connect(empty / ".tablewatch" / "results.db")
     try:
         stored = con.execute(
-            "SELECT value, display_value FROM tablewatch_check_results"
+            "SELECT value, display_value FROM tablewatch_check_results UNION ALL "
+            "SELECT value, display_value FROM tablewatch_clause_results"
         ).fetchall()
     finally:
         con.close()
-    # D5: a summary row per check, plus one row per clause.
+    # The check's row, then its clause's (spec 033 S4).
     assert stored == [(1204.0, "1,204 rows"), (1204.0, "1,204 rows")]
 
 

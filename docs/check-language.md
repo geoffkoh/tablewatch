@@ -322,6 +322,9 @@ derived from those three, and nothing else.
 - `id:` is not a key any more: a check's name is its identity.
 - Two checks with one name on one dataset are an error, even in two files.
   The same name on two datasets is two checks.
+- **Moving a check to another dataset or datasource starts a new history**,
+  as a rename does: the results store registers each check by project,
+  datasource, dataset and name, and gives it an id of its own.
 
 Each clause has its own history too, keyed by its check, its key, its
 `where:` and, for `failed_rows` and `sql_metric`, its `condition:` or

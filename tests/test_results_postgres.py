@@ -29,7 +29,14 @@ from tablewatch.config import load_project
 from tablewatch.engine.baselines import request_for
 from tablewatch.engine.runner import RunResult, run_checks
 from tablewatch.jsonvalues import utc
-from tablewatch.results.models import VERSION_TABLE, Base, CheckResultRow, RunRow
+from tablewatch.results.models import (
+    VERSION_TABLE,
+    Base,
+    CheckResultRow,
+    CheckRow,
+    ClauseResultRow,
+    RunRow,
+)
 from tablewatch.results.store import (
     MIGRATIONS_DIR,
     OlderStoreError,
@@ -225,13 +232,9 @@ def test_an_old_store_is_read_as_older_then_upgraded(
         old = store.run("p", "old")
     assert _versions(store_url) == [_head()]
     assert old is not None
-    [result] = old.results
-    assert (result.check_id, result.value, result.measured, result.unit) == (
-        "pinned",
-        1000.0,
-        None,
-        None,
-    )
+    # The run survives; its pre-named-checks result has no summary row to
+    # sit under, so revision 0004 drops it (spec 033 D8).
+    assert old.results == []
     assert utc(old.started_at) == datetime(2026, 10, 1, 6, tzinfo=UTC)
 
 
@@ -313,7 +316,7 @@ def test_two_processes_record_interleaved_runs(
         assert {r.id for r in listed} == run_ids
         for run_id in run_ids:
             row = store.run(RETAIL, run_id)
-            assert row is not None and len(row.check_results) == RETAIL_CHECKS
+            assert row is not None and len(row.results) == RETAIL_CHECKS
         latest = store.latest_results(RETAIL)
         assert len(latest) == RETAIL_CHECKS
         for check_id, head in latest.items():
@@ -593,10 +596,19 @@ def test_every_bounded_column_holds_its_full_width(
     run_values = {
         c.key: _filler(c) for c in RunRow.__table__.columns if c.key != "results"
     }
+    check_values = {
+        c.key: _filler(c) for c in CheckRow.__table__.columns if c.key != "id"
+    }
+    check_values["project"] = run_values["project"]
     result_values = {
         c.key: _filler(c)
         for c in CheckResultRow.__table__.columns
-        if c.key not in ("id", "run_id")
+        if c.key not in ("id", "run_id", "check_id")
+    }
+    clause_values = {
+        c.key: _filler(c)
+        for c in ClauseResultRow.__table__.columns
+        if c.key not in ("id", "check_result_id")
     }
     bounded = [
         f"{c.table.name}.{c.name}"
@@ -604,22 +616,30 @@ def test_every_bounded_column_holds_its_full_width(
         for c in table.columns
         if isinstance(c.type, String) and c.type.length is not None
     ]
-    assert "tablewatch_check_results.check_id" in bounded  # the test sees them
+    assert "tablewatch_checks.check_hash" in bounded  # the test sees them
+    assert "tablewatch_clause_results.clause_id" in bounded
 
     with open_store(store_url, tmp_path) as store:
         with Session(store.engine) as session, session.begin():
             run = RunRow(**run_values)
-            run.results = [CheckResultRow(**result_values)]
+            result = CheckResultRow(**result_values)
+            result.check = CheckRow(**check_values)
+            result.clauses = [ClauseResultRow(**clause_values)]
+            run.results = [result]
             session.add(run)
         row = store.run(run_values["project"], run_values["id"])
     assert row is not None
-    [result] = row.results
-    for key, value in run_values.items():
-        if isinstance(value, str):
-            assert getattr(row, key) == value, key
-    for key, value in result_values.items():
-        if isinstance(value, str):
-            assert getattr(result, key) == value, key
+    [stored] = row.results
+    [clause] = stored.clauses
+    for record, values in (
+        (row, run_values),
+        (stored, result_values),
+        (stored.check, check_values),
+        (clause, clause_values),
+    ):
+        for key, value in values.items():
+            if isinstance(value, str):
+                assert getattr(record, key) == value, key
 
 
 def test_a_run_at_the_widths_a_user_writes_records(
@@ -640,7 +660,7 @@ def test_a_run_at_the_widths_a_user_writes_records(
         row = store.run(name, run.id)
     assert row is not None
     assert row.project == name
-    assert [r.check_name for r in row.results if r.metric == "check"] == [check_name]
+    assert [r.check_name for r in row.results] == [check_name]
 
 
 # --- check-id prefixes keep case (P18) ---------------------------------------------
@@ -656,18 +676,17 @@ def test_a_check_id_prefix_keeps_its_case(store_url: str, tmp_path: Path) -> Non
         store_url,
         "  upper: row_count > 0\n  lower: row_count > 1\n",
     )
-    run = _record_at(root, datetime(2026, 10, 4, tzinfo=UTC))
+    _record_at(root, datetime(2026, 10, 4, tzinfo=UTC))
     engine = create_engine(store_url)
     try:
         with engine.begin() as con:
             for check_name, new_id in (("upper", "ABcd0001"), ("lower", "abef0001")):
                 con.execute(
                     text(
-                        "UPDATE tablewatch_check_results SET check_id = :new_id "
-                        "WHERE run_id = :run_id AND check_name = :check_name "
-                        "AND metric = 'check'"
+                        "UPDATE tablewatch_checks SET check_hash = :new_id "
+                        "WHERE name = :check_name"
                     ),
-                    {"new_id": new_id, "run_id": run.id, "check_name": check_name},
+                    {"new_id": new_id, "check_name": check_name},
                 )
     finally:
         engine.dispose()
