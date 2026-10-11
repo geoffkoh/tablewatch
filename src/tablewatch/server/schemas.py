@@ -472,9 +472,9 @@ class HistoryEntry(_Model):
             name=result.check_name,
             expression=result.expression,
             source=result.source,
-            metric=result.metric,
+            metric=CHECK_METRIC,
             dataset=result.dataset,
-            unit=_unit(result.metric, result.unit),
+            unit=_unit(CHECK_METRIC, result.unit),
         )
 
 
@@ -553,10 +553,10 @@ class RunResultItem(_Model):
     @classmethod
     def of(cls, result: CheckResultRow) -> RunResultItem:
         return cls(
-            check_id=result.check_id,
+            check_id=result.public_id,
             name=result.check_name,
             expression=result.expression,
-            metric=result.metric,
+            metric=CHECK_METRIC,
             dataset=result.dataset,
             datasource=result.datasource,
             outcome=_outcome(result.outcome),
@@ -567,8 +567,8 @@ class RunResultItem(_Model):
             owner=result.owner,
             tags=list(result.tags),
             duration_ms=result.duration_ms,
-            measured=result.measured,
-            unit=_unit(result.metric, result.unit),
+            measured=None,
+            unit=_unit(CHECK_METRIC, result.unit),
         )
 
 
@@ -579,7 +579,7 @@ class RunDetail(Run):
     def of_detail(cls, run: RunRow) -> RunDetail:
         return cls(
             **dict(Run.of(run)),
-            results=[RunResultItem.of(r) for r in run.check_results],
+            results=[RunResultItem.of(r) for r in run.results],
         )
 
 

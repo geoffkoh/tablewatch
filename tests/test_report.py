@@ -218,13 +218,11 @@ def test_since_follows_history(retail: Path, run_a: str) -> None:  # R10
         assert first is not None
         moved = first.started_at - timedelta(days=3)
         first.started_at = moved
-        # D5: only a summary row (metric = "check") is a check's own outcome.
         failing = session.scalars(
             CheckResultRow.__table__.select()
             .where(
                 CheckResultRow.run_id == second,
                 CheckResultRow.outcome == "fail",
-                CheckResultRow.metric == "check",
             )
             .with_only_columns(CheckResultRow.check_id)
         ).all()
@@ -233,7 +231,6 @@ def test_since_follows_history(retail: Path, run_a: str) -> None:  # R10
             .where(
                 CheckResultRow.run_id == second,
                 CheckResultRow.check_id == failing[0],
-                CheckResultRow.metric == "check",
             )
             .values(outcome="pass")
         )

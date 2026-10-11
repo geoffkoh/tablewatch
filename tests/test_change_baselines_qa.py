@@ -27,7 +27,13 @@ from tablewatch.config import load_project
 from tablewatch.dsl.ast import Baseline, Change
 from tablewatch.dsl.parser import parse_check
 from tablewatch.engine.baselines import BaselineRequest, Sample, choose, request_for
-from tablewatch.results.models import Base, CheckResultRow, RunRow
+from tablewatch.results.models import (
+    Base,
+    CheckResultRow,
+    CheckRow,
+    ClauseResultRow,
+    RunRow,
+)
 from tablewatch.results.store import ResultStore
 from tests.conftest import invoke
 from tests.test_change_over_time import results, set_rows, write
@@ -273,9 +279,9 @@ def bare_store(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Resul
         with engine.begin() as con:
             for table in Base.metadata.sorted_tables:
                 ddl = str(CreateTable(table).compile(engine))
-                ddl = re.sub(r",\s*FOREIGN KEY[^\n]*", "", ddl).replace(
-                    " SERIAL ", " INTEGER "
-                )
+                lines = [line for line in ddl.splitlines() if "FOREIGN KEY" not in line]
+                ddl = re.sub(r",(\s*)\n\)", r"\1\n)", "\n".join(lines))
+                ddl = ddl.replace(" SERIAL ", " INTEGER ")
                 con.exec_driver_sql(ddl)
     store = ResultStore(engine, migrate=False)
     try:
@@ -294,7 +300,10 @@ def put(
     project: str = "p",
 ) -> None:
     """(check_id, metric, measured, started_at) — one run per row."""
-    runs, checks = [], []
+    runs: list[dict[str, object]] = []
+    registry: list[dict[str, object]] = []
+    checks: list[dict[str, object]] = []
+    clauses: list[dict[str, object]] = []
     for check, metric, measured, started in rows:
         rid = f"r{next(_next_id):08d}"
         runs.append(
@@ -317,14 +326,25 @@ def put(
                 "errored": 0,
             }
         )
+        registry_id, result_id = next(_next_id), next(_next_id)
+        registry.append(
+            {
+                "id": registry_id,
+                "project": project,
+                "datasource": "s",
+                "dataset": "d",
+                "name": check,
+                # One registry row per result: baselines key on the clause id.
+                "check_hash": f"h{registry_id}",
+            }
+        )
         checks.append(
             {
-                "id": next(_next_id),
+                "id": result_id,
                 "run_id": rid,
-                "check_id": check,
+                "check_id": registry_id,
                 "check_name": check,
                 "expression": check,
-                "metric": metric,
                 "dataset": "d",
                 "datasource": "s",
                 "outcome": "pass" if measured is not None else "error",
@@ -335,13 +355,32 @@ def put(
                 "owner": None,
                 "tags": [],
                 "duration_ms": 0.0,
-                "measured": measured,
                 "unit": None,
+            }
+        )
+        clauses.append(
+            {
+                "id": next(_next_id),
+                "check_result_id": result_id,
+                "clause_id": check,
+                "clause_key": metric,
+                "expression": check,
+                "metric": metric,
+                "outcome": "pass" if measured is not None else "error",
+                "value": None,
+                "display_value": "",
+                "message": None,
+                "source": "x",
+                "duration_ms": 0.0,
+                "measured": measured,
+                "unit": "count",
             }
         )
     with engine.begin() as con:
         con.execute(insert(RunRow), runs)
+        con.execute(insert(CheckRow), registry)
         con.execute(insert(CheckResultRow), checks)
+        con.execute(insert(ClauseResultRow), clauses)
 
 
 def test_mixed_requests_in_one_chunk(bare_store: ResultStore) -> None:

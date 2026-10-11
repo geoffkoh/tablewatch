@@ -100,15 +100,15 @@ def test_upgrading_from_0002_keeps_measured_and_unit(
     with open_store(store_url, root, create=False, migrate=False) as store:
         before = store.run("pg", run.id)
     assert before is not None
-    # D5: a summary row (always measured=None) plus one row per clause —
-    # `measured` only ever lives on the clause row.
-    [kept] = [r for r in before.results if r.metric != "check"]
+    # `measured` only ever lives on the clause row (spec 033 D3); the round
+    # trip through 0002 keeps it (D8).
+    [kept] = before.results[0].clauses
     assert kept.measured == 1000.0
     _alembic(store_url, "downgrade", "0002")
     with open_store(store_url, root) as store:
         after = store.run("pg", run.id)
     assert after is not None
-    [result] = [r for r in after.results if r.metric != "check"]
+    [result] = after.results[0].clauses
     assert (result.measured, result.unit) == (kept.measured, kept.unit)
 
 
@@ -235,8 +235,7 @@ def test_a_nul_in_owner_is_replaced_the_same_on_both(
     with open_store(store_url, root, create=False, migrate=False) as store:
         row = store.run("pg", run.id)
     assert row is not None
-    # D5: a summary row plus one clause row, both carrying the dataset's owner.
-    assert [r.owner for r in row.results] == ["a\ufffdb", "a\ufffdb"]
+    assert [r.owner for r in row.results] == ["a\ufffdb"]
 
 
 def test_a_nul_in_a_tag_records_the_same_on_both(
@@ -255,8 +254,7 @@ def test_a_nul_in_a_tag_records_the_same_on_both(
         row = store.run("pg", run.id)
     assert row is not None
     # JSON keeps it on both (Postgres `json`, not `jsonb`, accepts \u0000).
-    # D5: a summary row plus one clause row, both carrying the dataset's tags.
-    assert [r.tags for r in row.results] == [["x\0y"], ["x\0y"]]
+    assert [r.tags for r in row.results] == [["x\0y"]]
 
 
 def test_a_control_character_in_the_project_name_is_a_load_error(
@@ -312,7 +310,10 @@ def test_four_processes_upgrade_one_0001_store(
         out.join_thread()
     assert outcomes == ["ok"] * 4
     assert _versions(url) == [_head()]
-    assert pg_schema.execute("SELECT count(*) FROM tablewatch_check_results") == [(1,)]
+    # Upgraded once: the run is kept, and its pre-named-checks result is
+    # dropped by revision 0004 (spec 033 D8), not duplicated or lost twice.
+    assert pg_schema.execute("SELECT count(*) FROM tablewatch_runs") == [(1,)]
+    assert pg_schema.execute("SELECT count(*) FROM tablewatch_check_results") == [(0,)]
 
 
 @pytest.mark.db_postgres

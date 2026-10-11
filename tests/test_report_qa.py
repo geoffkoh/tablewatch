@@ -11,12 +11,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 import tablewatch as tw
 from tablewatch.config import load_project
-from tablewatch.results.models import CheckResultRow, RunRow
+from tablewatch.results.models import CheckResultRow, CheckRow, RunRow
 from tablewatch.results.store import PageKey, ResultStore
 from tests.conftest import invoke
 
@@ -53,14 +53,20 @@ def _a_failing_check(root: Path, run_id: str) -> str:
     with _store(root) as store:
         row = store.run(PROJECT, run_id)
         assert row is not None
-        return next(r.check_id for r in row.results if r.outcome == "fail")
+        return next(r.public_id for r in row.results if r.outcome == "fail")
 
 
 def _set_outcome(root: Path, run_id: str, check_id: str, outcome: str) -> None:
     with _store(root) as store, Session(store.engine) as session, session.begin():
         session.execute(
             update(CheckResultRow)
-            .where(CheckResultRow.run_id == run_id, CheckResultRow.check_id == check_id)
+            .where(
+                CheckResultRow.run_id == run_id,
+                CheckResultRow.check_id
+                == select(CheckRow.id)
+                .where(CheckRow.check_hash == check_id)
+                .scalar_subquery(),
+            )
             .values(outcome=outcome, check_name="TARGET")
         )
 

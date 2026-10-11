@@ -374,8 +374,11 @@ def test_a_store_records_a_check_row_and_a_row_per_clause(
         [run] = store.runs_page("test", limit=5)
         stored = store.run("test", run.id)
         assert stored is not None
-        assert [r.check_name for r in stored.check_results] == ["t_usable"]
-        assert len(stored.results) == 5
+        [result] = stored.results
+        assert result.check_name == "t_usable"
+        assert result.public_id == project.checks[0].id
+        # Spec 033 S4: the clauses' rows sit under the check's own row.
+        assert len(result.clauses) == 4
         assert stored.total == 1 and stored.failed == 1
         check = project.checks[0]
         assert set(store.latest_results("test")) == {check.id}

@@ -32,6 +32,7 @@ from tablewatch.engine.runner import (
 )
 from tablewatch.notify import NOT_RECORDED, notify_sink
 from tablewatch.results.store import (
+    CLAUSE_ROWS_SINCE,
     NoStoreError,
     OlderStoreError,
     StoreError,
@@ -192,12 +193,17 @@ def read_baselines(
             return Baselines()
         # Never migrate here: a run that records migrates when it saves, and
         # `--no-store` must leave a shared store as it found it. Every store
-        # since 0002 holds the measured values; one from before change() has
-        # none, so it gives no baselines.
+        # since 0002 holds the measured values (the store reads a pre-0004
+        # one as it is, spec 033 D8); one from before change() has none.
         with open_store(
             url, project.root, create=False, migrate=False, oldest=BASELINES_SINCE
         ) as store:
-            samples = store.baselines(project.config.name, changes, now)
+            samples = store.baselines(
+                project.config.name,
+                changes,
+                now,
+                legacy=store.older_than(CLAUSE_ROWS_SINCE),
+            )
     except (NoStoreError, OlderStoreError):
         return Baselines()
     except StoreError as exc:

@@ -248,7 +248,8 @@ def test_the_streak_rule_through_the_api(recorded: Recorded) -> None:  # P3
         db = sqlite3.connect(recorded.root / ".tablewatch" / "results.db")
         db.execute(
             "UPDATE tablewatch_check_results SET outcome = ? "
-            "WHERE run_id = ? AND check_id = ?",
+            "WHERE run_id = ? AND "
+            "check_id = (SELECT id FROM tablewatch_checks WHERE check_hash = ?)",
             (outcome, run_id, ORDER_VOLUME),
         )
         db.commit()
@@ -301,7 +302,8 @@ def test_equal_start_times_since(recorded: Recorded) -> None:  # P4
     db = sqlite3.connect(recorded.root / ".tablewatch" / "results.db")
     db.execute(
         "UPDATE tablewatch_check_results SET outcome = 'pass' "
-        "WHERE run_id = ? AND check_id = ?",
+        "WHERE run_id = ? AND "
+        "check_id = (SELECT id FROM tablewatch_checks WHERE check_hash = ?)",
         (second, CUSTOMERS_EMAIL),
     )
     db.commit()

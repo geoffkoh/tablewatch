@@ -413,14 +413,16 @@ def test_an_old_store_upgrades_and_old_rows_are_never_baselines(
         columns = {
             c["name"] for c in inspect(engine).get_columns("tablewatch_check_results")
         }
-        assert {"measured", "unit"} <= columns
+        assert "unit" in columns and "measured" not in columns  # spec 033 D3
         with engine.connect() as con:
-            old = con.execute(
+            # A row from before named checks has no summary row to sit under:
+            # revision 0004 drops it (spec 033 D8).
+            old: int = con.execute(
                 text(
-                    "SELECT measured, unit FROM tablewatch_check_results WHERE run_id = 'old'"
+                    "SELECT count(*) FROM tablewatch_check_results WHERE run_id = 'old'"
                 )
-            ).one()
-            assert tuple(old) == (None, None)
+            ).scalar_one()
+            assert old == 0
     finally:
         engine.dispose()
     # A row recorded before spec 032 is not a named check's summary row, so
