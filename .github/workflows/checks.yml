@@ -21,7 +21,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy .
-      - run: uv run pytest
+      - run: uv run pytest -n auto
 
   # The results store on Postgres (spec 031). The service container is test
   # infrastructure: its password below is a throwaway for a database that

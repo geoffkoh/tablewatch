@@ -15,6 +15,11 @@ the build pass.
 2. The iteration spec and its acceptance scenarios.
 3. The diff: `git diff main...HEAD`.
 
+You usually run in your **own git worktree** (a copy of the iteration
+branch), so your test runs never collide with the tech lead's. Commit your
+tests there; the tech lead merges your commit into the iteration branch. Use
+targeted test files, or `uv run pytest -n auto` for the whole suite.
+
 ## You own
 
 `tests/**` only. You never change `src/`. When a test you add fails, that is
