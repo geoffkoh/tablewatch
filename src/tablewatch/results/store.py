@@ -494,6 +494,15 @@ class ResultStore:
     def close(self) -> None:
         self.engine.dispose()
 
+    @contextmanager
+    def _session(self, session: Session | None) -> Iterator[Session]:
+        """`session` as given, or a reading session of this store's own."""
+        if session is not None:
+            yield session
+            return
+        with reading(self.engine), Session(self.engine) as own:
+            yield own
+
     def __enter__(self) -> ResultStore:
         return self
 
@@ -647,18 +656,24 @@ class ResultStore:
             }
 
     def previous_results(
-        self, project: str, check_ids: Iterable[str], before: PageKey
+        self,
+        project: str,
+        check_ids: Iterable[str],
+        before: PageKey,
+        *,
+        session: Session | None = None,
     ) -> dict[str, list[Entry]]:
         """Each check's results in this project before `before`, newest first.
 
         Read only as deep as `transition` looks: down to and including the
         newest `fail` or `pass`. Runs at or after `before` — this run, and
-        any run recorded concurrently after it — are left out.
+        any run recorded concurrently after it — are left out. `session`
+        reads inside a writer's transaction (spec 035 D2).
         """
         wanted = list(dict.fromkeys(check_ids))
         found: dict[str, list[Entry]] = {}
         done: set[str] = set()
-        with reading(self.engine), Session(self.engine) as session:
+        with self._session(session) as session:
             # In chunks: a database caps the parameters in one statement.
             for start in range(0, len(wanted), _CHUNK):
                 statement = (
@@ -689,12 +704,17 @@ class ResultStore:
         return found
 
     def recorded_after(
-        self, project: str, check_ids: Iterable[str], after: PageKey
+        self,
+        project: str,
+        check_ids: Iterable[str],
+        after: PageKey,
+        *,
+        session: Session | None = None,
     ) -> set[str]:
         """Which of `check_ids` have a result in a run newer than `after`."""
         wanted = list(dict.fromkeys(check_ids))
         found: set[str] = set()
-        with reading(self.engine), Session(self.engine) as session:
+        with self._session(session) as session:
             for start in range(0, len(wanted), _CHUNK):
                 statement = (
                     select(CheckRow.check_hash)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from typing import Any, NamedTuple
 
 from tablewatch.config.project import NotifierConfig, resolve_env
@@ -68,7 +69,7 @@ def _user(text: str, limit: int = MAX_STRING) -> str:
     return escape(clean(text, limit))
 
 
-def _line(event: PayloadEvent) -> str:
+def _line(event: PayloadEvent, started: str = "") -> str:
     check = event.check
     head = f"• {_user(check.dataset)} · {_user(check.name)}: "
     if event.event == "erroring":
@@ -77,9 +78,18 @@ def _line(event: PayloadEvent) -> str:
         line = head + _user(event.display_value)
         if event.message:
             line += f" — {_user(event.message, MAX_MESSAGE)}"
+    if event.recorded_at is not None:
+        # An alert a later attempt sends says when its change was recorded.
+        recorded = _minute(event.recorded_at)
+        if recorded != started:
+            line += f" (recorded {recorded} UTC)"
     if check.owner:
         line += f" (owner: {_user(check.owner)})"
     return line
+
+
+def _minute(moment: datetime) -> str:
+    return utc(moment).strftime("%Y-%m-%d %H:%M")
 
 
 def _header(project: str, counts: str) -> str:
@@ -104,11 +114,11 @@ def _utf16(text: str) -> int:
     return len(text.encode("utf-16-le", "surrogatepass")) // 2
 
 
-def _section(group: _Group, events: list[PayloadEvent]) -> str:
+def _section(group: _Group, events: list[PayloadEvent], started: str) -> str:
     noun = group.more
     text = f"*{group.label} ({len(events)})*"
     for shown, event in enumerate(events):
-        line = _line(event)
+        line = _line(event, started)
         left = len(events) - shown - 1
         # Room for this line, and for the closing line if any are left after it.
         tail = len(_more(left, noun)) + 1 if left else 0
@@ -140,7 +150,7 @@ def render_payload(payload: Payload) -> dict[str, Any]:
     ]
     counts = ", ".join(f"{len(events)} {group.word}" for group, events in groups)
     project = clean(payload.project)
-    started = utc(payload.run.started_at).strftime("%Y-%m-%d %H:%M")
+    started = _minute(payload.run.started_at)
     context = f"run {_user(payload.run.id[:8])} · {_user(payload.run.trigger)} · {started} UTC"
     blocks: list[dict[str, Any]] = [
         {
@@ -152,7 +162,7 @@ def render_payload(payload: Payload) -> dict[str, Any]:
             },
         },
         *(
-            {"type": "section", "text": _mrkdwn(_section(group, events))}
+            {"type": "section", "text": _mrkdwn(_section(group, events, started))}
             for group, events in groups
         ),
         {"type": "context", "elements": [_mrkdwn(context)]},

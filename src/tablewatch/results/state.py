@@ -151,3 +151,17 @@ def transition(outcome: str, previous: Sequence[Entry]) -> Transition | None:
         if before != Outcome.ERROR:
             return Transition("erroring", before)
     return None
+
+
+def alerts(
+    outcome: str, notify: Sequence[str], previous: Sequence[Entry]
+) -> list[tuple[str, Transition]]:
+    """Each notifier one check's result should tell, with what changed.
+
+    The rule both delivery paths share: an unkeyed run sends these at its
+    end; a keyed run writes them to the outbox with its dataset's results.
+    """
+    change = transition(outcome, previous)
+    if change is None:
+        return []
+    return [(name, change) for name in notify]

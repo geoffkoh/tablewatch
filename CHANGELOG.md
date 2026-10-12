@@ -29,6 +29,17 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- **Notifications that survive a crash under `--run-key`.** Each dataset's
+  state changes are written to the results store (`tablewatch_outbox`,
+  revision 0006) with its results and sent at the end of the attempt; what
+  did not get through is sent by the next attempt under the key, one message
+  per run and notifier. A failing notifier warns with how many alerts are
+  pending and is given up on after 5 attempts or 24 hours. The store keeps
+  the notifier's name, never its URL or the message. The payload adds
+  `recorded_at` (`schema_version` unchanged), and Slack shows it on a late
+  alert. A Postgres run-key lock whose connection drops is now noticed
+  (spec 035, I-49 part 2).
+
 - **Resumable runs: `tablewatch run --run-key <key>`.** Each dataset is
   recorded as it finishes; running the same key again scans only the
   datasets not yet answered (never reached, or ended in `error`), and its

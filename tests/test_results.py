@@ -42,6 +42,7 @@ def test_store_uses_its_own_version_table(store_url: str) -> None:
         "tablewatch_clause_results",
         "tablewatch_dataset_runs",
         "tablewatch_run_locks",
+        "tablewatch_outbox",
     }
 
 

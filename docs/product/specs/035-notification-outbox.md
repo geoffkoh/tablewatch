@@ -61,7 +61,8 @@ data-steward); the answers are folded in here.
   registry (not the result row: an `error` retry replaces result rows),
   `notifier` (the name only — never a URL, `${env:}` reference or config),
   `event`, `previous_outcome` NULL, `created_at`, `attempts`, `sent_at`
-  NULL, `abandoned_at` NULL; UNIQUE (run_id, check_id, notifier).
+  NULL, `abandoned_at` NULL; UNIQUE (run_id, check_id, notifier, event) —
+  per event, so an `erroring` sent and a retry's `failing` are both told.
   References, not copies: no message text is stored.
 - **D2 (Q1) — written with the results.** `record_dataset` computes each
   notifying check's transition (`previous_results`, and `recorded_after`

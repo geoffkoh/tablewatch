@@ -181,9 +181,8 @@ def test_s7_upgrading_a_0003_store_moves_clause_rows(workspace: Workspace) -> No
     assert code == 0 and '"skipped"' not in out, out
 
 
-def test_s8_only_the_outbox_is_still_reserved(workspace: Workspace) -> None:
-    # Spec 034 (I-49 part 1) built the run key and dataset runs; the outbox
-    # is part 2's.
+def test_s8_the_reserved_schema_is_built(workspace: Workspace) -> None:
+    # Spec 034 built the run key and dataset runs, spec 035 the outbox.
     _load(workspace, USABLE.format(ds="duck"))
     invoke(workspace.root, "run")
     engine = create_engine(f"sqlite:///{workspace.root / '.tablewatch' / 'results.db'}")
@@ -192,8 +191,8 @@ def test_s8_only_the_outbox_is_still_reserved(workspace: Workspace) -> None:
         columns = {c["name"] for c in inspect(engine).get_columns("tablewatch_runs")}
     finally:
         engine.dispose()
-    assert "tablewatch_outbox" not in tables
-    assert "tablewatch_dataset_runs" in tables and "run_key" in columns
+    assert {"tablewatch_outbox", "tablewatch_dataset_runs"} <= tables
+    assert "run_key" in columns
 
 
 def test_d4_a_check_registered_by_another_run_is_reused(

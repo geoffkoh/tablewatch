@@ -229,3 +229,33 @@ class RunLockRow(Base):
     owner: Mapped[str] = mapped_column(String(32))
     acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class OutboxRow(Base):
+    """A state change to tell one notifier, written with its result (spec 035).
+
+    It references the run and the registry's check rather than copying the
+    message: the alert is rebuilt from the stored result when it is sent,
+    and the notifier is only a name — its URL comes from the configuration
+    of the process that sends it.
+    """
+
+    __tablename__ = "tablewatch_outbox"
+    __table_args__ = (UniqueConstraint("run_id", "check_id", "notifier", "event"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("tablewatch_runs.id", ondelete="CASCADE"), index=True
+    )
+    check_id: Mapped[int] = mapped_column(
+        ForeignKey("tablewatch_checks.id", name="fk_tablewatch_outbox_check_id")
+    )
+    notifier: Mapped[str] = mapped_column(Text)
+    event: Mapped[str] = mapped_column(String(16))
+    previous_outcome: Mapped[str | None] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Given up on: too many failed sends, too old, its notifier gone, or
+    # superseded by a later run under the key (spec 035 D7–D9).
+    abandoned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

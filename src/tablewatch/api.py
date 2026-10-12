@@ -30,7 +30,7 @@ from tablewatch.engine.runner import (
     RunResult,
     run_checks,
 )
-from tablewatch.notify import NOT_RECORDED, notify_sink
+from tablewatch.notify import NOT_RECORDED, drain, notify_sink
 from tablewatch.results.keyed import KeyedRun, check_run_key
 from tablewatch.results.store import (
     CLAUSE_ROWS_SINCE,
@@ -139,6 +139,7 @@ def run(
         cwd=project.root,
         run_key=run_key,
         rerun=rerun,
+        notify=notify,
     )
     for reason in result.record_errors:
         log.warning("could not record the run: %s", reason)
@@ -156,6 +157,7 @@ def execute(
     cwd: Path,
     run_key: str | None = None,
     rerun: bool = False,
+    notify: bool = True,
 ) -> RunResult:
     """Select, run, and hand the finished run to each sink in order.
 
@@ -200,6 +202,7 @@ def execute(
             trigger=trigger,
             selection=selection,
             now=now,
+            notify=notify,
         )
         if result.completed_exit_code is not None:
             return result  # nothing ran, so nothing to tell anyone
@@ -222,6 +225,7 @@ def _execute_keyed(
     trigger: str,
     selection: Selection,
     now: datetime,
+    notify: bool,
 ) -> RunResult:
     """One attempt under `run_key`: begin or resume its run, scan only the
     datasets not yet answered, and close the run (spec 034)."""
@@ -234,8 +238,11 @@ def _execute_keyed(
         trigger=trigger,
         selection=selection.as_dict(),
         now=now,
+        notify=notify,
     ) as keyed:
         if keyed.completed is not None:
+            # A replay still sends what an earlier attempt left (D3).
+            _drain(project, keyed, notify)
             return RunResult(
                 id=keyed.completed.run_id,
                 project=project.config.name,
@@ -264,7 +271,6 @@ def _execute_keyed(
         )
         result.run_key = run_key
         result.resumed = keyed.resumed
-        result.recorded = keyed.recorded
         result.skipped = keyed.skipped(
             {(c.dataset.datasource, c.dataset.name) for c in pending}
         )
@@ -272,7 +278,14 @@ def _execute_keyed(
             keyed.finish(result)
         except Exception as exc:
             result.record_errors.append(error_message(exc))
+        _drain(project, keyed, notify)
     return result
+
+
+def _drain(project: Project, keyed: KeyedRun, notify: bool) -> None:
+    # Under the key's lock, which makes this process the key's only sender.
+    if notify and project.config.notifiers:
+        drain(project, keyed.store, keyed.run_key, keyed.check_lock)
 
 
 def _warn_not_evaluated(checks: Sequence[Check], keyed: KeyedRun) -> None:
@@ -348,14 +361,18 @@ def default_sinks(
     """Where a run goes: the results store, then the notifiers.
 
     Nothing when `record` is off: notifications are computed from history,
-    so an unrecorded run cannot send them. A `keyed` run is recorded as it
-    goes, so only the notifiers. Internal, shared by the CLI and the server.
+    so an unrecorded run cannot send them. A `keyed` run needs none: it
+    records as it goes and sends from its outbox. Internal, shared by the
+    CLI and the server.
     """
     if not record:
         if notify and project.config.notifiers:
             log.info(NOT_RECORDED)
         return []
-    sinks = [] if keyed else [store_sink(project.config.results.url, project.root)]
+    if keyed:
+        # Recorded as it goes, and told through the outbox (spec 035 D3).
+        return []
+    sinks = [store_sink(project.config.results.url, project.root)]
     if notify:
         sinks.append(notify_sink(project))
     return sinks

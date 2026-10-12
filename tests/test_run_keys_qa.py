@@ -493,7 +493,7 @@ def test_a_keyed_run_on_an_older_store_migrates_first(
     _grow(workspace.root, 2)
     assert _previous(workspace.root, "--run-key", KEY) == 5
     assert _q(workspace.root, "SELECT version_num FROM tablewatch_alembic_version") == [
-        ("0005",)
+        ("0006",)
     ]
     assert _q(workspace.root, "SELECT count(*) FROM tablewatch_dataset_runs") == [(1,)]
 
@@ -658,7 +658,7 @@ def test_a_lock_taken_over_mid_run_stops_writes_and_fails_finish(
     monkeypatch.setattr(KeyedRun, "record_dataset", stolen)
     result = tw.run(ws.root, run_key=KEY, concurrency=1)
     assert result.exit_code() == 2
-    assert any("taken over by another process" in e for e in result.record_errors)
+    assert any("lost the lock on run key" in e for e in result.record_errors)
     # Only the first dataset was written; the row is left for a retry; the
     # thief's lock survives this process's release.
     assert _q(ws.root, "SELECT count(*) FROM tablewatch_dataset_runs") == [(1,)]

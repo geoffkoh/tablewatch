@@ -52,6 +52,9 @@ class PayloadEvent(_Model):
     value: JsonFloat
     display_value: str
     message: str | None
+    # When its dataset was recorded: under `--run-key`, an alert can be sent
+    # by a later attempt than the one that recorded it (spec 035 D6).
+    recorded_at: Timestamp | None = None
 
 
 class Payload(_Model):
@@ -78,7 +81,6 @@ def build_payload(notification: Notification) -> Payload:
 def _event(event: Event) -> PayloadEvent:
     result = event.result
     check = result.check
-    dataset = check.dataset
     return PayloadEvent(
         event=event.event,
         outcome=result.outcome.value,
@@ -87,15 +89,16 @@ def _event(event: Event) -> PayloadEvent:
         check=PayloadCheck(
             id=check.id,
             name=check.name,
-            path=dataset.path.as_posix(),
-            dataset=dataset.name,
-            datasource=dataset.datasource,
-            owner=dataset.owner,
-            tags=list(dataset.tags),
+            path=check.path,
+            dataset=check.dataset,
+            datasource=check.datasource,
+            owner=check.owner,
+            tags=list(check.tags),
         ),
         value=result.value,
         display_value=result.display_value,
         message=ERROR_MESSAGE if result.outcome is Outcome.ERROR else result.message,
+        recorded_at=result.recorded_at,
     )
 
 

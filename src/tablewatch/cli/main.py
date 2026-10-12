@@ -572,6 +572,7 @@ def run(
             cwd=Path.cwd(),
             run_key=run_key,
             rerun=rerun,
+            notify=not no_notify,
         )
     except SelectionError as exc:
         _fail(str(exc))
