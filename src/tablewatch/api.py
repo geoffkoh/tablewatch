@@ -244,6 +244,7 @@ def _execute_keyed(
                 trigger=trigger,
                 fail_on=fail_on,
                 run_key=run_key,
+                skipped=keyed.skipped(set()),
                 completed_exit_code=keyed.completed.exit_code,
             )
         pending = [check for check in checks if not keyed.is_done(check)]
@@ -263,7 +264,9 @@ def _execute_keyed(
         )
         result.run_key = run_key
         result.resumed = keyed.resumed
-        result.skipped = tuple(keyed.done.values())
+        result.skipped = keyed.skipped(
+            {(c.dataset.datasource, c.dataset.name) for c in pending}
+        )
         try:
             keyed.finish(result)
         except Exception as exc:

@@ -187,8 +187,9 @@ class RunResult:
     run_key: str | None = None
     resumed: bool = False
     skipped: tuple[SkippedDataset, ...] = ()
-    # A completed key run again without `--rerun`: nothing ran, and the run
-    # reports the exit code that attempt recorded.
+    # A completed key run again without `--rerun`: nothing ran; `skipped`
+    # holds what was recorded, and `exit_code()` is the code recorded then,
+    # whatever `fail_on` says now — the same answer the first time gave.
     completed_exit_code: int | None = None
 
     @property

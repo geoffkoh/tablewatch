@@ -285,7 +285,7 @@ def _alembic_config() -> Config:
     return config
 
 
-def _fit(row: Base) -> None:
+def fit_row(row: Base) -> None:
     """Make a row storable the same way on every backend, or `RecordError`.
 
     A NUL from the data (a message, a value) is replaced: Postgres refuses
@@ -328,7 +328,7 @@ def _register(session: Session, project: str, check: Check) -> int:
         name=check.name,
         check_hash=check.id,
     )
-    _fit(row)
+    fit_row(row)
     values = {
         c.key: getattr(row, c.key) for c in CheckRow.__table__.columns if c.key != "id"
     }
@@ -350,7 +350,7 @@ def _register(session: Session, project: str, check: Check) -> int:
     return session.scalars(lookup).one()
 
 
-def _result_rows(results: Iterable[CheckResult]) -> list[CheckResultRow]:
+def result_rows(results: Iterable[CheckResult]) -> list[CheckResultRow]:
     """The rows recording `results`, each checked against its columns."""
     rows = []
     for r in results:
@@ -387,14 +387,14 @@ def _result_rows(results: Iterable[CheckResult]) -> list[CheckResultRow]:
             )
             for c in r.clauses
         ]
-        _fit(result)
+        fit_row(result)
         for clause in result.clauses:
-            _fit(clause)
+            fit_row(clause)
         rows.append(result)
     return rows
 
 
-def _register_all(
+def register_all(
     session: Session,
     project: str,
     results: Iterable[CheckResult],
@@ -409,7 +409,7 @@ def _register_all(
 
 
 @contextmanager
-def _reading(engine: Engine) -> Iterator[None]:
+def reading(engine: Engine) -> Iterator[None]:
     try:
         yield
     except SQLAlchemyError as exc:
@@ -460,7 +460,7 @@ class ResultStore:
         scripts = ScriptDirectory.from_config(_alembic_config())
         known = [revision.revision for revision in scripts.walk_revisions()]
         known.reverse()  # walk_revisions starts at head
-        with _reading(self.engine), self.engine.connect() as connection:
+        with reading(self.engine), self.engine.connect() as connection:
             context = MigrationContext.configure(
                 connection, opts={"version_table": VERSION_TABLE}
             )
@@ -540,10 +540,10 @@ class ResultStore:
             failed=run.count(Outcome.FAIL),
             errored=run.count(Outcome.ERROR),
         )
-        row.results = _result_rows(run.results)
-        _fit(row)
+        row.results = result_rows(run.results)
+        fit_row(row)
         with Session(self.engine) as session, session.begin():
-            _register_all(session, run.project, run.results, row.results)
+            register_all(session, run.project, run.results, row.results)
             session.add(row)
 
     # --- reads, every one scoped to one project: a store can be shared ---
@@ -558,7 +558,7 @@ class ResultStore:
             .order_by(RunRow.started_at.desc(), RunRow.id.desc())
             .limit(limit)
         )
-        with _reading(self.engine), Session(self.engine) as session:
+        with reading(self.engine), Session(self.engine) as session:
             return list(session.scalars(statement))
 
     def run(self, project: str, run_id: str) -> RunRow | None:
@@ -568,7 +568,7 @@ class ResultStore:
             .where(RunRow.project == project, RunRow.id == run_id, _finished)
             .options(selectinload(RunRow.results).selectinload(CheckResultRow.clauses))
         )
-        with _reading(self.engine), Session(self.engine) as session:
+        with reading(self.engine), Session(self.engine) as session:
             return session.scalars(statement).one_or_none()
 
     def latest_results(
@@ -601,7 +601,7 @@ class ResultStore:
             .where(*scope)
             .order_by(CheckRow.check_hash, RunRow.started_at.desc(), RunRow.id.desc())
         )
-        with _reading(self.engine), Session(self.engine) as session:
+        with reading(self.engine), Session(self.engine) as session:
             histories: dict[str, list[Entry]] = {}
             heads: dict[int, str] = {}
             for check, outcome, started_at, result_id in session.execute(outcomes):
@@ -635,7 +635,7 @@ class ResultStore:
         wanted = list(dict.fromkeys(check_ids))
         found: dict[str, list[Entry]] = {}
         done: set[str] = set()
-        with _reading(self.engine), Session(self.engine) as session:
+        with reading(self.engine), Session(self.engine) as session:
             # In chunks: a database caps the parameters in one statement.
             for start in range(0, len(wanted), _CHUNK):
                 statement = (
@@ -689,7 +689,7 @@ class ResultStore:
         """
         wanted = list(requests)
         found: dict[str, list[Sample]] = {}
-        with _reading(self.engine), Session(self.engine) as session:
+        with reading(self.engine), Session(self.engine) as session:
             measures = (
                 _legacy_measures(project, before)
                 if legacy
@@ -775,7 +775,7 @@ class ResultStore:
             .order_by(CheckRow.check_hash)
             .limit(limit)
         )
-        with _reading(self.engine), Session(self.engine) as session:
+        with reading(self.engine), Session(self.engine) as session:
             return list(session.scalars(statement))
 
     def matching_run_ids(self, project: str, prefix: str, limit: int = 10) -> list[str]:
@@ -790,7 +790,7 @@ class ResultStore:
             .order_by(RunRow.id)
             .limit(limit)
         )
-        with _reading(self.engine), Session(self.engine) as session:
+        with reading(self.engine), Session(self.engine) as session:
             return list(session.scalars(statement))
 
     def history_page(
@@ -813,7 +813,7 @@ class ResultStore:
             .order_by(RunRow.started_at.desc(), RunRow.id.desc())
             .limit(limit)
         )
-        with _reading(self.engine), Session(self.engine) as session:
+        with reading(self.engine), Session(self.engine) as session:
             return [
                 (result, run) for result, run in session.execute(statement).unique()
             ]

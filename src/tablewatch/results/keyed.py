@@ -43,11 +43,11 @@ from tablewatch.results.models import (
 from tablewatch.results.store import (
     ResultStore,
     StoreError,
-    _fit,
-    _reading,
-    _register_all,
-    _result_rows,
+    fit_row,
     open_store,
+    reading,
+    register_all,
+    result_rows,
 )
 
 log = logging.getLogger(__name__)
@@ -137,8 +137,11 @@ class KeyedRun:
     ) -> None:
         self.completed: Completed | None = None
         self.done: dict[tuple[str, str], SkippedDataset] = {}
+        # Datasets an earlier attempt recorded as `error`: rescanned when
+        # selected, and still counted when not (spec 034 D2).
+        self.unanswered: dict[tuple[str, str], SkippedDataset] = {}
         self.recorded_checks: set[str] = set()
-        with _reading(self.store.engine), Session(self.store.engine) as session:
+        with reading(self.store.engine), Session(self.store.engine) as session:
             latest = session.scalars(
                 select(RunRow)
                 .where(RunRow.project == self.project, RunRow.run_key == self.run_key)
@@ -158,12 +161,15 @@ class KeyedRun:
                         latest.id, utc(latest.finished_at), latest.exit_code
                     )
                     self.run_id, self.started_at = latest.id, utc(latest.started_at)
+                    self._read_done(session)
                     return
                 # SQLite returns the moment without its zone; it was stored
                 # in UTC, and the run's clock arithmetic needs it aware.
                 self.run_id, self.started_at = latest.id, utc(latest.started_at)
                 self.resumed = True
                 self._read_done(session)
+                if latest.exit_code is not None:
+                    self._reopen(session)
                 return
         self.resumed = False
         self.run_id, self.started_at = uuid.uuid4().hex, now
@@ -178,9 +184,9 @@ class KeyedRun:
             selection=selection,
             run_key=self.run_key,
         )
-        _fit(row)
+        fit_row(row)
         with (
-            _reading(self.store.engine),
+            reading(self.store.engine),
             Session(self.store.engine) as session,
             session.begin(),
         ):
@@ -209,18 +215,44 @@ class KeyedRun:
         for datasource, dataset, outcome, n in rows:
             counts.setdefault((datasource, dataset), {})[Outcome(outcome)] = n
         for row in datasets:
-            if row.outcome not in _DONE:
-                continue
             key = (row.datasource, row.dataset)
-            self.done[key] = SkippedDataset(
+            recorded = SkippedDataset(
                 row.datasource, row.dataset, Outcome(row.outcome), counts.get(key, {})
             )
+            (self.done if row.outcome in _DONE else self.unanswered)[key] = recorded
         self.recorded_checks = set(
             session.scalars(
                 select(CheckRow.check_hash)
                 .join(CheckResultRow, CheckResultRow.check_id == CheckRow.id)
                 .where(CheckResultRow.run_id == self.run_id)
             )
+        )
+
+    def _reopen(self, session: Session) -> None:
+        """Mark a finished exit-2 run unfinished again while it is retried,
+        so run reads never show totals its rows no longer match (D8)."""
+        session.execute(
+            update(RunRow)
+            .where(RunRow.id == self.run_id)
+            .values(
+                finished_at=None,
+                outcome=None,
+                exit_code=None,
+                total=None,
+                passed=None,
+                warned=None,
+                failed=None,
+                errored=None,
+            )
+        )
+        session.commit()  # the session's reads began its transaction
+
+    def skipped(self, scanned: set[tuple[str, str]]) -> tuple[SkippedDataset, ...]:
+        """What this attempt counts but did not scan: the datasets already
+        answered, and those left in `error` that it did not select again."""
+        return (
+            *self.done.values(),
+            *(u for key, u in self.unanswered.items() if key not in scanned),
         )
 
     def is_done(self, check: Check) -> bool:
@@ -231,7 +263,9 @@ class KeyedRun:
     def record_dataset(self, dataset: Dataset, results: list[CheckResult]) -> None:
         """Record one dataset's results in one transaction, replacing any
         earlier attempt's rows for it (an `error` being retried)."""
-        rows = _result_rows(results)
+        if self._lock is not None and not self._lock.held():
+            raise StoreError(self._lost())
+        rows = result_rows(results)
         for row in rows:
             row.run_id = self.run_id
         finished = datetime.now(UTC)
@@ -247,15 +281,15 @@ class KeyedRun:
             outcome=_worst(results),
             version=__version__,
         )
-        _fit(record)
+        fit_row(record)
         with (
             self._write,
-            _reading(self.store.engine),
+            reading(self.store.engine),
             Session(self.store.engine) as session,
             session.begin(),
         ):
             self._forget(session, dataset)
-            _register_all(session, self.project, results, rows)
+            register_all(session, self.project, results, rows)
             session.add_all([*rows, record])
 
     def _forget(self, session: Session, dataset: Dataset) -> None:
@@ -286,12 +320,9 @@ class KeyedRun:
         """Close the run row: its outcome over every dataset recorded under
         it, by any attempt. A sink: raising makes the exit code 2."""
         if self._lock is not None and not self._lock.held():
-            raise StoreError(
-                f"results store: the lock on run key '{self.run_key}' was taken "
-                "over by another process"
-            )
+            raise StoreError(self._lost())
         with (
-            _reading(self.store.engine),
+            reading(self.store.engine),
             Session(self.store.engine) as session,
             session.begin(),
         ):
@@ -316,6 +347,12 @@ class KeyedRun:
                     errored=tally.get(Outcome.ERROR.value, 0),
                 )
             )
+
+    def _lost(self) -> str:
+        return (
+            f"results store: the lock on run key '{self.run_key}' was taken over "
+            "by another process"
+        )
 
     def close(self) -> None:
         if self._lock is not None:
@@ -344,6 +381,8 @@ def _reason(exc: StoreError) -> str:
 
 class _Lock:
     def held(self) -> bool:
+        # A Postgres session lock cannot be taken over while its connection
+        # lives; a dropped connection losing it goes unnoticed (part 1).
         return True
 
     def release(self) -> None:
@@ -371,7 +410,7 @@ class _AdvisoryLock(_Lock):
 
     def __init__(self, store: ResultStore, project: str, run_key: str) -> None:
         self._key = advisory_key(project, run_key)
-        with _reading(store.engine):
+        with reading(store.engine):
             self._connection: Connection | None = store.engine.connect()
             try:
                 taken = self._connection.scalar(
@@ -412,7 +451,7 @@ class _RowLock(_Lock):
         self._owner = uuid.uuid4().hex
         self._lost = False
         now = datetime.now(UTC)
-        with _reading(store.engine):
+        with reading(store.engine):
             if not self._insert(project, run_key, now) and not self._steal(now):
                 raise _busy(run_key)
         self._stop = threading.Event()

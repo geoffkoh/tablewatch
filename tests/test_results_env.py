@@ -13,7 +13,7 @@ from tablewatch.results.store import (
     ENV_PLACEMENT,
     RecordError,
     StoreError,
-    _fit,
+    fit_row,
     resolve_url_env,
 )
 from tests.conftest import invoke
@@ -178,10 +178,10 @@ def test_p17_a_control_character_in_a_name(retail: Path) -> None:
 
 def test_a_nul_from_the_data_is_replaced_and_a_bound_is_checked() -> None:
     row = RunRow(id="r" * 32, project="p", trigger="t\0x")
-    _fit(row)
+    fit_row(row)
     assert row.trigger == "t�x"
     with pytest.raises(RecordError, match=r"tablewatch_runs.trigger holds at most 32"):
-        _fit(RunRow(id="r", project="p", trigger="t" * 33))
+        fit_row(RunRow(id="r", project="p", trigger="t" * 33))
 
 
 def test_the_user_from_a_variable(monkeypatch: pytest.MonkeyPatch) -> None:

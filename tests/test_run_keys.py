@@ -389,3 +389,43 @@ def test_s6_on_postgres_the_advisory_lock_refuses_a_second_holder(
             pass
     with keyed("busy"):  # released on close
         pass
+
+
+def test_s3_a_replayed_run_reports_what_was_recorded(ws: Workspace) -> None:
+    invoke(ws.root, "run", "--run-key", KEY)
+    result = tw.run(ws.root, run_key=KEY)
+    assert result.completed_exit_code == 1 and result.exit_code("warn") == 1
+    assert (result.outcome.value, result.count(tw.Outcome.FAIL)) == ("fail", 1)
+    assert result.results == []
+
+
+def test_d2_an_errored_dataset_not_selected_again_still_counts(ws: Workspace) -> None:
+    _break_lite(ws, broken=True)
+    assert invoke(ws.root, "run", "--run-key", KEY)[0] == 2
+    _break_lite(ws, broken=False)
+    # Only duck is selected, and an earlier attempt answered it: lite's error
+    # stands, so the key is still not clean.
+    code, _, err = invoke(ws.root, "run", "--run-key", KEY, "--datasource", "duck")
+    assert code == 2, err
+    assert _q(ws, "SELECT exit_code, errored FROM tablewatch_runs") == [(2, 1)]
+
+
+def test_d2_a_finished_exit_2_run_is_unfinished_while_retried(ws: Workspace) -> None:
+    _break_lite(ws, broken=True)
+    invoke(ws.root, "run", "--run-key", KEY)
+    project = ws.load()
+    with KeyedRun(
+        project.config.results.url,
+        project.root,
+        "test",
+        KEY,
+        rerun=False,
+        trigger="test",
+        selection={},
+        now=datetime.now(UTC),
+    ) as keyed:
+        assert keyed.resumed
+        assert _q(ws, "SELECT exit_code, finished_at FROM tablewatch_runs") == [
+            (None, None)
+        ]
+        assert "FAIL" not in invoke(ws.root, "runs")[1]
