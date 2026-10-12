@@ -15,6 +15,10 @@ Built to run unattended: no prompts, logs on stderr (stdout stays clean for
 or column included), 2 when only a datasource could not be reached.
 
 `run --output-file` that cannot be written is 2, after the run is recorded.
+`run --run-key`: a key another process holds, or a store the key cannot
+use, is 2 and nothing ran; a key whose run is already complete scans
+nothing and exits with the code that run recorded; a bad key, or one with
+`--no-store`, is 3.
 `runs` and `history` read this project's history only: 0 when listed (an
 empty or absent store included for `runs`), 2 when the results store could
 not be read, 3 when there is no such check or the command line is wrong.
@@ -57,6 +61,7 @@ from tablewatch.engine.runner import FAIL_ON_CHOICES, MAX_CONCURRENCY, FailOn
 from tablewatch.jsonvalues import utc
 from tablewatch.output import REPORTERS, console
 from tablewatch.results import ResultStore
+from tablewatch.results.keyed import RunKeyError, check_run_key
 from tablewatch.results.store import NoStoreError, StoreError, open_store
 from tablewatch.selection import Selection, SelectionError, select_checks
 
@@ -511,6 +516,17 @@ def compile(ctx: click.Context, /, **selectors: tuple[str, ...]) -> None:  # noq
     default=4,
     show_default=True,
 )
+@click.option(
+    "--run-key",
+    help="Make the run resumable: a second run with the same key scans only "
+    "the datasets the first did not finish, and a completed key does nothing. "
+    "Use a key unique to each scheduled run, such as one with its date.",
+)
+@click.option(
+    "--rerun",
+    is_flag=True,
+    help="With --run-key: start a new attempt even if the key's run is complete.",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -521,23 +537,56 @@ def run(
     no_store: bool,
     no_notify: bool,
     concurrency: int,
+    run_key: str | None,
+    rerun: bool,
     **selectors: tuple[str, ...],
 ) -> None:
     """Run checks and record the results."""
     settings: _Settings = ctx.obj
+    if run_key is not None:
+        try:
+            check_run_key(run_key)
+        except ValueError as exc:
+            _fail(str(exc))
+        if no_store:
+            _fail(
+                "--run-key needs the results store; it cannot be combined "
+                "with --no-store"
+            )
+    elif rerun:
+        _fail("--rerun needs --run-key")
     project = _project(ctx)
     try:
         result = execute(
             project,
             Selection(**selectors),
-            sinks=default_sinks(project, record=not no_store, notify=not no_notify),
+            sinks=default_sinks(
+                project,
+                record=not no_store,
+                notify=not no_notify,
+                keyed=run_key is not None,
+            ),
             fail_on=cast(FailOn, fail_on),
             concurrency=concurrency,
             trigger="cli",
             cwd=Path.cwd(),
+            run_key=run_key,
+            rerun=rerun,
         )
     except SelectionError as exc:
         _fail(str(exc))
+    except RunKeyError as exc:
+        _fail(str(exc), EXIT_CHECK_ERROR)
+    if result.completed_exit_code is not None:
+        finished = utc(result.finished_at or result.started_at).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        logs.console(
+            f"tablewatch: run key '{run_key}' is already complete (finished "
+            f"{finished}, exit {result.completed_exit_code}) — nothing to do "
+            "(use --rerun to start a new attempt)",
+            logging.WARNING,
+        )
     # The checks ran and their outcome stands, but a gap in history is
     # tablewatch failing at part of its job: exit 2 (see RunResult.exit_code).
     for reason in result.record_errors:
@@ -711,13 +760,14 @@ def runs(ctx: click.Context, limit: int) -> None:
         (
             r.id[:12],
             _when(r.started_at),
-            r.outcome.upper(),
-            str(r.total),
-            f"{r.passed}/{r.warned}/{r.failed}/{r.errored}",
-            str(r.exit_code),
+            t.outcome.upper(),
+            str(t.total),
+            f"{t.passed}/{t.warned}/{t.failed}/{t.errored}",
+            str(t.exit_code),
             r.hostname,
         )
         for r in recent
+        for t in [r.totals]
     ]
     if not rows:
         click.echo(f'no runs recorded for project {name} — run "tw run" first')

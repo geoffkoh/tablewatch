@@ -10,6 +10,45 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 34 — Resumable runs, part 1: `--run-key`, per-dataset recording, the lock (I-49 part 1), 2026-10-12
+
+- **Spec:** [034-resumable-runs](specs/034-resumable-runs.md). **Branch:** `iter/034`. Full track.
+  No items added (freeze).
+- **PLAN** split I-49: part 1 resume mechanics and the lock; part 2 the outbox and exactly-once
+  notifications.
+- **REFINE.** Architect → D1 (an `on_dataset` sink on `run_checks`, the keyed lifecycle in an
+  internal `KeyedRun`), D4 (revision 0005 incl. `tablewatch_dataset_runs.version`), D5 (Postgres
+  `pg_try_advisory_lock`; SQLite lock row, 20 s heartbeat, 120 s stale, compare-and-swap takeover),
+  D7 (a resume reuses the run's id and start), D8 (unfinished runs hidden from run reads).
+  Data-steward → `error` is not done (S9), S10–S12, S3's richer message. Tech lead → D3 (a skipped
+  dataset is one console line, against the steward's per-check rows: the files may have changed;
+  `tw report` shows them), D10 (exit codes keep their meanings — additions only).
+- **Shipped:** `tw run --run-key <key>` / `tw.run(run_key=, rerun=)`: each dataset recorded as it
+  finishes; a retry scans only what is unanswered (never reached, or `error`) and its exit code
+  covers the whole key; a completed key replays its recorded report and code unless `--rerun`;
+  one process per key (exit 2); usage errors exit 3; `change()` ignores the key's own attempts.
+  Build-time amendment to D2: a finished run with exit 2 resumes (what orchestrators retry on).
+  Suite: **2,668 passed, 49 skipped, 16 xfailed**; run-key, store and notify tests also on
+  Postgres 18 locally.
+- **Reviewer findings and resolution:**
+  - *architect (targeted re-check) — approve-with-followups; all fixed (9eb542b):* a replayed key's
+    `RunResult` reports what was recorded; a retried exit-2 row is unfinished while it runs; an
+    errored dataset not selected again still counts; writes stop once the lock is lost; store
+    helpers public. Accepted: a dropped Postgres connection loses the lock unnoticed (part 1).
+  - *qa-engineer — fail → fixed (7eae6af); 37 tests:* **blocking** — one dataset's failed write
+    suppressed every alert of the attempt, and a retry skips the rest, so their alerts were lost;
+    now a keyed attempt notifies for what it recorded. Also fixed: a resumed attempt re-alerted a
+    check a run between attempts had already told; 0005's downgrade left orphan rows on SQLite; a
+    blank key; a replay with `--output json` printed nothing.
+  - *data-steward — reject → accept after a targeted S6 re-check (3/3 cold starts clean); S1–S13 via the CLI:* two cold starts on a new SQLite store raced inside
+    Alembic (`table tablewatch_runs already exists`); the loser now waits for the winner's
+    migration. The skipped line names the run id (`tw report --run <id>`).
+- **Not added (backlog freeze):** none.
+- **Lesson:** recording per dataset turned "the run was or wasn't recorded" into "some of it was";
+  every consumer that branched on `record_errors` (notifications) needed the finer answer.
+- **Backlog:** I-49 part 1 done; part 2 (outbox, exactly-once notifications) next, then I-46
+  part 3, I-51, I-47, I-48, I-50.
+
 ## Iteration 33 — Named checks, part 2: the check registry and per-clause results (I-46 part 2), 2026-10-12
 
 - **Spec:** [033-named-checks-part-2](specs/033-named-checks-part-2.md). **Branch:** `iter/033`.

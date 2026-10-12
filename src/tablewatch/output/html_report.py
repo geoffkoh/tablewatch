@@ -114,21 +114,22 @@ def view_from_rows(
             )
         )
     results.sort(key=lambda r: _ORDER.get(r.outcome, 1))  # stable: recorded order
+    totals = run.totals
     return ReportView(
         project=run.project,
         run_id=run.id,
-        outcome=run.outcome,
+        outcome=totals.outcome,
         started_at=run.started_at,
         finished_at=run.finished_at,
         trigger=run.trigger,
         hostname=run.hostname,
         version=run.version,
         selection=run.selection or {},
-        total=run.total,
-        passed=run.passed,
-        warned=run.warned,
-        failed=run.failed,
-        errored=run.errored,
+        total=totals.total,
+        passed=totals.passed,
+        warned=totals.warned,
+        failed=totals.failed,
+        errored=totals.errored,
         results=tuple(results),
         generated_at=generated_at,
     )

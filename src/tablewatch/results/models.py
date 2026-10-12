@@ -8,6 +8,7 @@ Changing these models needs a migration in `migrations/versions/`;
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -16,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -29,6 +31,9 @@ from tablewatch.config.project import MAX_PROJECT_NAME
 # existing `alembic_version` is left untouched.
 VERSION_TABLE = "tablewatch_alembic_version"
 
+# The longest `--run-key`; a longer one is a usage error, never truncated.
+MAX_RUN_KEY = 255
+
 
 class Base(DeclarativeBase):
     pass
@@ -41,24 +46,57 @@ class RunRow(Base):
     project: Mapped[str] = mapped_column(String(MAX_PROJECT_NAME))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    outcome: Mapped[str] = mapped_column(String(16))
-    exit_code: Mapped[int] = mapped_column(Integer)
+    # NULL while a keyed run is in progress, or after it crashed (spec 034):
+    # its datasets are recorded as they finish, the totals at the end.
+    outcome: Mapped[str | None] = mapped_column(String(16))
+    exit_code: Mapped[int | None] = mapped_column(Integer)
     trigger: Mapped[str] = mapped_column(String(32))
     hostname: Mapped[str] = mapped_column(Text)
     username: Mapped[str] = mapped_column(Text)
     version: Mapped[str] = mapped_column(Text)
     selection: Mapped[dict[str, Any]] = mapped_column(JSON)
-    total: Mapped[int] = mapped_column(Integer)
-    passed: Mapped[int] = mapped_column(Integer)
-    warned: Mapped[int] = mapped_column(Integer)
-    failed: Mapped[int] = mapped_column(Integer)
-    errored: Mapped[int] = mapped_column(Integer)
+    total: Mapped[int | None] = mapped_column(Integer)
+    passed: Mapped[int | None] = mapped_column(Integer)
+    warned: Mapped[int | None] = mapped_column(Integer)
+    failed: Mapped[int | None] = mapped_column(Integer)
+    errored: Mapped[int | None] = mapped_column(Integer)
+    # `--run-key`: every attempt at one logical run carries it (spec 034).
+    run_key: Mapped[str | None] = mapped_column(String(MAX_RUN_KEY))
+
+    __table_args__ = (Index("ix_tablewatch_runs_run_key", "project", "run_key"),)
 
     results: Mapped[list[CheckResultRow]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
         order_by="CheckResultRow.id",  # recorded order
     )
+
+    @property
+    def totals(self) -> RunTotals:
+        """The finished run's outcome and counts; every run read returns
+        only finished runs, so this raises only on a row written mid-run."""
+        if self.outcome is None or self.exit_code is None:
+            raise ValueError(f"run {self.id} has not finished")
+        return RunTotals(
+            outcome=self.outcome,
+            exit_code=self.exit_code,
+            total=self.total or 0,
+            passed=self.passed or 0,
+            warned=self.warned or 0,
+            failed=self.failed or 0,
+            errored=self.errored or 0,
+        )
+
+
+@dataclass(frozen=True)
+class RunTotals:
+    outcome: str
+    exit_code: int
+    total: int
+    passed: int
+    warned: int
+    failed: int
+    errored: int
 
 
 # The `metric` the API reports for a named check's own result: its value is
@@ -154,3 +192,40 @@ class ClauseResultRow(Base):
     unit: Mapped[str] = mapped_column(String(16))
 
     result: Mapped[CheckResultRow] = relationship(back_populates="clauses")
+
+
+class DatasetRunRow(Base):
+    """One dataset recorded under a keyed run: what a resume skips (spec 034).
+
+    `outcome` is the worst of the dataset's checks, so a resumed run's exit
+    code needs no join through its results.
+    """
+
+    __tablename__ = "tablewatch_dataset_runs"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("tablewatch_runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    datasource: Mapped[str] = mapped_column(Text, primary_key=True)
+    dataset: Mapped[str] = mapped_column(Text, primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[str] = mapped_column(String(16))
+    # The tablewatch that recorded this dataset: a resume may be a newer one.
+    version: Mapped[str] = mapped_column(Text)
+
+
+class RunLockRow(Base):
+    """One process per run key on a store without session locks (SQLite).
+
+    The holder refreshes `heartbeat_at`; a lock whose heartbeat is stale was
+    left by a process that died, and the next one takes it over.
+    """
+
+    __tablename__ = "tablewatch_run_locks"
+
+    project: Mapped[str] = mapped_column(String(MAX_PROJECT_NAME), primary_key=True)
+    run_key: Mapped[str] = mapped_column(String(MAX_RUN_KEY), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(32))
+    acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

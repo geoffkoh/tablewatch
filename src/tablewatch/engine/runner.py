@@ -12,7 +12,7 @@ import getpass
 import logging
 import socket
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -39,7 +39,7 @@ from tablewatch.datasources import (
 )
 from tablewatch.engine.baselines import Baselines, Sample, choose
 from tablewatch.engine.evaluate import change_of, evaluate, format_value
-from tablewatch.engine.executor import execute_plan
+from tablewatch.engine.executor import error_message, execute_plan
 from tablewatch.engine.planner import plan_dataset
 from tablewatch.metrics.base import Measurement, MetricInputError
 
@@ -52,7 +52,7 @@ FAIL_ON_CHOICES: tuple[str, ...] = get_args(FailOn)
 MAX_CONCURRENCY = 64
 
 
-def _username() -> str:
+def username() -> str:
     try:
         return getpass.getuser()
     except (KeyError, OSError):
@@ -147,6 +147,21 @@ class CheckResult:
         )
 
 
+@dataclass(frozen=True)
+class SkippedDataset:
+    """A dataset an earlier attempt under the run key already recorded.
+
+    Its checks are not rebuilt from the store — the check files may have
+    changed since — so only what was recorded counts: its worst outcome and
+    how many checks had each (spec 034 D3).
+    """
+
+    datasource: str
+    dataset: str
+    outcome: Outcome
+    counts: Mapping[Outcome, int]
+
+
 @dataclass
 class RunResult:
     """One run: every check's outcome, and what the run as a whole means.
@@ -165,15 +180,33 @@ class RunResult:
     fail_on: FailOn = "fail"
     record_errors: list[str] = field(default_factory=list)
     hostname: str = field(default_factory=socket.gethostname)
-    username: str = field(default_factory=_username)
+    username: str = field(default_factory=username)
     version: str = __version__
+    # `--run-key` (spec 034): an attempt that resumes an earlier one counts
+    # the datasets that attempt recorded as its own.
+    run_key: str | None = None
+    resumed: bool = False
+    skipped: tuple[SkippedDataset, ...] = ()
+    # A completed key run again without `--rerun`: nothing ran; `skipped`
+    # holds what was recorded, and `exit_code()` is the code recorded then,
+    # whatever `fail_on` says now — the same answer the first time gave.
+    completed_exit_code: int | None = None
+    # A keyed run records dataset by dataset: the (datasource, dataset)
+    # pairs this attempt recorded, so one that failed to record costs only
+    # its own notifications. None for a run recorded whole.
+    recorded: set[tuple[str, str]] | None = None
 
     @property
     def outcome(self) -> Outcome:
-        return worst([r.outcome for r in self.results])
+        return worst(
+            [r.outcome for r in self.results] + [s.outcome for s in self.skipped]
+        )
 
     def count(self, outcome: Outcome) -> int:
-        return sum(1 for r in self.results if r.outcome is outcome)
+        """Checks with `outcome`, those of skipped datasets included."""
+        return sum(1 for r in self.results if r.outcome is outcome) + sum(
+            s.counts.get(outcome, 0) for s in self.skipped
+        )
 
     def exit_code(self, fail_on: FailOn | None = None) -> int:
         """0 clean · 1 data failed a check · 2 tablewatch could not do its job.
@@ -187,6 +220,8 @@ class RunResult:
             raise ValueError(
                 f"fail_on must be one of {', '.join(FAIL_ON_CHOICES)}, not {fail_on!r}"
             )
+        if self.completed_exit_code is not None:
+            return self.completed_exit_code
         if self.count(Outcome.ERROR) or self.record_errors:
             return 2
         if self.count(Outcome.FAIL) or (fail_on == "warn" and self.count(Outcome.WARN)):
@@ -207,6 +242,12 @@ class RunResult:
             f"outcome={self.outcome.value}, {counts or 'no checks'}{unrecorded})"
         )
 
+
+DatasetSink = Callable[[Dataset, list[CheckResult]], None]
+"""Receives each dataset's results as soon as its scan ends, on the thread
+that ran it, so it must be thread-safe. One that raises costs the run a
+`record_errors` entry, not the rest of its datasets.
+"""
 
 ResultSink = Callable[[RunResult], None]
 """Receives a finished run, such as the results store.
@@ -229,14 +270,23 @@ def run_checks(
     max_workers: int = 4,
     selection: dict[str, Any] | None = None,
     baselines: Baselines | None = None,
+    run_id: str | None = None,
+    started_at: datetime | None = None,
+    on_dataset: DatasetSink | None = None,
 ) -> RunResult:
+    """Run `checks` and return every outcome.
+
+    `now` is the evaluation clock (freshness, baselines); `run_id` and
+    `started_at` name the run, and differ from it only when a keyed run
+    resumes an earlier attempt's row (spec 034 D7).
+    """
     checks = list(checks)
     baselines = baselines or Baselines()
     now = now or datetime.now(UTC)
     run = RunResult(
-        id=uuid.uuid4().hex,
+        id=run_id or uuid.uuid4().hex,
         project=project.config.name,
-        started_at=now,
+        started_at=started_at or now,
         trigger=trigger,
         selection=selection or {},
         fail_on=fail_on,
@@ -248,10 +298,18 @@ def run_checks(
         )
     )
 
-    by_source: dict[str, dict[Dataset, list[Clause]]] = {}
+    by_source: dict[str, dict[Dataset, list[Check]]] = {}
     for check in checks:
         datasets = by_source.setdefault(check.dataset.datasource, {})
-        datasets.setdefault(check.dataset, []).extend(check.clauses)
+        datasets.setdefault(check.dataset, []).append(check)
+
+    def finished(dataset: Dataset, results: list[CheckResult]) -> None:
+        if on_dataset is None:
+            return
+        try:
+            on_dataset(dataset, results)
+        except Exception as exc:  # recording one dataset never stops the others
+            run.record_errors.append(error_message(exc))
 
     workers = max(1, min(max_workers, len(by_source)))
     with ThreadPoolExecutor(
@@ -259,16 +317,19 @@ def run_checks(
     ) as pool:
         futures = [
             pool.submit(
-                _run_datasource, project, name, datasets, now, factory, baselines
+                _run_datasource,
+                project,
+                name,
+                datasets,
+                now,
+                factory,
+                baselines,
+                finished,
             )
             for name, datasets in by_source.items()
         ]
-        clause_results = [r for future in futures for r in future.result()]
+        run.results = [r for future in futures for r in future.result()]
 
-    by_check: dict[str, list[ClauseResult]] = {c.id: [] for c in checks}
-    for result in clause_results:
-        by_check[result.clause.check.id].append(result)
-    run.results = [CheckResult(check, by_check[check.id]) for check in checks]
     run.results.sort(key=lambda r: order[r.check.id])
     run.finished_at = datetime.now(UTC)
     return run
@@ -277,11 +338,17 @@ def run_checks(
 def _run_datasource(
     project: Project,
     name: str,
-    datasets: dict[Dataset, list[Clause]],
+    datasets: dict[Dataset, list[Check]],
     now: datetime,
     factory: EngineFactory,
     baselines: Baselines,
-) -> list[ClauseResult]:
+    finished: DatasetSink,
+) -> list[CheckResult]:
+    def done(dataset: Dataset, clause_results: list[ClauseResult]) -> list[CheckResult]:
+        results = _check_results(datasets[dataset], clause_results)
+        finished(dataset, results)
+        return results
+
     config = project.config.datasources[name]
     try:
         timezone = timezone_of(config)
@@ -289,9 +356,9 @@ def _run_datasource(
     except (DatasourceError, MissingEnvironmentVariableError) as exc:
         message = datasource_problem(name, exc)
         return [
-            ClauseResult(clause, Outcome.ERROR, None, message)
-            for clauses in datasets.values()
-            for clause in clauses
+            r
+            for dataset, checks in datasets.items()
+            for r in done(dataset, _errors(checks, message))
         ]
     except Exception as exc:
         # The backstop (rule 7). Only the type: an unexpected exception from
@@ -301,32 +368,46 @@ def _run_datasource(
             name, f"internal error creating the engine ({type(exc).__name__})"
         )
         return [
-            ClauseResult(clause, Outcome.ERROR, None, message)
-            for clauses in datasets.values()
-            for clause in clauses
+            r
+            for dataset, checks in datasets.items()
+            for r in done(dataset, _errors(checks, message))
         ]
 
-    results: list[ClauseResult] = []
+    results: list[CheckResult] = []
     try:
-        for dataset, clauses in datasets.items():
+        for dataset, checks in datasets.items():
+            clauses = [clause for check in checks for clause in check.clauses]
             try:
-                results.extend(
-                    _run_dataset(dataset, clauses, engine, now, timezone, baselines)
+                clause_results = _run_dataset(
+                    dataset, clauses, engine, now, timezone, baselines
                 )
             except Exception as exc:  # the safety net: one dataset never ends the run
                 log.exception("unexpected failure running %s", dataset.name)
-                results.extend(
-                    ClauseResult(
-                        clause,
-                        Outcome.ERROR,
-                        None,
-                        f"internal error ({type(exc).__name__})",
-                    )
-                    for clause in clauses
+                clause_results = _errors(
+                    checks, f"internal error ({type(exc).__name__})"
                 )
+            results.extend(done(dataset, clause_results))
     finally:
         engine.dispose()
     return results
+
+
+def _errors(checks: list[Check], message: str) -> list[ClauseResult]:
+    return [
+        ClauseResult(clause, Outcome.ERROR, None, message)
+        for check in checks
+        for clause in check.clauses
+    ]
+
+
+def _check_results(
+    checks: list[Check], clause_results: list[ClauseResult]
+) -> list[CheckResult]:
+    """`clause_results` grouped under their checks, in `checks`' order."""
+    by_check: dict[str, list[ClauseResult]] = {c.id: [] for c in checks}
+    for result in clause_results:
+        by_check[result.clause.check.id].append(result)
+    return [CheckResult(check, by_check[check.id]) for check in checks]
 
 
 def _run_dataset(

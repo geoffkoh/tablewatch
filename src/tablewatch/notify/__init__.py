@@ -42,21 +42,32 @@ def notify_sink(project: Project) -> ResultSink:
 
 
 def _notify(project: Project, run: RunResult) -> None:
-    if run.record_errors:
+    results = [r for r in run.results if r.check.notify]
+    if run.recorded is not None:
+        # A keyed run records dataset by dataset: what was recorded is
+        # history, and a retry skips it, so its changes are told now.
+        results = [
+            r
+            for r in results
+            if (r.check.dataset.datasource, r.check.dataset.name) in run.recorded
+        ]
+    elif run.record_errors:
         log.info(NOT_RECORDED)
         return
     notifiers = project.config.notifiers
-    results = [r for r in run.results if r.check.notify]
     if not notifiers or not results:
         return
+    key = PageKey(run.started_at, run.id)
     with open_store(project.config.results.url, project.root, migrate=False) as store:
-        previous = store.previous_results(
-            run.project,
-            [r.check.id for r in results],
-            PageKey(run.started_at, run.id),
-        )
+        ids = [r.check.id for r in results]
+        previous = store.previous_results(run.project, ids, key)
+        # A resumed run sits in history at its first attempt's start: a run
+        # recorded since then is a check's current state, and already told.
+        newer = store.recorded_after(run.project, ids, key) if run.resumed else set()
     events: dict[str, list[Event]] = {}
     for result in results:  # the run's order, which is the console's
+        if result.check.id in newer:
+            continue
         change = transition(result.outcome, previous.get(result.check.id, []))
         if change is None:
             continue
