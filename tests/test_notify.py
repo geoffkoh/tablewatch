@@ -333,7 +333,9 @@ def test_payload(project: Path, hook: Hook) -> None:  # N20, N21, payload shape
         "value",
         "display_value",
         "message",
+        "recorded_at",  # spec 035, additive: null for an unkeyed run
     }
+    assert event["recorded_at"] is None
     text = json.dumps(body)
     assert hook.url not in text
     assert "127.0.0.1" not in text

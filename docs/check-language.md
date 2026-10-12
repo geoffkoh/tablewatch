@@ -457,8 +457,31 @@ nothing, because events come from history. `run --no-notify` and
    "check": {"id": "…", "name": "…", "path": "checks/sales/orders.yml",
              "dataset": "orders", "datasource": "lake",
              "owner": "sales-data@example.com", "tags": ["sales"]},
-   "value": 3.0, "display_value": "3 rows", "message": "…"}]}
+   "value": 3.0, "display_value": "3 rows", "message": "…",
+   "recorded_at": null}]}
 ```
+
+`recorded_at` is when the check's dataset was recorded, under `run
+--run-key` (null otherwise): an attempt that resumes a run can send a change
+an earlier attempt recorded, and Slack then adds `(recorded 2026-10-02 05:00
+UTC)` to the line.
+
+**Under `--run-key`.** Each dataset's changes are written to the results
+store with its results and sent at the end of the attempt; one that does not
+get through — the process died, or the notifier failed — is sent by the next
+attempt under the key (a resume, a `--rerun`, or running a completed key
+again), in one message per run and notifier. Only an attempt under the same key
+sends them: with a key per day, what the day's last attempt could not send
+stays unsent, and that attempt's warning is the last word on it. A change is sent once, unless
+the process dies between a send that succeeded and recording it as sent.
+A notifier that keeps failing warns on each attempt — `notifier
+'data-alerts' could not send: HTTP 500 (2 pending, oldest since 2026-10-02
+05:00 UTC)` — and is given up on after 5 attempts or 24 hours, with a
+warning naming how many and why (`gave up on 2 alerts after 5 attempts`). A change for a notifier no longer named in the
+check's `notify:`, or one a later attempt has re-evaluated, is dropped. The
+store keeps which notifier to tell, never its URL: it is read from
+`tablewatch.yml` when sent, so anyone who can write to the results store can
+make tablewatch post to a configured channel.
 
 **Slack.** `type: slack` posts to a Slack
 [incoming webhook](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks),

@@ -10,6 +10,42 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 35 — Resumable runs, part 2: the notification outbox (I-49 part 2), 2026-10-12
+
+- **Spec:** [035-notification-outbox](specs/035-notification-outbox.md). **Branch:** `iter/035`.
+  Full track. No items added (freeze). Run in the same session as iteration 34, at the owner's
+  "continue".
+- **REFINE.** Architect → D1–D5, D10–D12: an outbox row per (run, registry check, notifier, event),
+  written in `record_dataset`'s transaction, drained at the end of every attempt under the key with
+  the key's lock as the claim; `Event`/`Notification` narrowed so stored rows rebuild the payload;
+  unkeyed runs keep the direct send; the Postgres lock checked with `SELECT 1`. Security → R1–R8
+  (the notifier's name only, never a URL or message; rebuilt through the payload's cleaning; scoped
+  to the key; bounded retries; unknown rows logged by type). Data-steward → one message per run and
+  notifier, `recorded_at` on late alerts, the pending-count warning, the net state for an unseen
+  change. Tech lead → security over the steward on bounds (5 attempts or 24 h, announced), and over
+  the architect on a notifier no longer configured (dropped, not left pending).
+- **Shipped:** `tablewatch_outbox` (revision 0006); keyed runs write alerts with each dataset's
+  results and send them at the end of the attempt, or the next attempt under the key; payload
+  `recorded_at` (additive); a dropped Postgres lock connection is noticed. Build-time change to D1:
+  uniqueness per event, so a retry's `failing` after a sent `erroring` is told. Suite:
+  **2,711 passed, 52 skipped, 16 xfailed**; outbox and run-key tests also on Postgres 18 locally.
+- **Reviewer findings and resolution:**
+  - *security-reviewer (targeted re-check) — approve-with-followups; all fixed (4e5c998):* the SQLite
+    lock's owner re-read before each send (a stalled process could double-send), one POST per
+    notifier per drain, a store-written notifier name not logged unless configured.
+  - *qa-engineer — fail → fixed (this branch); 28 tests:* **blocking** — D9 superseded an unsent
+    `failing` by any later recording, and a rerun that still failed raised no event of its own, so
+    the failure was never told; now only a later *alert* supersedes, and an unseen fail-then-recover
+    is dropped as a pair. Also fixed: an unknown stored outcome ended every resume (spec 034 code),
+    the lost Postgres lock logged twice. Documented: a per-day key's last unsent alerts stay unsent.
+  - *data-steward — accept; S1–S3, S5, S6, S8, S9 via the CLI with kill -9 and a 500-ing receiver.*
+    Fixed: the give-up warning names its actual trigger.
+- **Not added (backlog freeze):** none.
+- **Lesson:** "superseded" has to mean "a newer message exists", not "a newer result exists" — a
+  result that raises no event is exactly the case where the old message is still the news.
+- **Backlog:** I-49 done (both parts). Next: I-46 part 3 (lifecycle, sync, `store sql`), then I-51,
+  I-47, I-48, I-50.
+
 ## Iteration 34 — Resumable runs, part 1: `--run-key`, per-dataset recording, the lock (I-49 part 1), 2026-10-12
 
 - **Spec:** [034-resumable-runs](specs/034-resumable-runs.md). **Branch:** `iter/034`. Full track.

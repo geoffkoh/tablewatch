@@ -182,7 +182,9 @@ logical run: tablewatch never decides that "nightly" means a new day, so
 put the date in it. Only one process runs a key at a time; a second exits 2
 (`another process is already running run key '…'`). `--run-key` needs the
 results store, so it cannot be combined with `--no-store`.
-Notifications go out at the end of each attempt for the checks it scanned.
+Notifications are stored with each dataset's results and sent at the end of
+the attempt; any that did not get through are sent by the next attempt under
+the key.
 
 Give tablewatch a **read-only** database role. `filter:`, `where:`,
 `condition:` and `query:` are SQL from your checks repository, and they run

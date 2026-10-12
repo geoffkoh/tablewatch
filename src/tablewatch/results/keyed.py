@@ -40,7 +40,9 @@ from tablewatch.results.models import (
     RunLockRow,
     RunRow,
 )
+from tablewatch.results.outbox import forget_unsent, write_alerts
 from tablewatch.results.store import (
+    PageKey,
     ResultStore,
     StoreError,
     fit_row,
@@ -110,10 +112,14 @@ class KeyedRun:
         trigger: str,
         selection: dict[str, Any],
         now: datetime,
+        notify: bool = True,
     ) -> None:
         check_run_key(run_key)
         self.project = project
         self.run_key = run_key
+        # Whether datasets write their state changes to the outbox; off
+        # under `--no-notify`, so no later attempt sends them (spec 035 D2).
+        self.notify = notify
         self._write = threading.Lock()
         self._lock: _Lock | None = None
         try:
@@ -141,8 +147,6 @@ class KeyedRun:
         # selected, and still counted when not (spec 034 D2).
         self.unanswered: dict[tuple[str, str], SkippedDataset] = {}
         self.recorded_checks: set[str] = set()
-        # What this attempt recorded; written from the runner's threads.
-        self.recorded: set[tuple[str, str]] = set()
         with reading(self.store.engine), Session(self.store.engine) as session:
             latest = session.scalars(
                 select(RunRow)
@@ -215,11 +219,11 @@ class KeyedRun:
             )
         )
         for datasource, dataset, outcome, n in rows:
-            counts.setdefault((datasource, dataset), {})[Outcome(outcome)] = n
+            counts.setdefault((datasource, dataset), {})[_outcome(outcome)] = n
         for row in datasets:
             key = (row.datasource, row.dataset)
             recorded = SkippedDataset(
-                row.datasource, row.dataset, Outcome(row.outcome), counts.get(key, {})
+                row.datasource, row.dataset, _outcome(row.outcome), counts.get(key, {})
             )
             (self.done if row.outcome in _DONE else self.unanswered)[key] = recorded
         self.recorded_checks = set(
@@ -264,9 +268,8 @@ class KeyedRun:
 
     def record_dataset(self, dataset: Dataset, results: list[CheckResult]) -> None:
         """Record one dataset's results in one transaction, replacing any
-        earlier attempt's rows for it (an `error` being retried)."""
-        if self._lock is not None and not self._lock.held():
-            raise StoreError(self._lost())
+        earlier attempt's rows for it (an `error` being retried), with the
+        state changes its notifiers should hear (spec 035 D2)."""
         rows = result_rows(results)
         for row in rows:
             row.run_id = self.run_id
@@ -284,16 +287,29 @@ class KeyedRun:
             version=__version__,
         )
         fit_row(record)
-        with (
-            self._write,
-            reading(self.store.engine),
-            Session(self.store.engine) as session,
-            session.begin(),
-        ):
-            self._forget(session, dataset)
-            register_all(session, self.project, results, rows)
-            session.add_all([*rows, record])
-        self.recorded.add((dataset.datasource, dataset.name))
+        with self._write:
+            # Under the write lock: the Postgres lock's connection is not
+            # shared between threads.
+            self.check_lock()
+            with (
+                reading(self.store.engine),
+                Session(self.store.engine) as session,
+                session.begin(),
+            ):
+                self._forget(session, dataset)
+                register_all(session, self.project, results, rows)
+                session.add_all([*rows, record])
+                if self.notify:
+                    session.flush()
+                    write_alerts(
+                        session,
+                        self.store,
+                        project=self.project,
+                        run=PageKey(self.started_at, self.run_id),
+                        resumed=self.resumed,
+                        results=results,
+                        rows=rows,
+                    )
 
     def _forget(self, session: Session, dataset: Dataset) -> None:
         earlier = select(CheckResultRow.id).where(
@@ -302,7 +318,16 @@ class KeyedRun:
             CheckResultRow.dataset == dataset.name,
         )
         # Explicitly, not by cascade: SQLite enforces foreign keys only
-        # when asked to.
+        # when asked to. A change already sent stays: it is not sent twice.
+        forget_unsent(
+            session,
+            self.run_id,
+            select(CheckResultRow.check_id).where(
+                CheckResultRow.run_id == self.run_id,
+                CheckResultRow.datasource == dataset.datasource,
+                CheckResultRow.dataset == dataset.name,
+            ),
+        )
         session.execute(
             delete(ClauseResultRow).where(ClauseResultRow.check_result_id.in_(earlier))
         )
@@ -322,8 +347,8 @@ class KeyedRun:
     def finish(self, run: RunResult) -> None:
         """Close the run row: its outcome over every dataset recorded under
         it, by any attempt. A sink: raising makes the exit code 2."""
-        if self._lock is not None and not self._lock.held():
-            raise StoreError(self._lost())
+        with self._write:
+            self.check_lock()
         with (
             reading(self.store.engine),
             Session(self.store.engine) as session,
@@ -351,10 +376,15 @@ class KeyedRun:
                 )
             )
 
+    def check_lock(self) -> None:
+        """Raise `StoreError` if the key's lock has been lost (D12)."""
+        if self._lock is not None and not self._lock.held():
+            raise StoreError(self._lost())
+
     def _lost(self) -> str:
         return (
-            f"results store: the lock on run key '{self.run_key}' was taken over "
-            "by another process"
+            f"results store: lost the lock on run key '{self.run_key}' (its "
+            "connection dropped, or another process took it over)"
         )
 
     def close(self) -> None:
@@ -368,6 +398,15 @@ class KeyedRun:
 
     def __exit__(self, *_: object) -> None:
         self.close()
+
+
+def _outcome(text: str) -> Outcome:
+    # One this version does not know (a newer tablewatch wrote it) says
+    # nothing it can read about the data: like `error`, it is rescanned.
+    try:
+        return Outcome(text)
+    except ValueError:
+        return Outcome.ERROR
 
 
 def _worst(results: Sequence[CheckResult]) -> str:
@@ -384,8 +423,6 @@ def _reason(exc: StoreError) -> str:
 
 class _Lock:
     def held(self) -> bool:
-        # A Postgres session lock cannot be taken over while its connection
-        # lives; a dropped connection losing it goes unnoticed (part 1).
         return True
 
     def release(self) -> None:
@@ -430,6 +467,19 @@ class _AdvisoryLock(_Lock):
             self._connection = None
             raise _busy(run_key)
 
+    def held(self) -> bool:
+        """The lock lives as long as its connection: a dropped one lost it."""
+        if self._connection is None:
+            return False
+        try:
+            self._connection.execute(text("SELECT 1"))
+            self._connection.commit()
+        except Exception as exc:
+            log.warning("run lock: its connection was lost (%s)", type(exc).__name__)
+            self._close()
+            return False
+        return True
+
     def release(self) -> None:
         if self._connection is None:
             return
@@ -441,7 +491,14 @@ class _AdvisoryLock(_Lock):
         except Exception as exc:  # closing the connection frees it anyway
             log.debug("run lock: unlock failed (%s)", type(exc).__name__)
         finally:
-            self._connection.close()
+            self._close()
+
+    def _close(self) -> None:
+        if self._connection is not None:
+            try:
+                self._connection.close()
+            except Exception as exc:  # already gone
+                log.debug("run lock: close failed (%s)", type(exc).__name__)
             self._connection = None
 
 
@@ -515,6 +572,18 @@ class _RowLock(_Lock):
                 log.debug("run lock: heartbeat failed (%s)", type(exc).__name__)
 
     def held(self) -> bool:
+        """Still this process's: a process that stalled past STALE_AFTER may
+        have had it taken over before its own heartbeat noticed."""
+        if self._lost:
+            return False
+        try:
+            with Session(self._engine) as session:
+                owner = session.scalar(select(RunLockRow.owner).where(*self._where))
+        except Exception as exc:  # unreadable: assume held, the beat decides
+            log.debug("run lock: could not read it (%s)", type(exc).__name__)
+            return True
+        if owner != self._owner:
+            self._lost = True
         return not self._lost
 
     def release(self) -> None:

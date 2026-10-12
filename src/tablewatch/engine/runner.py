@@ -191,10 +191,6 @@ class RunResult:
     # holds what was recorded, and `exit_code()` is the code recorded then,
     # whatever `fail_on` says now — the same answer the first time gave.
     completed_exit_code: int | None = None
-    # A keyed run records dataset by dataset: the (datasource, dataset)
-    # pairs this attempt recorded, so one that failed to record costs only
-    # its own notifications. None for a run recorded whole.
-    recorded: set[tuple[str, str]] | None = None
 
     @property
     def outcome(self) -> Outcome:

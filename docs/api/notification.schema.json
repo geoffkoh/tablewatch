@@ -113,6 +113,19 @@
           ],
           "title": "Previous Outcome"
         },
+        "recorded_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recorded At"
+        },
         "value": {
           "anyOf": [
             {
