@@ -97,6 +97,15 @@ close, not part 1's.
   → 2 (could not do its job), a completed key replays its stored code,
   `--run-key` usage errors → 3. Documented in `cli/main.py`.
 
+- **D11 (VERIFY) — notifications refined.** A keyed attempt notifies for
+  the datasets it recorded even when another failed to record (they are
+  skipped on retry); a resumed attempt does not alert on a check a newer run
+  has already recorded (history orders it at its first attempt's start).
+  A replayed key prints its recorded report. A SQLite store's first
+  migration, raced by two cold starts, makes the loser wait for the winner.
+  Known gap (part 1): a dropped Postgres connection loses the advisory lock
+  unnoticed.
+
 ## Non-goals
 
 - Scheduling: cron/Airflow still call `tw run`; no scheduler is added.
