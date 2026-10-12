@@ -13,6 +13,27 @@ SCHEMA_VERSION = 2
 
 
 def as_dict(run: RunResult) -> dict[str, Any]:
+    report = _report(run)
+    if run.run_key is not None:
+        # Spec 034, additive and only on a keyed run: the datasets an
+        # earlier attempt under the key recorded, which this one did not scan.
+        report["run"] |= {
+            "run_key": run.run_key,
+            "resumed": run.resumed,
+            "skipped_datasets": [
+                {
+                    "datasource": s.datasource,
+                    "dataset": s.dataset,
+                    "outcome": str(s.outcome),
+                    "counts": {str(o): n for o, n in sorted(s.counts.items()) if n},
+                }
+                for s in run.skipped
+            ],
+        }
+    return report
+
+
+def _report(run: RunResult) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "run": {
@@ -28,7 +49,10 @@ def as_dict(run: RunResult) -> dict[str, Any]:
             "selection": run.selection,
             "counts": {
                 outcome: run.count(outcome)
-                for outcome in sorted({r.outcome for r in run.results})
+                for outcome in sorted(
+                    {r.outcome for r in run.results}
+                    | {o for s in run.skipped for o, n in s.counts.items() if n}
+                )
             },
         },
         "results": [

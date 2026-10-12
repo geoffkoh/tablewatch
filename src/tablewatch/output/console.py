@@ -12,7 +12,7 @@ from collections import Counter
 import click
 
 from tablewatch.checks.model import Outcome
-from tablewatch.engine.runner import CheckResult, RunResult
+from tablewatch.engine.runner import CheckResult, RunResult, SkippedDataset
 
 _COLOURS = {
     Outcome.PASS: "green",
@@ -49,9 +49,22 @@ def render(run: RunResult, colour: bool = False) -> str:
         _line(row, widths, outcome, colour)
         for row, outcome in zip(rows, outcomes, strict=True)
     ]
+    lines += [_skipped(s, run.run_key) for s in run.skipped]
     lines.append("")
     lines.append(summary(run))
     return "\n".join(lines)
+
+
+def _skipped(skipped: SkippedDataset, run_key: str | None) -> str:
+    # Its checks are not rebuilt (the files may have changed since); the
+    # rows are in the store under this run's id (spec 034 D3).
+    tally = ", ".join(
+        f"{skipped.counts[o]} {o.value}" for o in _TALLY_ORDER if skipped.counts.get(o)
+    )
+    return (
+        f"{skipped.dataset} — recorded earlier under run key '{run_key}': {tally} "
+        "(tw report <run id> shows them)"
+    )
 
 
 def summary(run: RunResult) -> str:
@@ -63,9 +76,17 @@ def summary(run: RunResult) -> str:
     seconds = (
         (run.finished_at - run.started_at).total_seconds() if run.finished_at else 0.0
     )
-    checks = len(run.results)
+    checks = len(run.results) + sum(sum(s.counts.values()) for s in run.skipped)
     parts = [f"{checks} check{'s' if checks != 1 else ''}", *counts, f"{seconds:.1f}s"]
-    return " · ".join(parts) + f"  (run {run.id[:12]})"
+    line = " · ".join(parts) + f"  (run {run.id[:12]})"
+    if run.skipped:
+        scanned = len({r.check.dataset for r in run.results})
+        total = scanned + len(run.skipped)
+        line += (
+            f"\nrun key '{run.run_key}' resumed: {scanned} of {total} datasets "
+            "scanned this attempt; the exit code covers all of them"
+        )
+    return line
 
 
 def _rows(

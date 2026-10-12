@@ -374,6 +374,9 @@ checks:
   run that started earlier and measured a value. An `error` is passed over.
   The first run, and a relative change from a previous 0, are `skipped`: there
   is nothing meaningful to compare.
+- Under `run --run-key`, every attempt under the same key is one run: a
+  retry or `--rerun` never takes an earlier attempt under its own key as its
+  baseline, only runs from before (see "On servers" in the README).
 - It reads the results store, also under `run --no-store` (which still writes
   nothing). If the store cannot be read, only the `change()` checks are
   `error`. Changing what a clause measures starts a new baseline; tightening

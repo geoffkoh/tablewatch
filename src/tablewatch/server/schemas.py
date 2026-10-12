@@ -507,25 +507,26 @@ class Run(_Model):
 
     @classmethod
     def of(cls, run: RunRow) -> Run:
-        counted = run.passed + run.warned + run.failed + run.errored
+        totals = run.totals
+        counted = totals.passed + totals.warned + totals.failed + totals.errored
         return Run(
             id=run.id,
             project=run.project,
             started_at=run.started_at,
             finished_at=run.finished_at,
-            outcome=_outcome(run.outcome),
-            exit_code=run.exit_code,
+            outcome=_outcome(totals.outcome),
+            exit_code=totals.exit_code,
             trigger=run.trigger,
             version=run.version,
             selection=run.selection,
             counts=Counts.model_validate(
                 {
-                    "total": run.total,
-                    "pass": run.passed,
-                    "warn": run.warned,
-                    "fail": run.failed,
-                    "error": run.errored,
-                    "skipped": run.total - counted,
+                    "total": totals.total,
+                    "pass": totals.passed,
+                    "warn": totals.warned,
+                    "fail": totals.failed,
+                    "error": totals.errored,
+                    "skipped": totals.total - counted,
                 }
             ),
         )

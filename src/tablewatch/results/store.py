@@ -53,7 +53,7 @@ from tablewatch.config.project import (
 )
 from tablewatch.engine.baselines import BaselineRequest, Sample
 from tablewatch.engine.executor import error_message
-from tablewatch.engine.runner import ResultSink, RunResult
+from tablewatch.engine.runner import CheckResult, ResultSink, RunResult
 from tablewatch.results.models import (
     VERSION_TABLE,
     Base,
@@ -350,6 +350,64 @@ def _register(session: Session, project: str, check: Check) -> int:
     return session.scalars(lookup).one()
 
 
+def _result_rows(results: Iterable[CheckResult]) -> list[CheckResultRow]:
+    """The rows recording `results`, each checked against its columns."""
+    rows = []
+    for r in results:
+        check, single = r.check, r.single
+        result = CheckResultRow(
+            check_name=check.name,
+            expression=check.canonical,
+            dataset=check.dataset.name,
+            datasource=check.dataset.datasource,
+            outcome=str(r.outcome),
+            value=r.value,
+            display_value=r.display_value,
+            message=r.message,
+            unit=str(single.clause.unit) if single else None,
+            source=str(check.location),
+            owner=check.dataset.owner,
+            tags=list(check.dataset.tags),
+            duration_ms=r.duration_ms,
+        )
+        result.clauses = [
+            ClauseResultRow(
+                clause_id=c.clause.id,
+                clause_key=c.clause.key,
+                expression=c.clause.canonical,
+                metric=c.clause.metric.name,
+                outcome=str(c.outcome),
+                value=c.value,
+                display_value=c.display_value,
+                message=c.message,
+                measured=c.measured,
+                unit=str(c.clause.unit),
+                source=str(c.clause.location),
+                duration_ms=c.duration_ms,
+            )
+            for c in r.clauses
+        ]
+        _fit(result)
+        for clause in result.clauses:
+            _fit(clause)
+        rows.append(result)
+    return rows
+
+
+def _register_all(
+    session: Session,
+    project: str,
+    results: Iterable[CheckResult],
+    rows: Iterable[CheckResultRow],
+) -> None:
+    """Point each row at its check's registry id, registering new checks."""
+    registered: dict[str, int] = {}
+    for r, row in zip(results, rows, strict=True):
+        if r.check.id not in registered:
+            registered[r.check.id] = _register(session, project, r.check)
+        row.check_id = registered[r.check.id]
+
+
 @contextmanager
 def _reading(engine: Engine) -> Iterator[None]:
     try:
@@ -482,53 +540,10 @@ class ResultStore:
             failed=run.count(Outcome.FAIL),
             errored=run.count(Outcome.ERROR),
         )
-        row.results = []
-        for r in run.results:
-            check, single = r.check, r.single
-            result = CheckResultRow(
-                check_name=check.name,
-                expression=check.canonical,
-                dataset=check.dataset.name,
-                datasource=check.dataset.datasource,
-                outcome=str(r.outcome),
-                value=r.value,
-                display_value=r.display_value,
-                message=r.message,
-                unit=str(single.clause.unit) if single else None,
-                source=str(check.location),
-                owner=check.dataset.owner,
-                tags=list(check.dataset.tags),
-                duration_ms=r.duration_ms,
-            )
-            result.clauses = [
-                ClauseResultRow(
-                    clause_id=c.clause.id,
-                    clause_key=c.clause.key,
-                    expression=c.clause.canonical,
-                    metric=c.clause.metric.name,
-                    outcome=str(c.outcome),
-                    value=c.value,
-                    display_value=c.display_value,
-                    message=c.message,
-                    measured=c.measured,
-                    unit=str(c.clause.unit),
-                    source=str(c.clause.location),
-                    duration_ms=c.duration_ms,
-                )
-                for c in r.clauses
-            ]
-            row.results.append(result)
+        row.results = _result_rows(run.results)
         _fit(row)
-        for result in row.results:
-            _fit(result)
-            for clause in result.clauses:
-                _fit(clause)
         with Session(self.engine) as session, session.begin():
-            registered: dict[str, int] = {}
-            for r, result in zip(run.results, row.results, strict=True):
-                if r.check.id not in registered:
-                    registered[r.check.id] = _register(session, run.project, r.check)
-                result.check_id = registered[r.check.id]
+            _register_all(session, run.project, run.results, row.results)
             session.add(row)
 
     # --- reads, every one scoped to one project: a store can be shared ---
@@ -539,7 +554,7 @@ class ResultStore:
         """This project's runs, newest first, after `before` if given."""
         statement = (
             select(RunRow)
-            .where(RunRow.project == project, *_older_than(before))
+            .where(RunRow.project == project, _finished, *_older_than(before))
             .order_by(RunRow.started_at.desc(), RunRow.id.desc())
             .limit(limit)
         )
@@ -550,7 +565,7 @@ class ResultStore:
         """One of this project's runs, with its results in recorded order."""
         statement = (
             select(RunRow)
-            .where(RunRow.project == project, RunRow.id == run_id)
+            .where(RunRow.project == project, RunRow.id == run_id, _finished)
             .options(selectinload(RunRow.results).selectinload(CheckResultRow.clauses))
         )
         with _reading(self.engine), Session(self.engine) as session:
@@ -657,6 +672,7 @@ class ResultStore:
         before: datetime,
         *,
         legacy: bool = False,
+        run_key: str | None = None,
     ) -> dict[str, tuple[Sample, ...]]:
         """Each `change()` clause's earlier measurements, newest first.
 
@@ -668,11 +684,17 @@ class ResultStore:
         `legacy` reads a store from before revision 0004 as it is (see
         `older_than`): a run reads its baselines before recording migrates
         the store, and `--no-store` never migrates it (spec 033 D8).
+        `run_key` leaves out every attempt under that key: a retry is one
+        logical run, not its own baseline (spec 034 D9).
         """
         wanted = list(requests)
         found: dict[str, list[Sample]] = {}
         with _reading(self.engine), Session(self.engine) as session:
-            measures = (_legacy_measures if legacy else _measures)(project, before)
+            measures = (
+                _legacy_measures(project, before)
+                if legacy
+                else _measures(project, before, run_key)
+            )
             for start in range(0, len(wanted), _CHUNK):
                 chunk = wanted[start : start + _CHUNK]
                 groups: dict[tuple[str, datetime | None], list[str]] = {}
@@ -762,6 +784,7 @@ class ResultStore:
             select(RunRow.id)
             .where(
                 RunRow.project == project,
+                _finished,
                 RunRow.id.startswith(prefix.lower(), autoescape=True),
             )
             .order_by(RunRow.id)
@@ -798,12 +821,22 @@ class ResultStore:
 
 _CHUNK = 500
 
+# A keyed run's row before it finishes, or after it crashed, has no outcome
+# yet: run reads leave it out (spec 034 D8).
+_finished = RunRow.exit_code.is_not(None)
+
 # The first revision with its own table of clause results.
 CLAUSE_ROWS_SINCE = "0004"
 
 
-def _measures(project: str, before: datetime) -> Subquery:
-    """Every measured clause result in `project` before `before`."""
+def _measures(project: str, before: datetime, run_key: str | None) -> Subquery:
+    """Every measured clause result in `project` before `before`, outside
+    `run_key`'s attempts."""
+    other_runs = (
+        [or_(RunRow.run_key.is_(None), RunRow.run_key != run_key)]
+        if run_key is not None
+        else []
+    )
     return (
         select(
             ClauseResultRow.clause_id,
@@ -818,6 +851,7 @@ def _measures(project: str, before: datetime) -> Subquery:
             RunRow.project == project,
             ClauseResultRow.measured.is_not(None),
             RunRow.started_at < before,
+            *other_runs,
         )
         .subquery()
     )

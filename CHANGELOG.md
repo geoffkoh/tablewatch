@@ -29,6 +29,19 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- **Resumable runs: `tablewatch run --run-key <key>`.** Each dataset is
+  recorded as it finishes; running the same key again scans only the
+  datasets not yet answered (never reached, or ended in `error`), and its
+  exit code covers every dataset under the key. A completed key scans
+  nothing and exits with its recorded code unless `--rerun`; one process
+  runs a key at a time (a second exits 2); `change()` never compares with an
+  earlier attempt under the same key. Also `tw.run(..., run_key=, rerun=)`.
+  The JSON report of a keyed run adds `run_key`, `resumed` and
+  `skipped_datasets`; an unkeyed report is unchanged. Store revision 0005
+  adds `tablewatch_dataset_runs` and `tablewatch_run_locks`; runs still in
+  progress or left by a crash are not listed by `runs`, `report` or
+  `/api/v1/runs` (spec 034, I-49 part 1).
+
 - Files as datasets: a datasource with `type: files` checks CSV, Parquet or JSON files directly,
   with no database to load them into first. Files are read in place through DuckDB (1.5 or newer)
   inside a read-only sandbox — only the configured root folder is reachable, and only as a file,

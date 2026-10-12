@@ -165,6 +165,25 @@ logs to stderr, as JSON with `--log-format json`, so stdout stays clean for
 */30 * * * *  TABLEWATCH_PROJECT_DIR=/srv/dq  tablewatch --log-format json run --output junit --output-file /var/log/dq/latest.xml
 ```
 
+**Retries that resume.** Give each scheduled run a key, and a retry picks
+up where the last attempt stopped instead of scanning everything again:
+
+```bash
+tablewatch run --run-key "nightly-$(date -u +%F)"
+```
+
+Each dataset is recorded as soon as it finishes. Running the same key again
+scans only the datasets not yet answered — those an attempt never reached,
+and those that ended in `error` — and the exit code covers every dataset
+under the key, not just this attempt's. Once a key's run is complete
+(exit 0 or 1), running it again scans nothing and exits with the recorded
+code; add `--rerun` to start a new attempt. A key must be unique to each
+logical run: tablewatch never decides that "nightly" means a new day, so
+put the date in it. Only one process runs a key at a time; a second exits 2
+(`another process is already running run key '…'`). `--run-key` needs the
+results store, so it cannot be combined with `--no-store`.
+Notifications go out at the end of each attempt for the checks it scanned.
+
 Give tablewatch a **read-only** database role. `filter:`, `where:`,
 `condition:` and `query:` are SQL from your checks repository, and they run
 with the datasource's credentials.
