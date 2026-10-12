@@ -72,7 +72,7 @@ class RunKeyError(TablewatchError):
 
 def check_run_key(run_key: str) -> None:
     """Raise `ValueError` for a key the store cannot hold: a usage mistake."""
-    if not run_key:
+    if not run_key.strip():
         raise ValueError("--run-key must not be empty")
     if len(run_key) > MAX_RUN_KEY:
         raise ValueError(
@@ -141,6 +141,8 @@ class KeyedRun:
         # selected, and still counted when not (spec 034 D2).
         self.unanswered: dict[tuple[str, str], SkippedDataset] = {}
         self.recorded_checks: set[str] = set()
+        # What this attempt recorded; written from the runner's threads.
+        self.recorded: set[tuple[str, str]] = set()
         with reading(self.store.engine), Session(self.store.engine) as session:
             latest = session.scalars(
                 select(RunRow)
@@ -291,6 +293,7 @@ class KeyedRun:
             self._forget(session, dataset)
             register_all(session, self.project, results, rows)
             session.add_all([*rows, record])
+        self.recorded.add((dataset.datasource, dataset.name))
 
     def _forget(self, session: Session, dataset: Dataset) -> None:
         earlier = select(CheckResultRow.id).where(

@@ -71,6 +71,13 @@ def downgrade() -> None:
     op.drop_table("tablewatch_dataset_runs")
     # A run that never finished has no outcome to keep: an older store
     # cannot hold it.
+    # By hand, child rows first: SQLite does not enforce the cascade.
+    unfinished = "SELECT id FROM tablewatch_runs WHERE exit_code IS NULL"
+    results = f"SELECT id FROM tablewatch_check_results WHERE run_id IN ({unfinished})"
+    op.execute(
+        f"DELETE FROM tablewatch_clause_results WHERE check_result_id IN ({results})"
+    )
+    op.execute(f"DELETE FROM tablewatch_check_results WHERE run_id IN ({unfinished})")
     op.execute("DELETE FROM tablewatch_runs WHERE exit_code IS NULL")
     with op.batch_alter_table("tablewatch_runs") as batch:
         batch.drop_index("ix_tablewatch_runs_run_key")

@@ -587,7 +587,6 @@ def run(
             "(use --rerun to start a new attempt)",
             logging.WARNING,
         )
-        sys.exit(result.completed_exit_code)
     # The checks ran and their outcome stands, but a gap in history is
     # tablewatch failing at part of its job: exit 2 (see RunResult.exit_code).
     for reason in result.record_errors:

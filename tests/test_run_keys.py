@@ -146,7 +146,7 @@ def test_s3_a_completed_key_does_nothing_and_replays_its_exit_code(
     before = _q(ws, "SELECT count(*) FROM tablewatch_check_results")
     code, out, err = invoke(ws.root, "run", "--run-key", KEY)
     assert code == 1
-    assert out == ""
+    assert "t — recorded earlier under run key" in out  # the report, as recorded
     assert f"run key '{KEY}' is already complete (finished " in err
     assert ", exit 1) — nothing to do (use --rerun to start a new attempt)" in err
     assert _q(ws, "SELECT count(*) FROM tablewatch_check_results") == before
@@ -172,6 +172,7 @@ def test_s4_rerun_starts_a_new_attempt(ws: Workspace) -> None:
             "--run-key needs the results store; it cannot be combined with --no-store",
         ),
         (("--run-key", ""), "--run-key must not be empty"),
+        (("--run-key", "   "), "--run-key must not be empty"),
         (
             ("--run-key", "k" * 300),
             "--run-key must be at most 255 characters (got 300)",
@@ -337,9 +338,11 @@ def test_s13_the_console_shows_a_skipped_dataset_in_one_line(ws: Workspace) -> N
     invoke(ws.root, "run", "--run-key", KEY)
     _crash(ws, lost="lite")
     _, out, _ = invoke(ws.root, "run", "--run-key", KEY)
+    [(run_id,)] = _q(ws, "SELECT id FROM tablewatch_runs")
+    assert isinstance(run_id, str)
     assert (
         f"t — recorded earlier under run key '{KEY}': 1 pass, 1 fail "
-        "(tw report <run id> shows them)" in out
+        f"(tw report --run {run_id[:12]} shows them)" in out
     )
     assert "3 checks · 2 pass · 1 fail" in out
     assert (
@@ -429,3 +432,37 @@ def test_d2_a_finished_exit_2_run_is_unfinished_while_retried(ws: Workspace) -> 
             (None, None)
         ]
         assert "FAIL" not in invoke(ws.root, "runs")[1]
+
+
+def test_s6_two_cold_starts_on_a_new_sqlite_store(ws: Workspace) -> None:
+    # The loser of the first migration waits for the winner, then meets the
+    # run lock (or, if the winner already finished, a completed key).
+    import subprocess
+    import sys
+
+    command = [
+        sys.executable,
+        "-m",
+        "tablewatch.cli.main",
+        "--project-dir",
+        str(ws.root),
+    ]
+    for attempt in range(3):
+        key = f"cold-{attempt}"
+        if _db(ws).exists():
+            _db(ws).unlink()
+        procs = [
+            subprocess.Popen(
+                [*command, "run", "--run-key", key],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for _ in range(2)
+        ]
+        errs = [p.communicate(timeout=120)[1] for p in procs]
+        codes = sorted(p.returncode for p in procs)
+        assert not any("already exists" in e for e in errs), errs
+        assert codes in ([1, 1], [1, 2]), (codes, errs)
+        if codes == [1, 2]:
+            assert any("already running run key" in e for e in errs), errs

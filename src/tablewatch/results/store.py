@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -81,6 +82,7 @@ _MIGRATION_LOCK = threading.Lock()
 # an old and a new tablewatch would no longer wait for each other.
 MIGRATION_LOCK_KEY = 7_031_202_610_040_001
 MIGRATION_LOCK_TIMEOUT = "60s"
+MIGRATION_WAIT_SECONDS = 60
 
 INVALID_URL = "results.url is not a valid database URL"
 UNREACHABLE = "could not connect — run with -v for details"
@@ -507,6 +509,27 @@ class ResultStore:
         if schema == "newer":
             raise NewerStoreError(f"results store: {NEWER}")
         config = _alembic_config()
+        try:
+            self._upgrade(config)
+        except Exception:
+            # Two processes opening one new SQLite file race inside Alembic,
+            # and the loser's first CREATE fails; Postgres has its lock.
+            if self.engine.dialect.name != "sqlite" or not self._migrated_elsewhere():
+                raise
+
+    def _migrated_elsewhere(self) -> bool:
+        """Wait for another process's migration of this store to finish."""
+        deadline = time.monotonic() + MIGRATION_WAIT_SECONDS
+        while time.monotonic() < deadline:
+            try:
+                if self.schema() == "current":
+                    return True
+            except StoreError:
+                pass
+            time.sleep(0.1)
+        return False
+
+    def _upgrade(self, config: Config) -> None:
         with _MIGRATION_LOCK, self.engine.begin() as connection:
             if connection.dialect.name == "postgresql":
                 # Held until the version row commits; Alembic re-reads the
@@ -663,6 +686,34 @@ class ResultStore:
                     found.setdefault(check, []).append(Entry(outcome, started_at))
                     if outcome in (Outcome.FAIL, Outcome.PASS):
                         done.add(check)
+        return found
+
+    def recorded_after(
+        self, project: str, check_ids: Iterable[str], after: PageKey
+    ) -> set[str]:
+        """Which of `check_ids` have a result in a run newer than `after`."""
+        wanted = list(dict.fromkeys(check_ids))
+        found: set[str] = set()
+        with reading(self.engine), Session(self.engine) as session:
+            for start in range(0, len(wanted), _CHUNK):
+                statement = (
+                    select(CheckRow.check_hash)
+                    .distinct()
+                    .join(CheckResultRow, CheckResultRow.check_id == CheckRow.id)
+                    .join(RunRow, CheckResultRow.run_id == RunRow.id)
+                    .where(
+                        RunRow.project == project,
+                        CheckRow.check_hash.in_(wanted[start : start + _CHUNK]),
+                        or_(
+                            RunRow.started_at > after.started_at,
+                            and_(
+                                RunRow.started_at == after.started_at,
+                                RunRow.id > after.run_id,
+                            ),
+                        ),
+                    )
+                )
+                found.update(session.scalars(statement))
         return found
 
     def baselines(

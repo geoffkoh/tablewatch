@@ -264,6 +264,7 @@ def _execute_keyed(
         )
         result.run_key = run_key
         result.resumed = keyed.resumed
+        result.recorded = keyed.recorded
         result.skipped = keyed.skipped(
             {(c.dataset.datasource, c.dataset.name) for c in pending}
         )

@@ -274,7 +274,8 @@ def test_s3_replays_0_and_1(
     code, out, err = invoke(ws.root, "run", "--run-key", KEY, *args)
     assert code == expected
     assert f"exit {expected}) — nothing to do" in err
-    assert out == ""
+    # The recorded report, not a fresh one: no table, nothing scanned.
+    assert "OUTCOME" not in out and "recorded earlier under run key" in out
     assert _q(ws.root, "SELECT count(*) FROM tablewatch_runs") == [(1,)]
 
 
@@ -402,11 +403,6 @@ def test_a_resume_alerts_on_what_it_scanned_and_not_on_what_it_skipped(
     assert _events(webhook) == [("customers", "failing")]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a failed write of one dataset suppresses every alert of the attempt, "
-    "and the recorded datasets are skipped on retry, so their alerts are lost",
-)
 def test_a_failed_dataset_write_does_not_lose_the_other_datasets_alerts(
     tmp_path: Path, webhook: Hook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -427,11 +423,6 @@ def test_a_failed_dataset_write_does_not_lose_the_other_datasets_alerts(
     assert ("orders", "failing") in _events(webhook)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a resume compares with history before its original started_at, so a "
-    "run recorded between the attempts is ignored and its alert repeats",
-)
 def test_a_run_between_attempts_is_not_alerted_twice(
     tmp_path: Path, webhook: Hook
 ) -> None:
@@ -534,11 +525,6 @@ def _orphans(url: str) -> list[tuple[object, ...]]:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="0005 downgrade deletes unfinished runs but not their result rows; "
-    "SQLite does not cascade, so they are left orphaned (Postgres cascades)",
-)
 def test_0005_downgrade_leaves_no_orphaned_results_on_sqlite(ws: Workspace) -> None:
     invoke(ws.root, "run", "--run-key", KEY)
     _forget_datasource(_url(ws.root), "lite")
