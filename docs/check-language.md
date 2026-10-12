@@ -470,12 +470,14 @@ UTC)` to the line.
 store with its results and sent at the end of the attempt; one that does not
 get through — the process died, or the notifier failed — is sent by the next
 attempt under the key (a resume, a `--rerun`, or running a completed key
-again), in one message per run and notifier. A change is sent once, unless
+again), in one message per run and notifier. Only an attempt under the same key
+sends them: with a key per day, what the day's last attempt could not send
+stays unsent, and that attempt's warning is the last word on it. A change is sent once, unless
 the process dies between a send that succeeded and recording it as sent.
 A notifier that keeps failing warns on each attempt — `notifier
 'data-alerts' could not send: HTTP 500 (2 pending, oldest since 2026-10-02
 05:00 UTC)` — and is given up on after 5 attempts or 24 hours, with a
-warning naming how many. A change for a notifier no longer named in the
+warning naming how many and why (`gave up on 2 alerts after 5 attempts`). A change for a notifier no longer named in the
 check's `notify:`, or one a later attempt has re-evaluated, is dropped. The
 store keeps which notifier to tell, never its URL: it is read from
 `tablewatch.yml` when sent, so anyone who can write to the results store can

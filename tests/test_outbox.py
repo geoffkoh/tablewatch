@@ -142,9 +142,8 @@ def test_d7_a_dead_notifier_is_given_up_on_and_says_so(
     with caplog.at_level(logging.WARNING, logger="tablewatch"):
         tw.run(project, run_key=KEY)
     assert len(webhook.bodies) == posts  # not tried again
-    assert (
-        "notifier 'data-alerts' gave up on 2 alerts after 5 attempts or 24 hours"
-        in (caplog.text)
+    assert "notifier 'data-alerts' gave up on 2 alerts after 5 attempts" in (
+        caplog.text
     )
     assert _q(
         project, "SELECT count(*) FROM tablewatch_outbox WHERE abandoned_at IS NOT NULL"
@@ -268,12 +267,11 @@ def test_s9_d9_a_change_superseded_by_a_rerun_is_not_sent(
     _rows(project, "a", "orders", 1)  # orders passes again
     _rows(project, "b", "customers", 1)
     tw.run(project, run_key=KEY, rerun=True)
-    # The failing alerts nobody saw are superseded; the rerun's recoveries
-    # are told against the recorded failure.
-    assert _events(webhook) == [("customers", "recovered"), ("orders", "recovered")]
+    # Failing then recovered, and nobody was told either: the net is nothing.
+    assert webhook.bodies == []
     assert _q(
         project, "SELECT count(*) FROM tablewatch_outbox WHERE abandoned_at IS NOT NULL"
-    ) == [(2,)]
+    ) == [(4,)]
 
 
 def test_d10_an_error_retried_is_told_again_only_if_it_changed(
@@ -371,11 +369,11 @@ def test_d7_a_dead_notifier_gets_one_post_per_drain(
         _crash_before_sending(patch)
         with pytest.raises(KeyboardInterrupt):
             tw.run(project, run_key=KEY)  # run 1: two failing, pending
-    _rows(project, "a", "orders", 1)
+    _rows(project, "a", "orders", None)
     webhook.status = 500
     with caplog.at_level(logging.WARNING, logger="tablewatch"):
-        # Run 2 rescans orders only: its recovery and run 1's customers
-        # alert are two messages, but the dead endpoint is tried once.
+        # Run 2 rescans orders only and it errors: its alert and run 1's
+        # customers alert are two messages, but the dead endpoint is tried once.
         tw.run(project, run_key=KEY, rerun=True, datasources=["a"])
     assert len(webhook.bodies) == 1
     assert "could not send: HTTP 500 (2 pending, oldest since" in caplog.text

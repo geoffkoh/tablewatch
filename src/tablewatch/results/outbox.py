@@ -119,7 +119,7 @@ class Pending:
     check_hash: str
     result: CheckResultRow | None  # None: its result is gone
     recorded_at: datetime | None
-    superseded: bool  # a later run under the key recorded this check
+    superseded: bool  # no longer news: see `_superseded`
 
 
 def pending(store: ResultStore, project: str, run_key: str) -> list[Pending]:
@@ -154,16 +154,34 @@ def pending(store: ResultStore, project: str, run_key: str) -> list[Pending]:
     ):
         found = session.execute(statement).unique().all()
         checks = {outbox.check_id for outbox, *_ in found}
-        latest: dict[int, tuple[datetime, str]] = {}
+        # Every alert ever written under the key for these checks, in run
+        # order: what supersedes a pending one, and what it followed.
+        told: dict[tuple[int, str], list[tuple[tuple[datetime, str], str, bool]]] = {}
         if checks:
-            for check_id, started_at, run_id in session.execute(
-                select(CheckResultRow.check_id, RunRow.started_at, RunRow.id)
-                .join(RunRow, CheckResultRow.run_id == RunRow.id)
-                .where(under_key, CheckResultRow.check_id.in_(checks))
+            for (
+                check_id,
+                notifier,
+                event,
+                sent_at,
+                started_at,
+                run_id,
+            ) in session.execute(
+                select(
+                    OutboxRow.check_id,
+                    OutboxRow.notifier,
+                    OutboxRow.event,
+                    OutboxRow.sent_at,
+                    RunRow.started_at,
+                    RunRow.id,
+                )
+                .join(RunRow, OutboxRow.run_id == RunRow.id)
+                .where(under_key, OutboxRow.check_id.in_(checks))
             ):
-                key = (utc(started_at), run_id)
-                if check_id not in latest or key > latest[check_id]:
-                    latest[check_id] = key
+                told.setdefault((check_id, notifier), []).append(
+                    ((utc(started_at), run_id), event, sent_at is not None)
+                )
+            for alerts in told.values():
+                alerts.sort()
         session.expunge_all()
     return [
         Pending(
@@ -179,11 +197,32 @@ def pending(store: ResultStore, project: str, run_key: str) -> list[Pending]:
             check_hash=check_hash,
             result=result,
             recorded_at=utc(dataset.finished_at) if dataset is not None else None,
-            superseded=latest.get(outbox.check_id, (utc(run.started_at), run.id))
-            > (utc(run.started_at), run.id),
+            superseded=_superseded(
+                told.get((outbox.check_id, outbox.notifier), []),
+                (utc(run.started_at), run.id),
+                outbox.event,
+            ),
         )
         for outbox, run, check_hash, result, dataset in found
     ]
+
+
+def _superseded(
+    alerts: Sequence[tuple[tuple[datetime, str], str, bool]],
+    run: tuple[datetime, str],
+    event: str,
+) -> bool:
+    """Whether a pending alert is no longer news (D9).
+
+    A later run under the key raised its own alert for the check: that is
+    the state to tell. A recovery from a failure that was never told is
+    dropped with it — the operator hears the net state, nothing. A later run
+    that raised nothing (the check still fails) leaves this one to be told.
+    """
+    if any(key > run for key, _, _ in alerts):
+        return True
+    before = [(e, sent) for key, e, sent in alerts if key < run]
+    return event == "recovered" and bool(before) and before[-1] == ("failing", False)
 
 
 def expired(row: Pending, now: datetime) -> bool:

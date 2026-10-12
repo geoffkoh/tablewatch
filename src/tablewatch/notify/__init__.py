@@ -125,7 +125,7 @@ def _drain(
     notifiers = project.config.notifiers
     checks = {check.id: check for check in project.checks}
     abandon: list[int] = []
-    gave_up: Counter[str] = Counter()
+    gave_up: Counter[tuple[str, str]] = Counter()
     groups: dict[tuple[str, str], list[tuple[Pending, Event]]] = {}
     for row in outbox.pending(store, project.config.name, run_key):
         if row.superseded:
@@ -152,7 +152,12 @@ def _drain(
             abandon.append(row.id)
             continue
         if outbox.expired(row, now):
-            gave_up[row.notifier] += 1
+            why = (
+                f"after {outbox.MAX_ATTEMPTS} attempts"
+                if row.attempts >= outbox.MAX_ATTEMPTS
+                else f"after {outbox.MAX_AGE // timedelta(hours=1)} hours"
+            )
+            gave_up[row.notifier, why] += 1
             abandon.append(row.id)
             continue
         event = _stored_event(row)
@@ -161,14 +166,13 @@ def _drain(
             continue
         groups.setdefault((row.run_id, row.notifier), []).append((row, event))
     outbox.mark_abandoned(store, abandon)
-    for name, count in gave_up.items():
+    for (name, why), count in gave_up.items():
         log.warning(
-            "notifier '%s' gave up on %d alert%s after %d attempts or %d hours",
+            "notifier '%s' gave up on %d alert%s %s",
             name,
             count,
             "" if count == 1 else "s",
-            outbox.MAX_ATTEMPTS,
-            outbox.MAX_AGE // timedelta(hours=1),
+            why,
         )
 
     failed: dict[str, tuple[str, list[Pending]]] = {}

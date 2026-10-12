@@ -219,11 +219,11 @@ class KeyedRun:
             )
         )
         for datasource, dataset, outcome, n in rows:
-            counts.setdefault((datasource, dataset), {})[Outcome(outcome)] = n
+            counts.setdefault((datasource, dataset), {})[_outcome(outcome)] = n
         for row in datasets:
             key = (row.datasource, row.dataset)
             recorded = SkippedDataset(
-                row.datasource, row.dataset, Outcome(row.outcome), counts.get(key, {})
+                row.datasource, row.dataset, _outcome(row.outcome), counts.get(key, {})
             )
             (self.done if row.outcome in _DONE else self.unanswered)[key] = recorded
         self.recorded_checks = set(
@@ -400,6 +400,15 @@ class KeyedRun:
         self.close()
 
 
+def _outcome(text: str) -> Outcome:
+    # One this version does not know (a newer tablewatch wrote it) says
+    # nothing it can read about the data: like `error`, it is rescanned.
+    try:
+        return Outcome(text)
+    except ValueError:
+        return Outcome.ERROR
+
+
 def _worst(results: Sequence[CheckResult]) -> str:
     # A dataset's checks fold as a check's clauses do: all skipped, skipped.
     return str(check_outcome([r.outcome for r in results]))
@@ -467,6 +476,7 @@ class _AdvisoryLock(_Lock):
             self._connection.commit()
         except Exception as exc:
             log.warning("run lock: its connection was lost (%s)", type(exc).__name__)
+            self._close()
             return False
         return True
 
@@ -481,7 +491,14 @@ class _AdvisoryLock(_Lock):
         except Exception as exc:  # closing the connection frees it anyway
             log.debug("run lock: unlock failed (%s)", type(exc).__name__)
         finally:
-            self._connection.close()
+            self._close()
+
+    def _close(self) -> None:
+        if self._connection is not None:
+            try:
+                self._connection.close()
+            except Exception as exc:  # already gone
+                log.debug("run lock: close failed (%s)", type(exc).__name__)
             self._connection = None
 
 

@@ -98,10 +98,12 @@ data-steward); the answers are folded in here.
   `notify:`, is abandoned with a log line naming it (security over the
   architect's "leave pending"). A row with an unknown event is skipped and
   logged by exception type only (R8). R5: the URL is the current config's.
-- **D9 (S9) — superseded alerts.** At drain, an unsent row of an earlier
-  run under the key whose check a later run under the key has recorded is
-  abandoned as superseded: the operator hears the net state, not a change
-  they never saw.
+- **D9 (S9; corrected in VERIFY) — superseded alerts.** An unsent alert is
+  dropped when a later run under the key raised its own alert for the same
+  check and notifier (that is the state to tell), and a recovery whose
+  preceding alert was an unsent `failing` is dropped with it (the net is
+  nothing). A later run that raised nothing — the check still fails — leaves
+  the earlier alert to be sent (QA: superseding by "recorded" lost it).
 - **D10 (S2, architect) — error retries.** `_forget` deletes only unsent
   outbox rows of the dataset; sent ones stay, so a recomputed event is not
   sent twice.

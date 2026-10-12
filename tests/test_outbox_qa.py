@@ -376,11 +376,6 @@ def test_s4_two_keys_draining_at_once_deliver_each_row_once(
 # --- supersession, abandonment ----------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D9 abandons the crashed run's `failing` as superseded, and the "
-    "rerun compares with that same unseen fail: the failure is never told",
-)
 def test_a_rerun_that_still_fails_still_tells_the_failure(
     project: Path, webhook: Hook
 ) -> None:
@@ -389,11 +384,6 @@ def test_a_rerun_that_still_fails_still_tells_the_failure(
     assert _events(webhook) == [("customers", "failing"), ("orders", "failing")]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a failed drain then `--rerun` with the same state: the pending "
-    "`failing` is superseded and the rerun has no transition; never told",
-)
 def test_a_failed_drain_then_a_rerun_with_the_same_state_still_tells_it(
     project: Path, webhook: Hook
 ) -> None:
@@ -443,12 +433,6 @@ def test_an_unknown_outcome_row_is_dropped_and_its_neighbour_still_sent(
     assert "exploded" not in caplog.text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason="spec 034 `_read_done` does Outcome(row) unguarded: one unknown "
-    "outcome in an earlier attempt ends every later attempt with ValueError",
-)
 def test_an_unknown_outcome_in_an_earlier_attempt_does_not_crash_the_resume(
     project: Path, webhook: Hook
 ) -> None:
