@@ -139,10 +139,16 @@ def _drain(
             or check is None
             or row.notifier not in check.notify
         ):
-            log.warning(
-                "notifier '%s': an alert for a check it no longer covers was dropped",
-                row.notifier,
-            )
+            # A name read from the store is logged only when it is configured:
+            # anyone who can write to the store controls the text.
+            if row.notifier in notifiers:
+                log.warning(
+                    "notifier '%s': an alert for a check it no longer covers "
+                    "was dropped",
+                    row.notifier,
+                )
+            else:
+                log.warning("an alert for a notifier no longer configured was dropped")
             abandon.append(row.id)
             continue
         if outbox.expired(row, now):
@@ -167,6 +173,11 @@ def _drain(
 
     failed: dict[str, tuple[str, list[Pending]]] = {}
     for (_, name), items in groups.items():
+        if name in failed:
+            # One POST per notifier per drain: a dead endpoint is not waited
+            # out once for every run with alerts pending (D7).
+            failed[name][1].extend(row for row, _ in items)
+            continue
         check_lock()  # a lost key lock is another process's to send
         first = items[0][0]
         notification = Notification(

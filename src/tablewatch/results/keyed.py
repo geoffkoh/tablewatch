@@ -555,6 +555,18 @@ class _RowLock(_Lock):
                 log.debug("run lock: heartbeat failed (%s)", type(exc).__name__)
 
     def held(self) -> bool:
+        """Still this process's: a process that stalled past STALE_AFTER may
+        have had it taken over before its own heartbeat noticed."""
+        if self._lost:
+            return False
+        try:
+            with Session(self._engine) as session:
+                owner = session.scalar(select(RunLockRow.owner).where(*self._where))
+        except Exception as exc:  # unreadable: assume held, the beat decides
+            log.debug("run lock: could not read it (%s)", type(exc).__name__)
+            return True
+        if owner != self._owner:
+            self._lost = True
         return not self._lost
 
     def release(self) -> None:

@@ -359,3 +359,23 @@ def test_s7_d12_a_dropped_lock_connection_refuses_the_next_write(
             keyed.check_lock()
     finally:
         keyed.close()
+
+
+def test_d7_a_dead_notifier_gets_one_post_per_drain(
+    project: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    webhook: Hook,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with monkeypatch.context() as patch:
+        _crash_before_sending(patch)
+        with pytest.raises(KeyboardInterrupt):
+            tw.run(project, run_key=KEY)  # run 1: two failing, pending
+    _rows(project, "a", "orders", 1)
+    webhook.status = 500
+    with caplog.at_level(logging.WARNING, logger="tablewatch"):
+        # Run 2 rescans orders only: its recovery and run 1's customers
+        # alert are two messages, but the dead endpoint is tried once.
+        tw.run(project, run_key=KEY, rerun=True, datasources=["a"])
+    assert len(webhook.bodies) == 1
+    assert "could not send: HTTP 500 (2 pending, oldest since" in caplog.text
