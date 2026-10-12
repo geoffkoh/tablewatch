@@ -21,7 +21,8 @@ policy, and when to stop and ask the user.
 - The main session is **tech lead**: it runs each step, builds core Python,
   and opens and merges PRs.
 - Agents in `.claude/agents/`: `product-manager` (plans, specs; the tech
-  lead writes each iteration's REVIEW),
+  lead writes each iteration's REVIEW, and the spec when the owner fixed the
+  item),
   `data-steward` (domain semantics, acceptance), `qa-engineer`
   (adversarial tests), `security-reviewer` (read-only), `architect`
   (design review, read-only), `ui-engineer` (frontend), `platform-engineer`
@@ -41,7 +42,7 @@ Python >= 3.13, managed with `uv`, `src/` layout, `uv_build` backend.
 
 ```bash
 uv sync                # create .venv and resolve (dev group includes duckdb)
-uv run pytest          # tests; warnings are errors (filterwarnings = error)
+uv run pytest -n auto  # tests in parallel (~2 min); warnings are errors
 uv run ruff check .    # lint
 uv run ruff format .   # format
 uv run mypy .          # type check (strict)

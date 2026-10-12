@@ -42,7 +42,7 @@ dependency, or a new seam.
 
 | Step | Who | Does | Produces |
 | --- | --- | --- | --- |
-| 1 PLAN | product-manager | Picks the item(s); writes the spec (≤ 150 lines) | `docs/product/specs/NNN-slug.md` |
+| 1 PLAN | product-manager, or the tech lead when the owner fixed the item (below) | Picks the item(s); writes the spec (≤ 150 lines) | `docs/product/specs/NNN-slug.md` |
 | 2 REFINE | only the reviewers the spec's open questions name (architect for a seam/API, security for a trigger, data-steward for semantics, ui-engineer for UI) — run in parallel | Answer the open questions; the data-steward may edit the spec, others report | Answers |
 |  | tech lead | Records the decisions in the spec's "Decisions" section (no separate settle session); resolves disagreements, security wins on security | Ready spec |
 | 3 BUILD | tech lead, ui-engineer, platform-engineer | Scenarios become tests first | Commits |
@@ -55,7 +55,7 @@ hardening that changes no contract.
 
 | Step | Who | Does |
 | --- | --- | --- |
-| 1 PLAN | product-manager | Spec ≤ 80 lines: problem, scenarios table, non-goals |
+| 1 PLAN | product-manager, or the tech lead when the owner fixed the item | Spec ≤ 80 lines: problem, scenarios table, non-goals |
 | 2 BUILD | builder | Scenarios become tests |
 | 3 VERIFY | qa-engineer + **one** domain reviewer (data-steward for language/messages, ui-engineer's work judged by the data-steward for UI) | Verdicts; blocking findings fixed |
 | 4 REVIEW + SHIP | tech lead writes the ITERATIONS entry, CHANGELOG line and backlog status itself; PR; merge | Merged PR |
@@ -94,9 +94,17 @@ and the code every time; the cost is per session, not per line changed.
 - **Agents do not re-read what they already have.** `CLAUDE.md` is loaded
   into every session; reading it again is waste. Each agent reads only its
   own list, and only the part of a long file it needs.
+- **The owner's order needs no planner.** When the owner has fixed the
+  item and its place (as for I-46 to I-50), there is nothing to rank: the
+  tech lead writes the spec in the same format and limits, from the code it
+  is about to build, and the product-manager is not run. The PM still plans
+  whenever the next item must be chosen, and for any proposal.
 - **Acceptance is bounded.** The data-steward runs the spec's `must`
   scenarios through the CLI, in one scratch project, and stops: no open-ended
-  exploration. Anything beyond the scenarios is one line in the report.
+  exploration. Anything beyond the scenarios is one line in the report. It
+  starts from `examples/acceptance/kit.py` (a two-datasource project with a
+  notifier, a webhook receiver that can fail, a crash helper) or
+  `examples/retail`, never a fixture built from nothing.
 - **A fresh session per iteration — enforced.** The tech lead's own
   context is the largest cost of the loop: a session that carries earlier
   iterations re-sends them on every turn. One iteration per session (or
@@ -104,14 +112,17 @@ and the code every time; the cost is per session, not per line changed.
   `BACKLOG.md`, the specs and memory.
 - **Hand browser checks** (several engines, sizes, schemes) only when the
   change alters copy, selection, layout or rendering; otherwise vitest.
-- **Gates run once per step**, one pytest process at a time (two concurrent
-  runs deadlock on the example's DuckDB file). Agents use targeted test
-  files; the tech lead runs the full suite before commit and before the PR.
+- **The full suite runs twice per iteration**, in parallel
+  (`uv run pytest -n auto`, about 2 minutes): before the build commit and
+  before the PR. In between, everyone runs targeted test files. The tech
+  lead launches the qa-engineer with `isolation: "worktree"`, so its runs
+  never collide with the tech lead's, and merges its commit into the
+  iteration branch when it reports.
 - **Model per role** (set in each agent's frontmatter). Opus for
   qa-engineer, security-reviewer and architect, whose findings carry the
   merge decision. Sonnet for the product-manager (PLAN), the data-steward,
   the platform-engineer and the ui-engineer; `effort: medium` for the
-  product-manager and platform-engineer.
+  product-manager, the data-steward and the platform-engineer.
 - **Files stay short.** `BACKLOG.md` holds the open items and a short
   header; done items and the running log live in `docs/product/archive/`.
   `ITERATIONS.md` holds the latest entries; older ones are archived there

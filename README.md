@@ -837,7 +837,7 @@ the attributes their docstrings list are promised.
 
 ```bash
 uv sync
-uv run pytest
+uv run pytest -n auto
 uv run ruff check . && uv run ruff format --check .
 uv run mypy .
 ```

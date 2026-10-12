@@ -141,6 +141,9 @@ def tsv() -> str:
         ("o.tsv.gz", gzip.compress(tsv().encode())),
         ("o.csv.gz", gzip.compress(ORDERS_CSV.encode())),
     ],
+    # Fixed ids: the data holds the time, and parallel workers must collect
+    # the same names.
+    ids=["tsv", "tsv-gz", "csv-gz"],
 )
 def test_tsv_and_gzip(landing: Path, name: str, data: str | bytes) -> None:
     put(landing, name, data)
