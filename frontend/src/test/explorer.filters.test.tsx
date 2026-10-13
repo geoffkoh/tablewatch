@@ -285,6 +285,7 @@ describe("F10: the URL restores the view", () => {
       tag: ["t"],
       owner: ["o"],
       datasource: ["lake"],
+      retired: false,
     });
   });
 

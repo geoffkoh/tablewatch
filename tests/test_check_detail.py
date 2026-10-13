@@ -157,7 +157,12 @@ def test_the_contract_is_documented(recorded: Recorded) -> None:  # R6
     assert rule["discriminator"]["propertyName"] == "kind"
     operation = document["paths"]["/api/v1/checks/{check_id}"]["get"]
     schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
-    assert schema["$ref"] == "#/components/schemas/CheckDetail"
+    # A loaded check's detail, or a retired check's summary (spec 037).
+    assert schema["discriminator"]["propertyName"] == "state"
+    assert {ref["$ref"] for ref in schema["oneOf"]} == {
+        "#/components/schemas/CheckDetail",
+        "#/components/schemas/RetiredCheckSummary",
+    }
     assert "rule" not in listed["items"][0]  # /checks is unchanged
 
 

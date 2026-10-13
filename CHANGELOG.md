@@ -8,6 +8,17 @@ All notable changes to tablewatch. The format follows
 
 ### Changed — breaking
 
+- **The Postgres writer role needs `UPDATE` and `DELETE`.** Each check's
+  current state is now kept in `tablewatch_check_heads` (revision 0008) and
+  updated as results are saved, so `GET /api/v1/checks` reads one row per
+  check however long the history (it was every result the project ever
+  recorded; I-23). The README's writer grant is now
+  `SELECT, INSERT, UPDATE, DELETE`; re-run the grants after upgrading (the
+  new table is not covered by an earlier `ON ALL TABLES`), or use the
+  README's `ALTER DEFAULT PRIVILEGES`. The table is filled from history when
+  the store migrates; `ResultStore.rebuild_heads()` rebuilds it after
+  results are edited by hand (spec 037).
+
 - **The results store registers each named check.** A new table,
   `tablewatch_checks`, gives every check a store-assigned id keyed by
   project, datasource, dataset and name; results point at it, and each
@@ -28,6 +39,12 @@ All notable changes to tablewatch. The format follows
   See "Writing a check" and "Check identity" in `docs/check-language.md` (spec 032).
 
 ### Added
+
+- **Retired checks in the API and web UI.** `GET /api/v1/checks?state=retired`
+  (repeatable with `active` and `disabled`) lists checks gone from the files
+  with what they last recorded and `last_known_location`; `GET
+  /api/v1/checks/{id}` serves a retired check; every item now carries
+  `state`. The checks page has a "Show retired" switch (spec 037).
 
 - **Turning a check off, and removing it.** `enabled: false` on a check
   (the `clauses:` form) keeps it loaded and validated but never run;

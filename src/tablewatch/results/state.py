@@ -94,6 +94,32 @@ def current_state(history: Sequence[Entry]) -> State:
     )
 
 
+def advance(latest: Entry, state: State, entry: Entry) -> State:
+    """The state after `entry`, newer than `latest`, the head of a history
+    whose state is `state`: `current_state` of the longer history, without
+    reading it (spec 037). Outcomes this version does not know count as
+    `error`.
+    """
+    previous, outcome = recorded(latest.outcome), recorded(entry.outcome)
+    if outcome in EVALUATED:
+        if previous in EVALUATED:
+            same = previous == outcome
+            return State(state.since if same else entry.started_at, None)
+        # An unevaluated stretch neither ends nor extends a streak.
+        last = state.last_evaluated
+        if last is not None and last.outcome == outcome:
+            return State(last.since, None)
+        return State(entry.started_at, None)
+    if previous == outcome:
+        return state
+    if previous in EVALUATED:
+        return State(
+            since=entry.started_at,
+            last_evaluated=Evaluated(previous, latest.started_at, state.since),
+        )
+    return State(since=entry.started_at, last_evaluated=state.last_evaluated)
+
+
 def _streak_start(history: Sequence[Entry]) -> datetime:
     """The oldest result in the leading streak of `history[0]`'s evaluated outcome."""
     outcome = history[0].outcome

@@ -727,6 +727,13 @@ def clone_run(
         db.commit()
     finally:
         db.close()
+    rebuild_heads(root)
+
+
+def rebuild_heads(root: Path) -> None:
+    """Refresh the heads (spec 037) after a test wrote history by hand."""
+    with ResultStore.open("sqlite:///.tablewatch/results.db", root) as store:
+        store.rebuild_heads()
 
 
 def test_latest_is_the_head_of_history(recorded: Recorded) -> None:  # L3

@@ -9,14 +9,20 @@
  *
  * This module decides which sections the page shows from what loaded; each
  * section lives in `components/check/`.
+ *
+ * `/checks/{id}` answers with `state: "retired"` for a check gone from the
+ * project's files but kept in the store (spec 037 S13): its header is
+ * `RetiredIdentity`, not `Identity`, and it has no rule, SQL or source
+ * sections — its latest result and history still show, as for any check.
  */
 import { useEffect, useMemo, useRef, type ReactElement } from "react";
 import { getCheck, getCheckSource, getCheckSql, getHistory, getProject, isNotFound, listRuns } from "../api/api";
-import type { CheckDetail, CheckSource, CheckSql, HistoryPage, Project, RunPage } from "../api/types";
+import type { CheckDetailItem, CheckSource, CheckSql, HistoryPage, Project, RunPage } from "../api/types";
 import { HistorySection } from "../components/check/HistorySection";
 import { Identity } from "../components/check/Identity";
 import { LatestSection } from "../components/check/LatestSection";
 import { NotFoundPanel } from "../components/check/NotFoundPanel";
+import { RetiredIdentity } from "../components/check/RetiredIdentity";
 import { RuleSection } from "../components/check/RuleSection";
 import { SourceSection } from "../components/check/SourceSection";
 import { SqlSection } from "../components/check/SqlSection";
@@ -27,7 +33,7 @@ import { useLoads, type Requests } from "../lib/useLoads";
 
 interface CheckSlots {
   project: Project;
-  check: CheckDetail;
+  check: CheckDetailItem;
   history: HistoryPage;
   runs: RunPage;
   sql: CheckSql;
@@ -59,7 +65,11 @@ export function CheckPage({ id }: { id: string }): ReactElement {
   const { project, check, history, runs, sql, source } = slots;
 
   const loadedProject = project.state === "ok" ? project.data : null;
-  const loadedCheck = check.state === "ok" ? check.data : null;
+  const loadedItem = check.state === "ok" ? check.data : null;
+  // A retired check (spec 037 S13) is a successful response, never
+  // `checkMissing`: it has no file, rule or SQL any more, but it is not 404.
+  const loadedCheck = loadedItem !== null && loadedItem.state !== "retired" ? loadedItem : null;
+  const retiredCheck = loadedItem !== null && loadedItem.state === "retired" ? loadedItem : null;
   const checkMissing = check.state === "failed" && isNotFound(check.failure);
   const firstPage = history.state === "ok" ? history.data : null;
   const older = useOlderHistory({ id, firstPage, busy, generation, capture });
@@ -69,7 +79,7 @@ export function CheckPage({ id }: { id: string }): ReactElement {
   const newest = entries[0];
   const pending = loadedCheck !== null && newest !== undefined && newest.expression !== loadedCheck.expression;
 
-  const name = loadedCheck?.name ?? (checkMissing ? (newest?.name ?? null) : null);
+  const name = loadedCheck?.name ?? retiredCheck?.name ?? (checkMissing ? (newest?.name ?? null) : null);
   useEffect(() => {
     document.title = `${name ?? (checkMissing && history.state === "failed" ? "Check not found" : "Check")} · tablewatch`;
   }, [name, checkMissing, history.state]);
@@ -77,12 +87,14 @@ export function CheckPage({ id }: { id: string }): ReactElement {
   // What the page can say about the check.
   const notLoadedButRecorded = checkMissing && firstPage !== null && entries.length > 0;
   const unknown = checkMissing && history.state === "failed" && isNotFound(history.failure);
-  // A 404 from /sql means "no longer loaded" only when /checks/{id} is 404 too (P6, P7).
-  const sqlFailed = sql.state === "failed" && !(checkMissing && isNotFound(sql.failure));
-  // The same rule for /source (spec 006, P7).
-  const sourceFailed = source.state === "failed" && !(checkMissing && isNotFound(source.failure));
-  // The SQL and Source sections wait for /checks/{id}, and are absent for an id nobody knows (P6).
-  const showSql = check.state !== "loading" && !unknown && !(checkMissing && history.state === "loading");
+  // A 404 from /sql means "no longer loaded" when /checks/{id} is 404 too (P6, P7),
+  // or, for a retired check (S9), is expected: it has no file to compile.
+  const sqlFailed = sql.state === "failed" && !((checkMissing || retiredCheck !== null) && isNotFound(sql.failure));
+  // The same rule for /source (spec 006, P7; spec 037 S9).
+  const sourceFailed = source.state === "failed" && !((checkMissing || retiredCheck !== null) && isNotFound(source.failure));
+  // The SQL and Source sections wait for /checks/{id}, are absent for an id
+  // nobody knows (P6), and for a retired check (S13: no SQL or source tabs).
+  const showSql = check.state !== "loading" && !unknown && !(checkMissing && history.state === "loading") && retiredCheck === null;
   const showSource = showSql;
 
   let status: string;
@@ -166,7 +178,14 @@ export function CheckPage({ id }: { id: string }): ReactElement {
           </>
         )}
 
-        {(loadedCheck !== null || notLoadedButRecorded) && (
+        {retiredCheck !== null && (
+          <>
+            <RetiredIdentity check={retiredCheck} now={now} />
+            <LatestSection check={retiredCheck} newestRunId={newestRunId} judgedBy={null} now={now} />
+          </>
+        )}
+
+        {(loadedCheck !== null || retiredCheck !== null || notLoadedButRecorded) && (
           <HistorySection
             id={id}
             name={name}

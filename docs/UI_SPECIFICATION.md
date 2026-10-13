@@ -13,6 +13,7 @@ the UI does it: wording, layout, colour, and the rules behind them.
 | I-29 | `specs/006-check-detail-source.md` | The check page's Source section: the check's own YAML lines (`SourceBlock`), the file's `filter:` in words, `#source` |
 | I-04 (part 1) | `specs/015-check-explorer-tree.md` | The check explorer (`/checks`): the `checks/` tree with counts, search and a status filter kept in the URL; "Browse all checks" on the overview |
 | I-04 (part 2) | `specs/016-explorer-tag-owner-datasource.md` | The explorer's Tag, Owner and Datasource filters (`FacetFilter`), OR within a filter and AND across, counts per value, kept in the URL; search over tags, owner and datasource |
+| I-46 part 4 | `specs/037-check-state-table.md` | Retired checks in the web UI (S12, S13): the explorer's "Show retired" toggle (off by default, kept in the URL) adds a flat retired list below the tree; a retired check's own page gets a `RetiredIdentity` header ("Retired" badge, "Retired since …", its last known file) in place of `Identity`, with no SQL or source sections |
 
 ## 1. Who it is for
 
@@ -99,13 +100,18 @@ frontend/src/
   App.tsx                  parseRoute(path) -> Overview | Explorer | CheckPage | NotFound
   api/schema.gen.ts        GENERATED from docs/api/openapi.json; never edit
   api/types.ts             aliases into schema.gen.ts (Project, CheckSummary, CheckDetail,
-                           Rule, Condition, HistoryEntry, HistoryPage, Run, Unit, ...)
-  api/api.ts               the ONE client: getProject, listChecks, listRuns, getCheck,
+                           RetiredCheckSummary, RecordedClause, CheckListItem, CheckState,
+                           CheckDetailItem, Rule, Condition, HistoryEntry, HistoryPage, Run,
+                           Unit, ...)
+  api/api.ts               the ONE client: getProject, listChecks (an optional `states`
+                           array), listRuns, getCheck (CheckDetail | RetiredCheckSummary),
                            getHistory, getCheckSql, getCheckSource; failureOf, isNotFound
   lib/route.ts             parseRoute(path), checkHref(id), EXPLORER_HREF, the id pattern
-  lib/explorer.ts          the explorer's query (parse, to URL), search, the status, tag,
-                           owner and datasource filters and their counts (facetOptions),
-                           commonFolder, buildTree, counts wording (countsText)
+  lib/explorer.ts          the explorer's query (parse, to URL, including `retired`), search,
+                           the status, tag, owner and datasource filters and their counts
+                           (facetOptions), commonFolder, buildTree, counts wording
+                           (countsText), and the retired list's own search (isRetired,
+                           matchesRetiredText, filterRetired, spec 037 S12)
   lib/clipboard.ts         canCopy, copyText, selectContents: the only clipboard code
   lib/invisible.ts         which code points are marked, and the text split into segments
   lib/useLoads.ts          the one load/refresh hook (named slots, generation guard,
@@ -118,12 +124,15 @@ frontend/src/
                            bands, series, labels, layout, legend, summary
   components/              Header, ProjectProblems, Summary, LatestRun, CheckTable,
                            LatestResult (Result, When, LastEvaluatedNote), HistoryTable,
-                           StatusIcon/StatusBadge, shapes (status shapes), Time (Ago),
+                           StatusIcon/StatusBadge, shapes (status shapes), Time (Ago, Since),
                            LoadError (useId heading id; `level` 2|3; `scope` page|section),
                            CodeBlock, SourceBlock (numbered, never wraps), CopyButton,
                            Marked (invisible characters), ExplorerTree (the `checks/` tree),
-                           FacetFilter (one Tag, Owner or Datasource filter)
-  components/check/        the check page's sections: Identity, RuleSection, LatestSection,
+                           FacetFilter (one Tag, Owner or Datasource filter),
+                           DisabledBadge, RetiredBadge, RetiredChecks (the "Show retired"
+                           list, spec 037 S12)
+  components/check/        the check page's sections: Identity, RetiredIdentity (a retired
+                           check's header, spec 037 S13), RuleSection, LatestSection,
                            NotFoundPanel, HistorySection, SqlSection, SourceSection;
                            useOlderHistory
                            (older pages, tagged with the load round, dropped on refresh)
@@ -161,7 +170,7 @@ frontend/src/
   | Path | Page |
   | --- | --- |
   | `/`, `/index.html` | the overview |
-  | `/checks`, `/checks/` | the check explorer (§4B); `?q=`, `?status=`, `?tag=`, `?owner=` and `?datasource=` are read by the page |
+  | `/checks`, `/checks/` | the check explorer (§4B); `?q=`, `?status=`, `?tag=`, `?owner=`, `?datasource=` and `?retired=1` (spec 037 S12, §4B.6) are read by the page |
   | `/checks/<id>`, `/checks/<id>/` | the check page, when `<id>` is one non-empty segment that decodes (once, inside try/catch) to a string matching `^[A-Za-z0-9][A-Za-z0-9_.:-]*$` of at most 64 characters (the loader's `ID_PATTERN` and the store's column width) |
   | anything else | "Page not found", and **no request is made**: `/checks//`, `/checks/a/b`, `/checks/..`, `/checks/%2e%2e`, `/checks/a%2Fb`, `/checks/a%3Fb`, a malformed `%`, 65 characters |
 
@@ -898,21 +907,57 @@ nobody knows.
 **`#source`** scrolls to the section once the first round settles, as
 `#sql` does.
 
+### 4A.11 A retired check (spec 037 S13)
+
+`GET /checks/{id}` answers `200` with `state: "retired"` for a check gone
+from the project's files but kept in the store (spec 037). This is not a
+failure and not `checkMissing`: it is a different, successful shape
+(`RetiredCheckSummary`), and the page renders a different header,
+`RetiredIdentity`, in place of §4A.2's `Identity`.
+
+**Header.** A panel headed by the check's name (`<h1>`), with the "Retired"
+badge (§5 badges, styled like "Disabled": neutral, never a status colour).
+When `expression` is not null and differs from the name, it follows in
+monospace. Then one line: "Retired since *14:55 today*" (`Since`, the same
+component the overview's streaks use), and, when `last_known_location` is
+not null, " — last defined in `<path>`" (monospace, invisible characters
+marked); omitted entirely for a check registered but never run (S10). Then a
+definition list with only what a retired check still carries: **Dataset**,
+**Datasource** (plain text — there is no `datasource_state` any more),
+**Owner**, **Tags** and **Id**. No **Source** row: there is no file to link
+to.
+
+**Latest result and history** are the same sections as any check's (§4A.4,
+§4A.5), fed `latest` and the history endpoint as usual — a retired check's
+page never claims less than its last result. `LatestSection` takes the same
+two fields either way (`latest`, `expression`); the "judged by an earlier
+rule" note never appears here, since a retired check has no current rule to
+compare against (`judgedBy` is always null).
+
+**No SQL or source sections** (S9): a retired check has no file to compile
+or show. `/checks/{id}/sql` and `/checks/{id}/source` both answer `404` for
+its id; the page expects this and does not treat it as a failure (the same
+suppression as `checkMissing` in §4A.9/§4A.10's tables, extended to a
+retired check).
+
 ## 4B. The check explorer (`/checks`)
 
-Specs 015 and 016 (I-04). It reads `GET /api/v1/project` and
-`GET /api/v1/checks` through the shared hook, as two slots, and nothing
-else: the search and the status, tag, owner and datasource filters run in
-memory over the loaded list, so typing never fetches (E18). Refresh reloads both. The document title is
-"Checks · tablewatch".
+Specs 015 and 016 (I-04), and spec 037 S12 (retired checks). It reads
+`GET /api/v1/project` and `GET /api/v1/checks?state=active&state=disabled&state=retired`
+through the shared hook, as two slots, and nothing else: the search, the
+status, tag, owner and datasource filters, and the "Show retired" toggle
+(§4B.6) all run in memory over the one loaded list, so nothing after the
+first load ever fetches again (E18). Refresh reloads both. The document
+title is "Checks · tablewatch".
 
 ### 4B.1 Layout
 
 Top to bottom: the header (§4.1, the project name as a paragraph), a link
 "Overview" to `/`, the `<h1>` "Checks", the check-file banner (§4.2) when
 the project has broken files (the tree is incomplete, E17), then one panel
-(`<section aria-label="Check files">`) holding the controls, a "Showing …"
-line, and the tree.
+(`<section aria-label="Check files">`) holding the controls (including "Show
+retired", §4B.6), a "Showing …" line, the tree, and, only while "Show
+retired" is on, the retired list (§4B.6).
 
 The overview links here: "Browse all checks" sits beside the heading
 "Checks, problems first" (E16).
@@ -1002,7 +1047,9 @@ The overview links here: "Browse all checks" sits beside the heading
   toward both.
 - **The "Showing" line** above the tree reads "Showing *n* of *N*
   checks." while any search or filter is active and "Showing all *N*
-  checks." otherwise (`aria-live="polite"`).
+  checks." otherwise (`aria-live="polite"`). *N* and *n* count retired
+  checks only while "Show retired" is on (§4B.6, spec 037 S12): the toggle
+  changes what the line counts, not just what the tree shows.
 - **The URL.** The query is
   `?q=<text>&status=<s>…&tag=<t>…&owner=<o>…&datasource=<d>…`, parameters in
   that order (F10); statuses in the overview's order (`fail`, `error`,
@@ -1037,6 +1084,38 @@ Under 48rem a check row becomes one column (badge, name and expression,
 value, stacked) and nesting indents less. Names, paths, datasets and
 expressions use `overflow-wrap: anywhere`, so a long path wraps instead of
 scrolling the page.
+
+### 4B.6 Show retired (spec 037 S12)
+
+A retired check (spec 037) is gone from the project's files, so it is never
+in the tree: the tree mirrors `checks/`, and a retired check has no file any
+more (CLAUDE.md's "the folder tree is the navigation"). It lists instead, in
+a flat "Retired" block below the tree, only while the toggle below is on.
+
+- **The toggle.** A checkbox, "Show retired *N*" (`N` the number of retired
+  checks the project's store knows, styled like a Tag/Owner/Datasource
+  checkbox, §4B.3), off by default. Hidden entirely when there are no
+  retired checks (the same "no choice, no filter" rule as a facet with one
+  value, F1/F9). Toggling it does not fetch: every state was already loaded
+  in the one `/checks` request.
+- **What it adds.** Every retired check matching the search box (name,
+  expression, dataset, id, datasource, the last known file, a tag or the
+  owner — whichever of these a retired check still has, D3: `expression`
+  and the last known file are null, and `clauses` is empty, for one
+  registered but never run, S10). The status, tag, owner and datasource
+  checkboxes are the loaded tree's; they do not narrow the retired list,
+  and a retired check's values do not feed their counts.
+- **A retired row**: the same shape as a tree row (status badge, name
+  linking to `checkHref(id)`, the expression in monospace when it differs
+  from the name, and the value for pass/warn/fail through `ResultValue`),
+  with **both** "Retired" and "Disabled" badges — a retired check is always
+  `enabled: false` (D3), so the two always appear together. No dataset (a
+  retired check has no file to read one from) and no nesting: the list is
+  flat, under one heading reading its count, or "No retired checks match."
+- **The URL.** `retired=1` is appended after `datasource` (F10) only when
+  the toggle is on; absent means off. It round-trips through
+  `history.replaceState` exactly as the search and the other filters do, so
+  reloading, sharing the address, or Back from a check's page keeps it set.
 
 ## 5. Status: label, icon, colour
 
@@ -1318,6 +1397,7 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | `test/route.test.ts` | the route table and `checkHref` (decision 7) |
 | `test/explorer.test.tsx` | spec 015 E1–E19 by scenario id: requests, the tree and its counts, order, open on load, the root rule, search fields, status toggles, the URL (`replaceState`, no new entry, restore, normal form), hostile queries, no match, no checks, load failure with Refresh and Try again, the overview link, the banner, 500 checks in 40 folders under 200 ms and no fetch while typing, the narrow-screen CSS. E20 (these docs) is checked in review: Vite will not import files outside `frontend/` |
 | `test/security.test.tsx` | X4 rendering, source rules (§9), the chart's source rules (decision 14) |
+| `test/retired.test.tsx` | spec 037 S12/S13: `lib/explorer.ts`'s retired helpers (`isRetired`, `matchesRetiredText`, `filterRetired`, the `retired=1` URL roundtrip); the explorer's "Show retired" toggle off by default, the Retired and Disabled badges together, the header count, the URL; a retired check's page header, "Retired since …", the last known file (present and omitted), latest result and history as for any check, no SQL/source failure noise |
 | `test/contrast.test.ts` | the palette and the chart tokens, both schemes (§5) |
 | `test/lib.test.ts` | age boundaries and rounding, DST, absolute format, selection wording, status order and counts |
 | `test/api.test.ts` | the client: URLs, init, envelope errors, non-JSON, network failure |
@@ -1354,6 +1434,14 @@ in-process app on 2026-09-27: `retail` (`b1ceb8262d8b5441`,
 `ec91af87c6b3495e`, span unavailable), with `loaded_at` set to 07:50 UTC so
 captions read "2 hours ago"; plus built bodies for P8 and P14. The stub
 answers `/source` by the same rule as `/sql`.
+`test/fixtures/retired.ts` (spec 037) builds a `RetiredCheckSummary` from a
+loaded check's summary (`retiredOf`, as `RetiredCheckSummary.of` would from
+its last result) or from nothing, for one registered but never run
+(`neverRunRetired`, S10). `test/render.tsx`'s `stubServer` matches a
+`/checks` request on its path alone, ignoring `?state=`, so one fixture's
+`checks` answer serves both the overview's request (no `state`) and the
+explorer's (`?state=active&state=disabled&state=retired`,
+`EXPLORER_CHECKS_URL`).
 
 ## 11. Known limits and follow-ups
 

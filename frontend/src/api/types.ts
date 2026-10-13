@@ -12,6 +12,13 @@ export type Diagnostic = Schemas["Diagnostic"];
 export type Location = Schemas["Location"];
 export type CheckList = Schemas["CheckList"];
 export type CheckSummary = Schemas["CheckSummary"];
+export type RecordedClause = Schemas["RecordedClause"];
+/** A check gone from the project's files (spec 037): `GET /checks` with `?state=retired`, or `GET /checks/{id}` for its id. */
+export type RetiredCheckSummary = Schemas["RetiredCheckSummary"];
+/** One item of `CheckList.items`: active, disabled or retired, discriminated on `state`. */
+export type CheckListItem = CheckList["items"][number];
+/** Every `state` `GET /checks` accepts, repeatable (spec 037). */
+export type CheckState = CheckListItem["state"];
 export type LatestResult = Schemas["LatestResult"];
 export type LastEvaluated = Schemas["LastEvaluated"];
 export type RunPage = Schemas["RunPage"];
@@ -25,6 +32,8 @@ export type ErrorCode = Schemas["ErrorInfo"]["code"];
 export type Outcome = LatestResult["outcome"];
 
 export type CheckDetail = Schemas["CheckDetail"];
+/** What `GET /checks/{id}` serves: a loaded check's detail, or a retired check's summary (spec 037). */
+export type CheckDetailItem = CheckDetail | RetiredCheckSummary;
 export type Rule = Schemas["Rule"];
 export type CompareCondition = Schemas["CompareCondition"];
 export type BetweenCondition = Schemas["BetweenCondition"];

@@ -12,7 +12,7 @@ import logging
 import re
 import threading
 import time
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,6 +31,7 @@ from sqlalchemy import (
     Subquery,
     and_,
     create_engine,
+    delete,
     func,
     make_url,
     or_,
@@ -53,6 +54,7 @@ from tablewatch.config.project import (
 from tablewatch.engine.baselines import BaselineRequest, Sample
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import CheckResult, ResultSink, RunResult
+from tablewatch.jsonvalues import utc
 from tablewatch.results import registry
 from tablewatch.results.errors import NewerStoreError as NewerStoreError
 from tablewatch.results.errors import NoStoreError as NoStoreError
@@ -60,8 +62,11 @@ from tablewatch.results.errors import OlderStoreError as OlderStoreError
 from tablewatch.results.errors import RecordError as RecordError
 from tablewatch.results.errors import StoreError as StoreError
 from tablewatch.results.errors import fit_row as fit_row
+from tablewatch.results.heads import recompute, record_heads, state_of
 from tablewatch.results.models import (
+    RETIRED,
     VERSION_TABLE,
+    CheckHeadRow,
     CheckResultRow,
     CheckRow,
     ClauseResultRow,
@@ -254,6 +259,14 @@ class Latest:
     result: CheckResultRow
     run: RunRow
     state: State
+
+
+@dataclass(frozen=True)
+class Retired:
+    """A retired check's registry row and its last result, if it ever ran."""
+
+    check: CheckRow
+    latest: Latest | None
 
 
 class PageKey(NamedTuple):
@@ -482,12 +495,28 @@ class ResultStore:
                 session, run.project, run.results, row.results, datetime.now(UTC)
             )
             session.add(row)
+            record_heads(session, row.results, run.started_at)
 
     def sync(self, project: str, checks: Sequence[Check], now: datetime) -> SyncReport:
         """Bring `project`'s check registry in line with `checks`: every
         check it loaded, enabled or not (spec 036)."""
         with reading(self.engine), Session(self.engine) as session, session.begin():
             return registry.sync(session, project, checks, now)
+
+    def rebuild_heads(self) -> int:
+        """Recompute every check's head from its history (spec 037).
+
+        The heads are a cache of history; this rebuilds them after results
+        were changed by hand. It covers every project in the store, not one:
+        a rebuild only recomputes what history already says. Returns the
+        number of checks with a head.
+        """
+        with Session(self.engine) as session, session.begin():
+            session.execute(delete(CheckHeadRow))
+            ids = session.scalars(select(CheckResultRow.check_id).distinct()).all()
+            for check_id in ids:
+                recompute(session, check_id)
+            return len(ids)
 
     # --- reads, every one scoped to one project: a store can be shared ---
 
@@ -528,7 +557,12 @@ class ResultStore:
         queries, however many checks: every result's outcome in history
         order, then the head rows. `as_of` reads history as it stood when
         that run was recorded: it and older runs only.
+
+        Without `as_of`, each check's head (spec 037) answers instead: one
+        query, whatever the length of history.
         """
+        if as_of is None:
+            return self._heads(project, check_id)
         scope = [RunRow.project == project, *_not_newer_than(as_of)]
         if check_id is not None:
             scope.append(CheckRow.check_hash == check_id)
@@ -551,7 +585,7 @@ class ResultStore:
                 if check not in histories:
                     histories[check] = []
                     heads[result_id] = check
-                histories[check].append(Entry(outcome, started_at))
+                histories[check].append(Entry(outcome, utc(started_at)))
             if not heads:
                 return {}
             rows = session.execute(
@@ -565,6 +599,55 @@ class ResultStore:
                 )
                 for result, run in rows.unique()
             }
+
+    def _heads(self, project: str, check_id: str | None) -> dict[str, Latest]:
+        scope = [CheckRow.project == project]
+        if check_id is not None:
+            scope.append(CheckRow.check_hash == check_id)
+        statement = (
+            select(CheckHeadRow, CheckResultRow, RunRow)
+            .join(CheckRow, CheckHeadRow.check_id == CheckRow.id)
+            .join(CheckResultRow, CheckHeadRow.result_id == CheckResultRow.id)
+            .join(RunRow, CheckResultRow.run_id == RunRow.id)
+            .where(*scope)
+        )
+        with reading(self.engine), Session(self.engine) as session:
+            return {
+                result.public_id: Latest(result, run, state_of(head))
+                for head, result, run in session.execute(statement).unique()
+            }
+
+    def retired_checks(
+        self, project: str, loaded: Collection[str], check_id: str | None = None
+    ) -> list[Retired]:
+        """This project's retired checks, each with its last result if any.
+
+        A retired row whose check is loaded again (returned, not yet synced)
+        is left out: the loaded check is the one to show (spec 037 D3).
+        """
+        scope = [CheckRow.project == project, CheckRow.state == RETIRED]
+        if check_id is not None:
+            scope.append(CheckRow.check_hash == check_id)
+        statement = (
+            select(CheckRow, CheckHeadRow, CheckResultRow, RunRow)
+            .outerjoin(CheckHeadRow, CheckHeadRow.check_id == CheckRow.id)
+            .outerjoin(CheckResultRow, CheckHeadRow.result_id == CheckResultRow.id)
+            .outerjoin(RunRow, CheckResultRow.run_id == RunRow.id)
+            .where(*scope)
+            .order_by(CheckRow.dataset, CheckRow.name, CheckRow.datasource)
+            .options(selectinload(CheckResultRow.clauses))
+        )
+        with reading(self.engine), Session(self.engine) as session:
+            return [
+                Retired(
+                    check,
+                    None
+                    if head is None or result is None or run is None
+                    else Latest(result, run, state_of(head)),
+                )
+                for check, head, result, run in session.execute(statement).unique()
+                if check.check_hash not in loaded
+            ]
 
     def previous_results(
         self,

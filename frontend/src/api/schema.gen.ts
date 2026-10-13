@@ -193,6 +193,11 @@ export interface components {
             rule: components["schemas"]["Rule"];
             /** Source */
             source: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            state: "active" | "disabled";
             /** Tags */
             tags: string[];
             /** Unit */
@@ -201,7 +206,7 @@ export interface components {
         /** CheckList */
         CheckList: {
             /** Items */
-            items: components["schemas"]["CheckSummary"][];
+            items: (components["schemas"]["CheckSummary"] | components["schemas"]["RetiredCheckSummary"])[];
             /** Total */
             total: number;
         };
@@ -289,6 +294,11 @@ export interface components {
             owner: string | null;
             /** Source */
             source: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            state: "active" | "disabled";
             /** Tags */
             tags: string[];
             /** Unit */
@@ -533,6 +543,65 @@ export interface components {
             sql: string;
         };
         /**
+         * RecordedClause
+         * @description One clause of a retired check, as its last result recorded it.
+         */
+        RecordedClause: {
+            /** Expression */
+            expression: string;
+            /** Key */
+            key: string;
+            /** Metric */
+            metric: string;
+            /** Unit */
+            unit: ("count" | "percent" | "duration" | "number") | null;
+        };
+        /**
+         * RetiredCheckSummary
+         * @description A check gone from the project's files (spec 037), as last recorded.
+         *
+         *     It has no file, rule or SQL any more. What it measured comes from its
+         *     last result: `expression`, `metric` and `last_known_location` are null
+         *     and `clauses` empty for a check that never ran.
+         */
+        RetiredCheckSummary: {
+            /** Clauses */
+            clauses: components["schemas"]["RecordedClause"][];
+            /** Dataset */
+            dataset: string;
+            /** Datasource */
+            datasource: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Expression */
+            expression: string | null;
+            /** Id */
+            id: string;
+            /** Last Known Location */
+            last_known_location: string | null;
+            latest: components["schemas"]["LatestResult"] | null;
+            /** Metric */
+            metric: string | null;
+            /** Name */
+            name: string;
+            /** Owner */
+            owner: string | null;
+            /**
+             * Retired Since
+             * Format: date-time
+             */
+            retired_since: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            state: "retired";
+            /** Tags */
+            tags: string[];
+            /** Unit */
+            unit: ("count" | "percent" | "duration" | "number") | null;
+        };
+        /**
          * Rule
          * @description The check's conditions as this server loaded them.
          *
@@ -710,6 +779,7 @@ export interface operations {
         parameters: {
             query?: {
                 outcome?: ("pass" | "warn" | "fail" | "error" | "skipped" | "not_run")[] | null;
+                state?: ("active" | "disabled" | "retired")[] | null;
             };
             header?: never;
             path?: never;
@@ -799,7 +869,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CheckDetail"];
+                    "application/json": components["schemas"]["CheckDetail"] | components["schemas"]["RetiredCheckSummary"];
                 };
             };
             /** @description invalid parameter */

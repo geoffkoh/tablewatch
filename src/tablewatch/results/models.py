@@ -210,6 +210,41 @@ class ClauseResultRow(Base):
     result: Mapped[CheckResultRow] = relationship(back_populates="clauses")
 
 
+class CheckHeadRow(Base):
+    """A check's newest result and its current state, kept as results are
+    saved (spec 037), so the overview never reads history.
+
+    A cache of `current_state` over the check's history, not part of the
+    registry: it can always be rebuilt from the results.
+    """
+
+    __tablename__ = "tablewatch_check_heads"
+
+    check_id: Mapped[int] = mapped_column(
+        ForeignKey("tablewatch_checks.id", name="fk_tablewatch_check_heads_check_id"),
+        primary_key=True,
+    )
+    result_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "tablewatch_check_results.id",
+            name="fk_tablewatch_check_heads_result_id",
+            ondelete="CASCADE",
+        )
+    )
+    # The newest result's place in history: `(started_at, run_id)`.
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    run_id: Mapped[str] = mapped_column(String(32))
+    outcome: Mapped[str] = mapped_column(String(16))
+    since: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Set only when the newest result was not evaluated: what the data last
+    # showed (`State.last_evaluated`).
+    evaluated_outcome: Mapped[str | None] = mapped_column(String(16))
+    evaluated_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    evaluated_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class DatasetRunRow(Base):
     """One dataset recorded under a keyed run: what a resume skips (spec 034).
 

@@ -31,6 +31,12 @@ from tablewatch.checks.model import Check, Dataset, Outcome, check_outcome
 from tablewatch.engine.runner import CheckResult, RunResult, SkippedDataset, username
 from tablewatch.errors import TablewatchError
 from tablewatch.jsonvalues import utc
+from tablewatch.results.heads import (
+    forget_heads,
+    lock_checks,
+    recompute,
+    record_heads,
+)
 from tablewatch.results.models import (
     MAX_RUN_KEY,
     CheckResultRow,
@@ -301,9 +307,14 @@ class KeyedRun:
                 Session(self.store.engine) as session,
                 session.begin(),
             ):
-                self._forget(session, dataset)
+                forgotten = self._forget(session, dataset)
                 register_all(session, self.project, results, rows, finished)
                 session.add_all([*rows, record])
+                record_heads(session, rows, self.started_at)
+                # A check the earlier attempt recorded but this one did not
+                # (disabled or deleted since) still has its older history.
+                for check_id in forgotten - {row.check_id for row in rows}:
+                    recompute(session, check_id)
                 if self.notify:
                     session.flush()
                     write_alerts(
@@ -316,23 +327,22 @@ class KeyedRun:
                         rows=rows,
                     )
 
-    def _forget(self, session: Session, dataset: Dataset) -> None:
-        earlier = select(CheckResultRow.id).where(
+    def _forget(self, session: Session, dataset: Dataset) -> set[int]:
+        """Drop an earlier attempt's rows for `dataset`; the checks they were."""
+        attempt = (
             CheckResultRow.run_id == self.run_id,
             CheckResultRow.datasource == dataset.datasource,
             CheckResultRow.dataset == dataset.name,
         )
+        earlier = select(CheckResultRow.id).where(*attempt)
+        checks = select(CheckResultRow.check_id).where(*attempt)
+        forgotten = set(session.scalars(checks))
+        # Locked before their heads go, as every head writer does.
+        lock_checks(session, forgotten)
         # Explicitly, not by cascade: SQLite enforces foreign keys only
         # when asked to. A change already sent stays: it is not sent twice.
-        forget_unsent(
-            session,
-            self.run_id,
-            select(CheckResultRow.check_id).where(
-                CheckResultRow.run_id == self.run_id,
-                CheckResultRow.datasource == dataset.datasource,
-                CheckResultRow.dataset == dataset.name,
-            ),
-        )
+        forget_unsent(session, self.run_id, checks)
+        forget_heads(session, checks)
         session.execute(
             delete(ClauseResultRow).where(ClauseResultRow.check_result_id.in_(earlier))
         )
@@ -348,6 +358,7 @@ class KeyedRun:
                 DatasetRunRow.dataset == dataset.name,
             )
         )
+        return forgotten
 
     def finish(self, run: RunResult) -> None:
         """Close the run row: its outcome over every dataset recorded under

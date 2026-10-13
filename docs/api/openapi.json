@@ -114,6 +114,14 @@
             "title": "Source",
             "type": "string"
           },
+          "state": {
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -155,6 +163,7 @@
           "latest",
           "clauses",
           "enabled",
+          "state",
           "rule"
         ],
         "title": "CheckDetail",
@@ -164,7 +173,22 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/CheckSummary"
+              "discriminator": {
+                "mapping": {
+                  "active": "#/components/schemas/CheckSummary",
+                  "disabled": "#/components/schemas/CheckSummary",
+                  "retired": "#/components/schemas/RetiredCheckSummary"
+                },
+                "propertyName": "state"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CheckSummary"
+                },
+                {
+                  "$ref": "#/components/schemas/RetiredCheckSummary"
+                }
+              ]
             },
             "title": "Items",
             "type": "array"
@@ -405,6 +429,14 @@
             "title": "Source",
             "type": "string"
           },
+          "state": {
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -445,7 +477,8 @@
           "location",
           "latest",
           "clauses",
-          "enabled"
+          "enabled",
+          "state"
         ],
         "title": "CheckSummary",
         "type": "object"
@@ -1047,6 +1080,187 @@
         "title": "QueryStatement",
         "type": "object"
       },
+      "RecordedClause": {
+        "description": "One clause of a retired check, as its last result recorded it.",
+        "properties": {
+          "expression": {
+            "title": "Expression",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "count",
+                  "percent",
+                  "duration",
+                  "number"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "key",
+          "expression",
+          "metric",
+          "unit"
+        ],
+        "title": "RecordedClause",
+        "type": "object"
+      },
+      "RetiredCheckSummary": {
+        "description": "A check gone from the project's files (spec 037), as last recorded.\n\nIt has no file, rule or SQL any more. What it measured comes from its\nlast result: `expression`, `metric` and `last_known_location` are null\nand `clauses` empty for a check that never ran.",
+        "properties": {
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/RecordedClause"
+            },
+            "title": "Clauses",
+            "type": "array"
+          },
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "datasource": {
+            "title": "Datasource",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expression": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expression"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_known_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Known Location"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "retired_since": {
+            "format": "date-time",
+            "title": "Retired Since",
+            "type": "string"
+          },
+          "state": {
+            "const": "retired",
+            "title": "State",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "count",
+                  "percent",
+                  "duration",
+                  "number"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "dataset",
+          "datasource",
+          "state",
+          "retired_since",
+          "enabled",
+          "expression",
+          "metric",
+          "unit",
+          "owner",
+          "tags",
+          "last_known_location",
+          "latest",
+          "clauses"
+        ],
+        "title": "RetiredCheckSummary",
+        "type": "object"
+      },
       "Rule": {
         "description": "The check's conditions as this server loaded them.\n\nBuilt only from the parsed expectation and triggers \u2014 never from options\nsuch as `valid_values`, or from `where:`/`filter:` SQL.",
         "properties": {
@@ -1631,6 +1845,30 @@
               ],
               "title": "Outcome"
             }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "active",
+                      "disabled",
+                      "retired"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
           }
         ],
         "responses": {
@@ -1727,7 +1965,23 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CheckDetail"
+                  "discriminator": {
+                    "mapping": {
+                      "active": "#/components/schemas/CheckDetail",
+                      "disabled": "#/components/schemas/CheckDetail",
+                      "retired": "#/components/schemas/RetiredCheckSummary"
+                    },
+                    "propertyName": "state"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CheckDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RetiredCheckSummary"
+                    }
+                  ],
+                  "title": "Response Get Check"
                 }
               }
             },

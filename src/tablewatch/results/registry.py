@@ -133,11 +133,21 @@ def register_all(
     rows: Iterable[CheckResultRow],
     now: datetime,
 ) -> None:
-    """Point each row at its check's registry id, registering new checks."""
-    registered: dict[str, int] = {}
-    for r, row in zip(results, rows, strict=True):
-        if r.check.id not in registered:
-            registered[r.check.id] = _register(session, project, r.check, now)
+    """Point each row at its check's registry id, registering new checks.
+
+    Checks are registered in id order, so two runs adding the same new
+    checks take their locks in one order and cannot deadlock (Postgres).
+    That is the public id's order, not the registry id's that
+    `heads.lock_checks` uses: safe, because every lock taken here is taken
+    before any heads lock in the same transaction.
+    """
+    pairs = list(zip(results, rows, strict=True))
+    checks = {r.check.id: r.check for r, _ in pairs}
+    registered = {
+        check_id: _register(session, project, checks[check_id], now)
+        for check_id in sorted(checks)
+    }
+    for r, row in pairs:
         row.check_id = registered[r.check.id]
 
 

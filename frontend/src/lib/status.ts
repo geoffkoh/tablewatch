@@ -5,7 +5,7 @@
  * different people, so each state has its own label, icon and colour; colour
  * is never the only signal.
  */
-import type { CheckSummary, Outcome, Run } from "../api/types";
+import type { CheckSummary, LatestResult, Outcome, Run } from "../api/types";
 
 /** A recorded outcome, or `none` when the check has no result in the store. */
 export type Status = Outcome | "none";
@@ -42,7 +42,12 @@ export const SINCE_PREFIX: Readonly<Record<Outcome, string | null>> = {
   pass: null,
 };
 
-export function statusOf(check: CheckSummary): Status {
+/**
+ * A check's status from its latest result, whether it is a loaded
+ * `CheckSummary`/`CheckDetail` or a retired check (spec 037): both carry
+ * `latest`, and nothing else is read.
+ */
+export function statusOf(check: { latest: LatestResult | null }): Status {
   return check.latest === null ? "none" : check.latest.outcome;
 }
 

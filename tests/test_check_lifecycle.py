@@ -211,7 +211,8 @@ def test_s7_s8_a_check_retires_and_returns_with_its_history(
     (workspace.root / "checks/other.yml").unlink()
     tw.run(workspace.root)
     [(state, since)] = _rows(
-        workspace, "SELECT state, state_since FROM tablewatch_checks WHERE id = 1 + 2"
+        workspace,
+        f"SELECT state, state_since FROM tablewatch_checks WHERE id = {row_id}",
     )
     assert state == "retired" and since != first_since
     code, out, _ = invoke(workspace.root, "history", other_id)

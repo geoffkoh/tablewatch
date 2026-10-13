@@ -57,6 +57,7 @@ from tests.postgres import (
     with_env_password,
 )
 from tests.test_change_over_time import set_rows
+from tests.test_check_states import assert_heads_match
 from tests.test_server import served, start
 
 NEWER = "it was upgraded by a newer tablewatch — upgrade tablewatch to read it"
@@ -322,6 +323,7 @@ def test_two_processes_record_interleaved_runs(
         for check_id, head in latest.items():
             [(newest, run)] = store.history_page(RETAIL, check_id, limit=1)
             assert (newest.id, run.id) == (head.result.id, head.run.id)
+        assert_heads_match(store, RETAIL)  # spec 037 S15: no lost update
 
 
 # --- the API reads the same on both (P8) -------------------------------------------

@@ -4,7 +4,7 @@
  * counts, the `checks/` tree, and the counts on every folder and file. No
  * React and no DOM here, so each rule is tested alone.
  */
-import type { CheckSummary } from "../api/types";
+import type { CheckSummary, RetiredCheckSummary } from "../api/types";
 import { countStatuses, STATUS_ORDER, statusOf, type Status, type StatusCounts } from "./status";
 
 /** The longest search, and the longest filter value, kept from a URL or the box (E12, F12). */
@@ -15,10 +15,12 @@ export type FacetKey = "tag" | "owner" | "datasource";
 export const FACET_KEYS: readonly FacetKey[] = ["tag", "owner", "datasource"];
 
 /**
- * What the explorer shows: a search text, the selected statuses, and the
- * selected tag, owner and datasource values. None selected in a filter means
- * all. The empty value `""` stands for "No tags", "No owner", "No datasource"
- * (decision 1).
+ * What the explorer shows: a search text, the selected statuses, the
+ * selected tag, owner and datasource values, and whether retired checks are
+ * added (spec 037, S12). None selected in a filter means all. The empty
+ * value `""` stands for "No tags", "No owner", "No datasource" (decision 1).
+ * `retired` is optional on a hand-built query (a stale test fixture, say);
+ * every reader treats a missing value as `false`.
  */
 export interface ExplorerQuery {
   q: string;
@@ -26,10 +28,11 @@ export interface ExplorerQuery {
   tag: string[];
   owner: string[];
   datasource: string[];
+  retired?: boolean;
 }
 
-/** Nothing searched, nothing filtered. */
-export const EMPTY_QUERY: ExplorerQuery = { q: "", statuses: [], tag: [], owner: [], datasource: [] };
+/** Nothing searched, nothing filtered, retired checks not shown. */
+export const EMPTY_QUERY: ExplorerQuery = { q: "", statuses: [], tag: [], owner: [], datasource: [], retired: false };
 
 /** The fieldset legend of each filter. */
 export const FACET_LEGENDS: Readonly<Record<FacetKey, string>> = {
@@ -94,7 +97,8 @@ function urlValues(values: readonly string[]): string[] {
 /**
  * The query from `location.search`. Unknown statuses are ignored; `q` and
  * filter values to 1,000 code points (E12, F12, decision 5). Unknown filter
- * values are kept: a stale link explains itself (F11, decision 2).
+ * values are kept: a stale link explains itself (F11, decision 2). `retired`
+ * (S12) is on only for the exact value `1`.
  */
 export function parseExplorerQuery(search: string): ExplorerQuery {
   const params = new URLSearchParams(search);
@@ -104,26 +108,61 @@ export function parseExplorerQuery(search: string): ExplorerQuery {
     tag: urlValues(params.getAll("tag")),
     owner: urlValues(params.getAll("owner")),
     datasource: urlValues(params.getAll("datasource")),
+    retired: params.get("retired") === "1",
   };
 }
 
 /**
  * The query as a `location.search` string, parameters in the order `q`,
- * `status`, `tag`, `owner`, `datasource` (F10), or "" for everything. A
- * search of only spaces is no search.
+ * `status`, `tag`, `owner`, `datasource`, `retired` (F10; `retired` is new in
+ * spec 037 and sits last), or "" for everything. A search of only spaces is
+ * no search.
  */
 export function explorerSearch(query: ExplorerQuery): string {
   const params = new URLSearchParams();
   if (query.q.trim() !== "") params.set("q", cutQuery(query.q));
   for (const status of orderStatuses(query.statuses)) params.append("status", status);
   for (const key of FACET_KEYS) for (const value of orderValues(query[key])) params.append(key, value);
+  if (query.retired === true) params.set("retired", "1");
   const text = params.toString();
   return text === "" ? "" : `?${text}`;
 }
 
-/** True when the query narrows anything (F14). */
+/** True when the query narrows anything (F14). Showing retired checks (S12) does not narrow: it adds. */
 export function isFiltering(query: ExplorerQuery): boolean {
   return query.q.trim() !== "" || query.statuses.length > 0 || FACET_KEYS.some((key) => query[key].length > 0);
+}
+
+/** A loaded `CheckList` item that is a retired check (spec 037). */
+export function isRetired(item: CheckSummary | RetiredCheckSummary): item is RetiredCheckSummary {
+  return item.state === "retired";
+}
+
+/**
+ * Case-insensitive substring of name, expression, dataset, last known file,
+ * id, a tag, the owner or the datasource; leading and trailing spaces ignored
+ * (S12), over whichever of those a retired check still carries (D3: null
+ * fields for one never run).
+ */
+export function matchesRetiredText(item: RetiredCheckSummary, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  if (needle === "") return true;
+  const fields = [item.name, item.dataset, item.id, item.datasource];
+  if (item.expression !== null) fields.push(item.expression);
+  if (item.last_known_location !== null) fields.push(item.last_known_location);
+  if (item.owner !== null) fields.push(item.owner);
+  return [...fields, ...item.tags].some((field) => field.toLowerCase().includes(needle));
+}
+
+/**
+ * The retired checks the "Show retired" toggle adds (S12): none while it is
+ * off, otherwise every retired check matching the search box. The status,
+ * tag, owner and datasource filters are the loaded tree's; they do not
+ * narrow this list.
+ */
+export function filterRetired(items: readonly RetiredCheckSummary[], query: ExplorerQuery): RetiredCheckSummary[] {
+  if (query.retired !== true) return [];
+  return items.filter((item) => matchesRetiredText(item, query.q));
 }
 
 /**
