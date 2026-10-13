@@ -348,11 +348,7 @@ class RetiredCheckSummary(_Model):
             retired_since=check.state_since,
             enabled=False,
             expression=result.expression if result else None,
-            metric=None
-            if result is None
-            else single.metric
-            if single
-            else CHECK_METRIC,
+            metric=_recorded_metric(result is not None, single),
             unit=single.unit if single else None,
             owner=result.owner if result else None,
             tags=list(result.tags) if result else [],
@@ -360,6 +356,13 @@ class RetiredCheckSummary(_Model):
             latest=LatestResult.of(found) if found else None,
             clauses=clauses,
         )
+
+
+def _recorded_metric(ran: bool, single: RecordedClause | None) -> str | None:
+    """A retired check's metric: its one clause's, `check` for several."""
+    if not ran:
+        return None
+    return single.metric if single else CHECK_METRIC
 
 
 CheckItem = Annotated[CheckSummary | RetiredCheckSummary, Field(discriminator="state")]

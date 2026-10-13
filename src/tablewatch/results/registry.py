@@ -137,6 +137,9 @@ def register_all(
 
     Checks are registered in id order, so two runs adding the same new
     checks take their locks in one order and cannot deadlock (Postgres).
+    That is the public id's order, not the registry id's that
+    `heads.lock_checks` uses: safe, because every lock taken here is taken
+    before any heads lock in the same transaction.
     """
     pairs = list(zip(results, rows, strict=True))
     checks = {r.check.id: r.check for r, _ in pairs}

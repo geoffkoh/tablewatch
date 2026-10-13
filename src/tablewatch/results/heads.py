@@ -9,7 +9,7 @@ no head yet) recomputes that one check from its history.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 
 from sqlalchemy import Select, delete, select
@@ -48,15 +48,31 @@ def _set(
     head.evaluated_since = last.since if last else None
 
 
+def lock_checks(session: Session, ids: Iterable[int]) -> None:
+    """Lock registry rows before their heads are read or changed, in id order.
+
+    Every writer of a head takes this first, so two never interleave. NO KEY
+    UPDATE: results inserted in the same transactions hold KEY SHARE on
+    these rows through their foreign key, and FOR UPDATE would wait on the
+    other writer's and deadlock. A no-op on SQLite, whose writer already
+    holds the database.
+    """
+    session.execute(
+        select(CheckRow.id)
+        .where(CheckRow.id.in_(sorted(ids)))
+        .order_by(CheckRow.id)
+        .with_for_update(key_share=True)
+    ).all()
+
+
 def record_heads(
     session: Session, rows: Sequence[CheckResultRow], started_at: datetime
 ) -> None:
     """Bring the heads of `rows`' checks up to date, in their transaction.
 
     `rows` are one run's results, registered (`register_all`) and not yet
-    flushed; `started_at` is their run's. The checks' registry rows are
-    locked first, in id order, so two runs recording one check never lose
-    an update (a no-op on SQLite, whose writer already holds the database).
+    flushed; `started_at` is their run's. The checks are locked first
+    (`lock_checks`), so two runs recording one check never lose an update.
     """
     if not rows:
         return
@@ -64,15 +80,7 @@ def record_heads(
     session.flush()  # ids for the heads, and visible to a recompute
     started_at = utc(started_at)
     ids = sorted({row.check_id for row in rows})
-    session.execute(
-        select(CheckRow.id)
-        .where(CheckRow.id.in_(ids))
-        .order_by(CheckRow.id)
-        # NO KEY UPDATE: the results just inserted hold KEY SHARE on these
-        # rows through their foreign key, in both writers; FOR UPDATE would
-        # wait on the other's and deadlock.
-        .with_for_update(key_share=True)
-    ).all()
+    lock_checks(session, ids)
     heads = {
         head.check_id: head
         for head in session.scalars(
