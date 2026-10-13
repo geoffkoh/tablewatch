@@ -507,7 +507,9 @@ class ResultStore:
         """Recompute every check's head from its history (spec 037).
 
         The heads are a cache of history; this rebuilds them after results
-        were changed by hand. Returns the number of checks with a head.
+        were changed by hand. It covers every project in the store, not one:
+        a rebuild only recomputes what history already says. Returns the
+        number of checks with a head.
         """
         with Session(self.engine) as session, session.begin():
             session.execute(delete(CheckHeadRow))

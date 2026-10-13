@@ -240,7 +240,7 @@ variable.) Use it in one of two ways:
 A reference in the scheme, host or port is refused. An unset variable stops
 the command with `environment variable TW_STORE_PASSWORD is not set`, exit 2.
 
-**One schema for tablewatch.** Its three tables are prefixed `tablewatch_`,
+**One schema for tablewatch.** Its tables are all prefixed `tablewatch_`,
 so they can share a schema, but a dedicated one keeps grants simple. Create
 it, then name it in the URL's `options` (URL-encoded, as above):
 `?options=-c search_path=tablewatch`. The session's time zone does not
@@ -260,6 +260,19 @@ GRANT USAGE ON SCHEMA tablewatch TO tw_writer, tw_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA tablewatch TO tw_writer;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA tablewatch TO tw_writer;
 GRANT SELECT ON ALL TABLES IN SCHEMA tablewatch TO tw_reader;
+```
+
+`ON ALL TABLES` covers only the tables that exist when it runs, and an
+upgrade may add one. Either run the grants again after every upgrade, or
+have the upgrading role grant them on new tables as it creates them:
+
+```sql
+-- as the upgrading role, once
+ALTER DEFAULT PRIVILEGES IN SCHEMA tablewatch
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO tw_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA tablewatch
+  GRANT USAGE ON SEQUENCES TO tw_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA tablewatch GRANT SELECT ON TABLES TO tw_reader;
 ```
 
 `runs`, `history`, `report` and notifications never change the store.

@@ -367,7 +367,15 @@ message names that run's date).
 A check deleted from the files is **retired**: the results store keeps it
 and all its results (`tablewatch history <id>` still shows them). Put a
 check back with the same name, dataset and datasource and it **returns**,
-with the same id and its history.
+with the same id and its history; its "failing since" carries on from
+before it was retired, as after any gap.
+
+`tablewatch serve` lists retired checks only when asked: the checks page
+has a "Show retired" switch, and the API takes `GET /api/v1/checks?state=retired`
+(`state` may be given more than once: `active`, `disabled`, `retired`). A
+retired check's page shows what it last recorded, the file it was last
+defined in, and its history; it has no SQL or source, since no file holds
+it now.
 
 The store learns about new, disabled and retired checks on every recorded
 run (`run --no-store`, and a run that runs nothing, leave it alone), or
