@@ -9,7 +9,7 @@ Changing these models needs a migration in `migrations/versions/`;
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -104,6 +104,14 @@ class RunTotals:
 CHECK_METRIC = "check"
 
 
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+# A registered check's lifecycle states (spec 036).
+ACTIVE, DISABLED, RETIRED = "active", "disabled", "retired"
+
+
 class CheckRow(Base):
     """The registry: one row per named check ever recorded in a project.
 
@@ -121,6 +129,14 @@ class CheckRow(Base):
     dataset: Mapped[str] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text)
     check_hash: Mapped[str] = mapped_column(String(64))
+    # Lifecycle (spec 036): `active`, `disabled` (`enabled: false`), or
+    # `retired` (gone from the project's files; never deleted, and a name
+    # that returns resumes this row).
+    state: Mapped[str] = mapped_column(String(16), default=ACTIVE)
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
+    )
+    state_since: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class CheckResultRow(Base):

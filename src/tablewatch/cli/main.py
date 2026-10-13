@@ -23,6 +23,10 @@ nothing and exits with the code that run recorded; a bad key, or one with
 empty or absent store included for `runs`), 2 when the results store could
 not be read, 3 when there is no such check or the command line is wrong.
 
+`sync` brings the store's check registry in line with the files: 0 when
+synced, 2 when the results store could not be used, 3 when the project is
+invalid or has no checks while the registry has live ones.
+
 `report` writes a recorded run as HTML: 0 when written, 2 when the results
 store or the file could not be read or written, 3 when there is no such run
 (or the id is ambiguous). It never exits 1: the run's outcome is in the file.
@@ -36,12 +40,13 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NoReturn, cast
+from typing import Any, NoReturn, cast, get_args
 
 import click
 from sqlalchemy import text
@@ -62,6 +67,7 @@ from tablewatch.jsonvalues import utc
 from tablewatch.output import REPORTERS, console
 from tablewatch.results import ResultStore
 from tablewatch.results.keyed import RunKeyError, check_run_key
+from tablewatch.results.registry import ChangeKind, NothingToSyncError
 from tablewatch.results.store import NoStoreError, StoreError, open_store
 from tablewatch.selection import Selection, SelectionError, select_checks
 
@@ -280,11 +286,14 @@ def _selector_options[F: Callable[..., Any]](command: F) -> F:
 
 
 def _select(
-    project: Project, **selectors: tuple[str, ...]
+    project: Project,
+    selectors: dict[str, tuple[str, ...]],
+    *,
+    include_disabled: bool = False,
 ) -> tuple[Selection, list[Check]]:
     try:
         selection = Selection(**selectors).resolve(project, Path.cwd())
-        checks = select_checks(project, selection)
+        checks = select_checks(project, selection, include_disabled=include_disabled)
         if not checks and selection.as_dict():
             # As `run` does: selectors that each match but not together.
             raise SelectionError("no checks matched the selection — nothing ran")
@@ -414,7 +423,7 @@ def list_checks(
 ) -> None:
     """Show checks after inheritance, with their ids and sources."""
     project = _project(ctx)
-    _, checks = _select(project, **selectors)
+    _, checks = _select(project, selectors, include_disabled=True)
     if output == "json":
         click.echo(
             json.dumps(
@@ -428,6 +437,7 @@ def list_checks(
                         "owner": c.dataset.owner,
                         "tags": list(c.dataset.tags),
                         "source": str(c.location),
+                        "enabled": c.enabled,
                         "clauses": [
                             {"key": k.key, "expression": k.canonical} for k in c.clauses
                         ],
@@ -439,11 +449,20 @@ def list_checks(
         )
         return
     rows = [
-        (c.short_id, c.dataset.name, c.dataset.datasource, c.name, str(c.location))
+        (
+            c.short_id,
+            c.dataset.name,
+            c.dataset.datasource,
+            c.name if c.enabled else f"{c.name} (disabled)",
+            str(c.location),
+        )
         for c in checks
     ]
     _table(("ID", "DATASET", "DATASOURCE", "CHECK", "SOURCE"), rows)
-    click.echo(f"\n{len(checks)} checks")
+    disabled = sum(not c.enabled for c in checks)
+    click.echo(
+        f"\n{len(checks)} checks" + (f" ({disabled} disabled)" if disabled else "")
+    )
 
 
 @cli.command()
@@ -454,7 +473,7 @@ def compile(ctx: click.Context, /, **selectors: tuple[str, ...]) -> None:  # noq
     from datetime import UTC, datetime
 
     project = _project(ctx)
-    _, checks = _select(project, **selectors)
+    _, checks = _select(project, selectors)
     now = datetime.now(UTC)
     by_dataset: dict[int, list[Check]] = {}
     datasets: dict[int, Dataset] = {}
@@ -776,6 +795,37 @@ def runs(ctx: click.Context, limit: int) -> None:
     _table(
         ("RUN", "STARTED (UTC)", "OUTCOME", "CHECKS", "P/W/F/E", "EXIT", "HOST"), rows
     )
+
+
+@cli.command()
+@click.pass_context
+def sync(ctx: click.Context) -> None:
+    """Bring the results store's check registry in line with the project.
+
+    Registers new checks, marks `enabled: false` ones disabled, and retires
+    checks no longer in the files (their history is kept). A recorded run
+    does this itself unless `results.sync` is `manual`. Nothing is run.
+    """
+    project = _project(ctx)
+    try:
+        with open_store(project.config.results.url, project.root) as store:
+            report = store.sync(project.config.name, project.checks, datetime.now(UTC))
+    except NothingToSyncError as exc:
+        _fail(str(exc))
+    except StoreError as exc:
+        reason = str(exc).removeprefix("results store: ")
+        _fail(f"could not sync the results store: {reason}", EXIT_CHECK_ERROR)
+    for change in report.changes:
+        click.echo(
+            f"{change.kind:<9} {change.dataset}.{change.name}  ({change.datasource})"
+        )
+    counts = Counter(change.kind for change in report.changes)
+    kinds = [f"{counts[k]} {k}" for k in get_args(ChangeKind) if counts[k]]
+    changed = len(report.changes)
+    head = (
+        f"{_count(changed, 'change')}: {', '.join(kinds)}" if changed else "no changes"
+    )
+    click.echo(f"{head}; {report.unchanged} unchanged")
 
 
 @cli.command()

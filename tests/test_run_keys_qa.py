@@ -493,7 +493,7 @@ def test_a_keyed_run_on_an_older_store_migrates_first(
     _grow(workspace.root, 2)
     assert _previous(workspace.root, "--run-key", KEY) == 5
     assert _q(workspace.root, "SELECT version_num FROM tablewatch_alembic_version") == [
-        ("0006",)
+        ("0007",)
     ]
     assert _q(workspace.root, "SELECT count(*) FROM tablewatch_dataset_runs") == [(1,)]
 

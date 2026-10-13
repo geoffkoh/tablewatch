@@ -63,6 +63,10 @@
             "title": "Datasource State",
             "type": "string"
           },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
           "expression": {
             "title": "Expression",
             "type": "string"
@@ -150,6 +154,7 @@
           "location",
           "latest",
           "clauses",
+          "enabled",
           "rule"
         ],
         "title": "CheckDetail",
@@ -352,6 +357,10 @@
             "title": "Datasource State",
             "type": "string"
           },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
           "expression": {
             "title": "Expression",
             "type": "string"
@@ -435,7 +444,8 @@
           "source",
           "location",
           "latest",
-          "clauses"
+          "clauses",
+          "enabled"
         ],
         "title": "CheckSummary",
         "type": "object"

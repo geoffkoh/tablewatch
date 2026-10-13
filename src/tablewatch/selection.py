@@ -107,11 +107,19 @@ def _unique(values: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-def select_checks(project: Project, selection: Selection) -> list[Check]:
-    """The checks a resolved selection (`Selection.resolve`) chooses."""
+def select_checks(
+    project: Project, selection: Selection, *, include_disabled: bool = False
+) -> list[Check]:
+    """The checks a resolved selection (`Selection.resolve`) chooses.
+
+    A check with `enabled: false` is never chosen to run; `list` asks for
+    them with `include_disabled`.
+    """
     roots = [Path(p) for p in selection.paths]
     chosen = []
     for check in project.checks:
+        if not (check.enabled or include_disabled):
+            continue
         dataset = check.dataset
         if roots and not any(_under(dataset.path, root) for root in roots):
             continue

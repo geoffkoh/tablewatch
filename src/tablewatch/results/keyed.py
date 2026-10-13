@@ -41,6 +41,7 @@ from tablewatch.results.models import (
     RunRow,
 )
 from tablewatch.results.outbox import forget_unsent, write_alerts
+from tablewatch.results.registry import register_all
 from tablewatch.results.store import (
     PageKey,
     ResultStore,
@@ -48,7 +49,6 @@ from tablewatch.results.store import (
     fit_row,
     open_store,
     reading,
-    register_all,
     result_rows,
 )
 
@@ -113,6 +113,7 @@ class KeyedRun:
         selection: dict[str, Any],
         now: datetime,
         notify: bool = True,
+        sync_checks: Sequence[Check] | None = None,
     ) -> None:
         check_run_key(run_key)
         self.project = project
@@ -128,6 +129,10 @@ class KeyedRun:
             raise RunKeyError(_reason(exc)) from exc
         try:
             self._lock = _lock_for(self.store, project, run_key)
+            if sync_checks is not None:
+                # Once per attempt, a completed key's replay included (spec
+                # 036 D1): the registry follows the files, not the run.
+                self.store.sync(project, sync_checks, now)
             self._begin(rerun, trigger, selection, now)
         except StoreError as exc:
             self.close()
@@ -297,7 +302,7 @@ class KeyedRun:
                 session.begin(),
             ):
                 self._forget(session, dataset)
-                register_all(session, self.project, results, rows)
+                register_all(session, self.project, results, rows, finished)
                 session.add_all([*rows, record])
                 if self.notify:
                     session.flush()

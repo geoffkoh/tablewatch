@@ -190,6 +190,8 @@ class CheckSummary(_Model):
     location: Location
     latest: LatestResult | None
     clauses: list[ClauseSummary]
+    # False for `enabled: false`: listed with its last result, never run.
+    enabled: bool
 
     @classmethod
     def of(cls, check: Check, latest: LatestResult | None) -> CheckSummary:
@@ -208,6 +210,7 @@ class CheckSummary(_Model):
             source=str(check.location),
             location=Location.of(check.location),
             latest=latest,
+            enabled=check.enabled,
             clauses=[
                 ClauseSummary(
                     key=c.key,

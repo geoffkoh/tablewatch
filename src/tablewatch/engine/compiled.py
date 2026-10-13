@@ -205,7 +205,7 @@ def compile_dataset(
         error=None,
         owners={
             clause.id: check.id
-            for check in (checks if checks is not None else dataset.checks)
+            for check in (checks if checks is not None else dataset.enabled_checks)
             for clause in check.clauses
         },
     )

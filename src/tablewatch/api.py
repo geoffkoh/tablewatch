@@ -177,6 +177,14 @@ def execute(
         )
     selection = selection.resolve(project, cwd)
     checks: list[Check] = select_checks(project, selection)
+    if selection.check_ids:
+        for check in select_checks(project, selection, include_disabled=True):
+            if check.disabled_at is not None:
+                log.warning(
+                    "check %s is disabled (enabled: false at %s) — not run",
+                    check.name,
+                    check.disabled_at,
+                )
     if not checks:
         raise SelectionError("no checks matched the selection — nothing ran")
     now = datetime.now(UTC)
@@ -239,6 +247,7 @@ def _execute_keyed(
         selection=selection.as_dict(),
         now=now,
         notify=notify,
+        sync_checks=_sync_checks(project),
     ) as keyed:
         if keyed.completed is not None:
             # A replay still sends what an earlier attempt left (D3).
@@ -372,10 +381,22 @@ def default_sinks(
     if keyed:
         # Recorded as it goes, and told through the outbox (spec 035 D3).
         return []
-    sinks = [store_sink(project.config.results.url, project.root)]
+    sinks = [
+        store_sink(
+            project.config.results.url,
+            project.root,
+            sync_checks=_sync_checks(project),
+        )
+    ]
     if notify:
         sinks.append(notify_sink(project))
     return sinks
+
+
+def _sync_checks(project: Project) -> list[Check] | None:
+    """Every loaded check, for a recorded run to sync the registry to; None
+    under `results.sync: manual`, where only `tablewatch sync` does."""
+    return list(project.checks) if project.config.results.sync == "on_run" else None
 
 
 def _sequence(name: str, value: Sequence[PathArg]) -> list[str]:

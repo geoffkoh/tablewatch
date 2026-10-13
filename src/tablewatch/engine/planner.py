@@ -87,7 +87,9 @@ def plan_dataset(
     target = table_clause(dataset)
     plan = DatasetPlan(dataset=dataset, table=target)
     if clauses is None:
-        clauses = [clause for check in dataset.checks for clause in check.clauses]
+        clauses = [
+            clause for check in dataset.enabled_checks for clause in check.clauses
+        ]
     for clause in clauses:
         ctx = MetricContext(
             clause=clause, table=target, now=now, timezone=timezone, dialect=dialect

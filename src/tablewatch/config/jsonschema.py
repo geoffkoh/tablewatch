@@ -142,6 +142,11 @@ def check_file_schema() -> dict[str, Any]:
                                     "items": {"$ref": "#/$defs/_clause"},
                                 },
                                 "notify": _NOTIFY,
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "false: loaded and validated, "
+                                    "never run; its history is kept.",
+                                },
                             },
                         },
                     ]
