@@ -132,7 +132,7 @@ export const emptyState: OverviewResponses = withChecks(allPassState, []);
 /** spec 036 S15: one check disabled (`enabled: false`), still listed with its last result. */
 export const disabledState: OverviewResponses = withChecks(
   recorded,
-  clone(recorded.checks.items).map((c) => (c.id === "cd3e8103b4318809" ? { ...c, enabled: false } : c)),
+  clone(recorded.checks.items).map((c) => (c.id === "cd3e8103b4318809" ? { ...c, enabled: false, state: "disabled" } : c)),
 );
 
 /** A `skipped` latest result, which the engine does not produce today. */

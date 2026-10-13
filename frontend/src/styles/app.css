@@ -269,6 +269,17 @@ a {
   color: var(--tw-text-muted);
 }
 
+/*
+ * The "Retired" marker (spec 037 S12/S13): also neutral, dashed to read
+ * apart from "Disabled" when both sit on the same row (a retired check is
+ * always `enabled: false`).
+ */
+.badge--retired {
+  border: 1px dashed var(--tw-border);
+  background: var(--tw-surface);
+  color: var(--tw-text);
+}
+
 /* Summary tiles */
 
 .all-clear {
@@ -573,7 +584,8 @@ a {
   overflow-wrap: anywhere;
 }
 
-.check-title .badge--disabled {
+.check-title .badge--disabled,
+.check-title .badge--retired {
   margin-inline-start: 0.5rem;
   vertical-align: middle;
 }
@@ -1011,6 +1023,25 @@ a {
 
 .facet-filter__more {
   align-self: center;
+}
+
+/* Retired checks (spec 037 S12): a flat list, not nested like the tree,
+   since a retired check is no longer in any loaded file. */
+.retired-section {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--tw-border);
+}
+
+.retired-section__heading {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.retired-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .explorer__showing {

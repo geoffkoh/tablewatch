@@ -5,7 +5,18 @@
  * by `tablewatch serve` next to the API, and the CSP allows `connect-src
  * 'self'` only.
  */
-import type { CheckDetail, CheckList, CheckSource, CheckSql, ErrorBody, ErrorCode, HistoryPage, Project, RunPage } from "./types";
+import type {
+  CheckDetailItem,
+  CheckList,
+  CheckSource,
+  CheckSql,
+  CheckState,
+  ErrorBody,
+  ErrorCode,
+  HistoryPage,
+  Project,
+  RunPage,
+} from "./types";
 
 const BASE = "/api/v1";
 
@@ -103,9 +114,15 @@ export function getProject(): Promise<Project> {
   return get<Project>("/project");
 }
 
-/** `GET /api/v1/checks`: every loaded check with its latest result. */
-export function listChecks(): Promise<CheckList> {
-  return get<CheckList>("/checks");
+/**
+ * `GET /api/v1/checks[?state=…]`: every check with its latest result. With
+ * no `states`, the server's default (active and disabled, never retired).
+ * `states` is repeated, one `state=` per value (spec 037).
+ */
+export function listChecks(states?: readonly CheckState[]): Promise<CheckList> {
+  if (states === undefined) return get<CheckList>("/checks");
+  const query = states.map((s) => `state=${encodeURIComponent(s)}`).join("&");
+  return get<CheckList>(`/checks?${query}`);
 }
 
 /** `GET /api/v1/runs?limit=N`: runs, newest first. */
@@ -114,11 +131,13 @@ export function listRuns(limit: number): Promise<RunPage> {
 }
 
 /**
- * `GET /api/v1/checks/{id}`: one loaded check, with its rule. The id is always
- * encoded, although the route only passes ids that match the id pattern.
+ * `GET /api/v1/checks/{id}`: one check, with its rule when it is still loaded,
+ * or a retired check's last recorded summary (spec 037, `state: "retired"`).
+ * The id is always encoded, although the route only passes ids that match the
+ * id pattern.
  */
-export function getCheck(id: string): Promise<CheckDetail> {
-  return get<CheckDetail>(`/checks/${encodeURIComponent(id)}`);
+export function getCheck(id: string): Promise<CheckDetailItem> {
+  return get<CheckDetailItem>(`/checks/${encodeURIComponent(id)}`);
 }
 
 /** `GET /api/v1/checks/{id}/history?limit=N[&cursor=C]`: recorded results, newest first. */

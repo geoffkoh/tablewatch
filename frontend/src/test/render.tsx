@@ -20,11 +20,23 @@ export const URLS = {
   runs: "/api/v1/runs?limit=1",
 } as const;
 
+/**
+ * The check explorer's own `/checks` request (spec 037 S12): every state in
+ * one call, so the "Show retired" toggle only filters in memory (E18).
+ */
+export const EXPLORER_CHECKS_URL = "/api/v1/checks?state=active&state=disabled&state=retired";
+
 export function ok(body: unknown): Answer {
   return { status: 200, body };
 }
 
-/** Replace `fetch` with one that answers the three overview endpoints. */
+/**
+ * Replace `fetch` with one that answers the three overview endpoints. A
+ * `/checks` request matches on its path alone, whatever `?state=` it carries
+ * (the overview and the explorer ask for different states), so one fixture's
+ * `checks` answer serves both pages; the other two endpoints still match the
+ * exact URL.
+ */
 export function stubServer(fixture: OverviewResponses, overrides: Server = {}): ReturnType<typeof vi.fn> {
   const answers: Record<string, Answer> = {
     [URLS.project]: overrides.project ?? ok(fixture.project),
@@ -33,7 +45,8 @@ export function stubServer(fixture: OverviewResponses, overrides: Server = {}): 
   };
   const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const answer = answers[url];
+    const path = url.split("?")[0] ?? url;
+    const answer = path === URLS.checks ? answers[URLS.checks] : answers[url];
     if (answer === undefined) return Promise.reject(new Error(`unexpected request: ${url}`));
     if (answer === "network-error") return Promise.reject(new TypeError("Failed to fetch"));
     return Promise.resolve(

@@ -20,7 +20,7 @@ import { checkHref } from "../lib/route";
 import { countStatuses } from "../lib/status";
 import { brokenState, disabledState, emptyState, mapLatest } from "./fixtures/derived";
 import { recorded, RUN_ID, STARTED, type OverviewResponses } from "./fixtures/states";
-import { CLOCK, ok, renderOverview, setClock, stubServer, text, UNAVAILABLE, URLS, type Server } from "./render";
+import { CLOCK, EXPLORER_CHECKS_URL, ok, renderOverview, setClock, stubServer, text, UNAVAILABLE, URLS, type Server } from "./render";
 import CSS from "../styles/app.css?raw";
 
 beforeEach(() => {
@@ -126,7 +126,7 @@ describe("E1: the page at /checks", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Checks");
     expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
     const urls = fetchMock.mock.calls.map(([input]) => String(input)).sort();
-    expect(urls).toEqual([URLS.checks, URLS.project].sort());
+    expect(urls).toEqual([EXPLORER_CHECKS_URL, URLS.project].sort());
     expect(document.title).toBe("Checks · tablewatch");
   });
 });

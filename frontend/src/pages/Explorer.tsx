@@ -19,6 +19,7 @@ import { FacetFilter } from "../components/FacetFilter";
 import { Header } from "../components/Header";
 import { LoadError } from "../components/LoadError";
 import { ProjectProblems } from "../components/ProjectProblems";
+import { RetiredChecks } from "../components/RetiredChecks";
 import {
   buildTree,
   commonFolder,
@@ -26,7 +27,9 @@ import {
   FACET_KEYS,
   facetOptions,
   filterChecks,
+  filterRetired,
   isFiltering,
+  isRetired,
   MAX_QUERY_LENGTH,
   orderStatuses,
   orderValues,
@@ -43,10 +46,16 @@ interface ExplorerSlots {
   checks: CheckList;
 }
 
+// Every state in one request (E18): the "Show retired" toggle (S12) then
+// only filters in memory, like the search and the other filters.
 const REQUESTS: Requests<ExplorerSlots> = {
   project: getProject,
-  checks: () => listChecks(),
+  checks: () => listChecks(["active", "disabled", "retired"]),
 };
+
+function plural(n: number): string {
+  return `${String(n)} ${n === 1 ? "check" : "checks"}`;
+}
 
 /**
  * One toggle per status present, or selected, with its count among the checks
@@ -91,10 +100,6 @@ function StatusFilter({
   );
 }
 
-function plural(n: number): string {
-  return `${String(n)} ${n === 1 ? "check" : "checks"}`;
-}
-
 export function Explorer({ path, search }: { path: string; search: string }): ReactElement {
   const { slots, busy, now, reload } = useLoads(REQUESTS);
   const { project, checks } = slots;
@@ -115,11 +120,21 @@ export function Explorer({ path, search }: { path: string; search: string }): Re
     if (next !== window.location.search) window.history.replaceState(window.history.state, "", `${path}${next}${window.location.hash}`);
   }, [query, path]);
 
-  const items = checks.state === "ok" ? checks.data.items : null;
+  const allItems = checks.state === "ok" ? checks.data.items : null;
+  // The tree mirrors `checks/` (D2 of the UI spec): a retired check is no
+  // longer in any file, so it never joins it (S12) — it lists separately,
+  // below, only while "Show retired" is on.
+  const items = useMemo(() => (allItems === null ? null : allItems.filter((c): c is CheckSummary => !isRetired(c))), [allItems]);
+  const retiredItems = useMemo(() => (allItems === null ? [] : allItems.filter(isRetired)), [allItems]);
   const root = useMemo(() => (items === null ? [] : commonFolder(items.map((c) => c.location.file))), [items]);
   const filtered = useMemo(() => (items === null ? [] : filterChecks(items, shownQuery)), [items, shownQuery]);
   const tree = useMemo(() => buildTree(filtered, root), [filtered, root]);
   const filtering = isFiltering(shownQuery);
+  const retiredShown = useMemo(() => filterRetired(retiredItems, shownQuery), [retiredItems, shownQuery]);
+  // The header count (S12): retired checks join the total, and what matches,
+  // only while the toggle is on.
+  const grandTotal = items === null ? 0 : items.length + (shownQuery.retired === true ? retiredItems.length : 0);
+  const grandShown = filtered.length + retiredShown.length;
 
   let status: string;
   if (busy) status = "Loading…";
@@ -196,13 +211,26 @@ export function Explorer({ path, search }: { path: string; search: string }): Re
                   />
                 );
               })}
+              {retiredItems.length > 0 && (
+                <label className="facet-toggle retired-toggle">
+                  <input
+                    type="checkbox"
+                    checked={query.retired === true}
+                    onChange={() => {
+                      setQuery((prev) => ({ ...prev, retired: prev.retired !== true }));
+                    }}
+                  />
+                  <span className="facet-toggle__label">Show retired</span>{" "}
+                  <span className="status-toggle__count">{retiredItems.length}</span>
+                </label>
+              )}
             </form>
             <p className="explorer__showing" aria-live="polite">
-              {filtering
-                ? `Showing ${String(filtered.length)} of ${plural(items.length)}.`
-                : `Showing all ${plural(items.length)}.`}
+              {grandShown === grandTotal
+                ? `Showing all ${plural(grandTotal)}.`
+                : `Showing ${String(grandShown)} of ${plural(grandTotal)}.`}
             </p>
-            {filtered.length === 0 ? (
+            {filtered.length === 0 && retiredShown.length === 0 ? (
               <div className="explorer__none">
                 <p className="empty">No checks match.</p>
                 <p>
@@ -210,7 +238,12 @@ export function Explorer({ path, search }: { path: string; search: string }): Re
                 </p>
               </div>
             ) : (
-              <ExplorerTree key={filtering ? "filtering" : "all"} root={tree} filtering={filtering} />
+              <>
+                {filtered.length > 0 && (
+                  <ExplorerTree key={filtering ? "filtering" : "all"} root={tree} filtering={filtering} />
+                )}
+                {query.retired === true && <RetiredChecks items={retiredShown} />}
+              </>
             )}
           </section>
         )}

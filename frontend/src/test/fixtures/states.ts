@@ -7,11 +7,22 @@
  *
  * Typed against the generated contract: a contract change breaks `tsc` here.
  */
-import type { CheckList, Project, RunPage } from "../../api/types";
+import type { CheckSummary, Project, RunPage } from "../../api/types";
+
+/**
+ * `GET /checks`'s shape for these fixtures: every captured state is active or
+ * disabled checks only (never retired), so `items` is `CheckSummary[]`, not
+ * the wider `CheckList["items"]` union — the same type every test that reads
+ * `.checks.items` already assumes.
+ */
+export interface LoadedCheckList {
+  items: CheckSummary[];
+  total: number;
+}
 
 export interface OverviewResponses {
   project: Project;
-  checks: CheckList;
+  checks: LoadedCheckList;
   runs: RunPage;
 }
 
@@ -62,6 +73,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -96,6 +108,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -130,6 +143,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -164,6 +178,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -199,6 +214,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -234,6 +250,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -269,6 +286,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -304,6 +322,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -339,6 +358,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -374,6 +394,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -409,6 +430,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -444,6 +466,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -479,6 +502,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -514,6 +538,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -549,6 +574,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -584,6 +610,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -619,6 +646,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -654,6 +682,7 @@ export const recorded: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -742,6 +771,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -776,6 +806,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -810,6 +841,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -844,6 +876,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "a0000000000000000000000000000001",
           "started_at": "2026-09-26T06:55:50.000000+00:00",
@@ -879,6 +912,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -918,6 +952,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -957,6 +992,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -996,6 +1032,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -1035,6 +1072,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "e0000000000000000000000000000003",
           "started_at": "2026-09-26T06:56:30.000000+00:00",
@@ -1074,6 +1112,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1109,6 +1148,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1144,6 +1184,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1179,6 +1220,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1214,6 +1256,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1249,6 +1292,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1284,6 +1328,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1319,6 +1364,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1354,6 +1400,7 @@ export const beforeF: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "b0000000000000000000000000000002",
           "started_at": "2026-09-26T06:56:12.000000+00:00",
@@ -1442,6 +1489,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1476,6 +1524,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1510,6 +1559,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1544,6 +1594,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1579,6 +1630,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1614,6 +1666,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1649,6 +1702,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1684,6 +1738,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1719,6 +1774,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1754,6 +1810,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1789,6 +1846,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1824,6 +1882,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1859,6 +1918,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1894,6 +1954,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1929,6 +1990,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1964,6 +2026,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -1999,6 +2062,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",
@@ -2034,6 +2098,7 @@ export const interrupted: OverviewResponses = {
         },
         "clauses": [],
         "enabled": true,
+        "state": "active",
         "latest": {
           "run_id": "f0000000000000000000000000000004",
           "started_at": "2026-09-26T06:56:45.000000+00:00",

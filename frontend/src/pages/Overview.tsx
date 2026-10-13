@@ -1,18 +1,29 @@
 import type { ReactElement } from "react";
 import { getProject, listChecks, listRuns } from "../api/api";
-import type { CheckList, Project, RunPage } from "../api/types";
+import type { CheckList, CheckSummary, Project, RunPage } from "../api/types";
 import { CheckTable } from "../components/CheckTable";
 import { Header } from "../components/Header";
 import { LatestRun } from "../components/LatestRun";
 import { LoadError } from "../components/LoadError";
 import { ProjectProblems } from "../components/ProjectProblems";
 import { Summary } from "../components/Summary";
+import { isRetired } from "../lib/explorer";
 import { notLoadedFromRun } from "../lib/status";
 import { useLoads, type Requests } from "../lib/useLoads";
 
 interface Results {
   checks: CheckList;
   runs: RunPage;
+}
+
+/**
+ * The overview never asks for retired checks (`listChecks()` with no
+ * `states`, spec 037 S7: unchanged response), so `CheckList.items` holds
+ * `CheckSummary` only here — this narrows the type to match what the server
+ * actually sends.
+ */
+function loadedChecks(items: CheckList["items"]): CheckSummary[] {
+  return items.filter((item): item is CheckSummary => !isRetired(item));
 }
 
 interface OverviewSlots {
@@ -31,7 +42,8 @@ export function Overview(): ReactElement {
   const { project, results } = slots;
   const loadedProject = project.state === "ok" ? project.data : null;
   const latestRun = results.state === "ok" ? (results.data.runs.items[0] ?? null) : null;
-  const notLoaded = results.state === "ok" ? notLoadedFromRun(latestRun, results.data.checks.items) : 0;
+  const checks = results.state === "ok" ? loadedChecks(results.data.checks.items) : [];
+  const notLoaded = results.state === "ok" ? notLoadedFromRun(latestRun, checks) : 0;
 
   let status: string;
   if (busy) status = "Loading…";
@@ -54,7 +66,7 @@ export function Overview(): ReactElement {
         {loadedProject !== null && results.state === "ok" && (
           <>
             <div className="overview-grid">
-              <Summary project={loadedProject} checks={results.data.checks.items} />
+              <Summary project={loadedProject} checks={checks} />
               <LatestRun
                 run={latestRun}
                 now={now}
@@ -62,11 +74,7 @@ export function Overview(): ReactElement {
                 projectOk={loadedProject.ok}
               />
             </div>
-            <CheckTable
-              checks={results.data.checks.items}
-              newestRunId={latestRun?.id ?? null}
-              now={now}
-            />
+            <CheckTable checks={checks} newestRunId={latestRun?.id ?? null} now={now} />
           </>
         )}
       </main>
