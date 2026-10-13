@@ -91,19 +91,22 @@ def record_heads(
             )
             _set(head, row.id, entry, row.run_id, state)
         else:
-            heads[row.check_id] = recompute(session, row.check_id, head)
+            # This run's row is flushed, so the history is never empty.
+            recompute(session, row.check_id, head)
 
 
 def recompute(
     session: Session, check_id: int, head: CheckHeadRow | None = None
-) -> CheckHeadRow:
-    """Set one check's head from its full history (it has at least one result)."""
+) -> CheckHeadRow | None:
+    """Set one check's head from its full history; None when it has none."""
     history = session.execute(
         select(CheckResultRow.id, CheckResultRow.outcome, RunRow.started_at, RunRow.id)
         .join(RunRow, CheckResultRow.run_id == RunRow.id)
         .where(CheckResultRow.check_id == check_id)
         .order_by(RunRow.started_at.desc(), RunRow.id.desc())
     ).all()
+    if not history:
+        return None
     entries = [Entry(outcome, utc(started)) for _, outcome, started, _ in history]
     if head is None:
         head = CheckHeadRow(check_id=check_id)

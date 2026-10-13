@@ -74,13 +74,6 @@ def _heads_match(url: str, root: Path) -> None:
 # --- keyed retries (S3) ------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="spec 037 S1/S3: KeyedRun._forget deletes the heads of every check "
-    "the earlier attempt recorded for the dataset, but record_heads recomputes "
-    "only the retry's checks; a check dropped (deleted or disabled) between "
-    "attempts keeps older history and loses its head",
-)
 def test_a_check_dropped_between_attempts_keeps_its_head(
     workspace: Workspace, store_url: str
 ) -> None:
