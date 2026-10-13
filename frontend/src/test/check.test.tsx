@@ -168,6 +168,26 @@ describe("D2: what the check is", () => {
   });
 });
 
+describe("spec 036 S15: a disabled check's detail page", () => {
+  it("shows a neutral 'Disabled' badge next to the heading, apart from the rule section", async () => {
+    const id = "cd3e8103b4318809";
+    const check: CheckDetail = { ...detailOf(recorded, id), enabled: false };
+    await renderCheck(id, { check: ok(check), history: ok(recordedHistory(id)) });
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.textContent).toContain("row_count between 1 and 10000");
+    const badge = within(heading).getByText("Disabled");
+    expect(badge.className).toContain("badge--disabled");
+    expect(badge.getAttribute("title")).toBe("Disabled — enabled: false in its file; not run");
+    expect(badge.className).not.toMatch(/status--/);
+  });
+
+  it("shows no 'Disabled' badge when the check is enabled", async () => {
+    const id = "cd3e8103b4318809";
+    await renderCheck(id, { check: ok(detailOf(recorded, id)), history: ok(recordedHistory(id)) });
+    expect(screen.queryByText("Disabled")).toBeNull();
+  });
+});
+
 describe("D3: the rule in words", () => {
   const rule = (): HTMLElement => section("Rule");
 

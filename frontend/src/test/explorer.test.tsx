@@ -18,7 +18,7 @@ import {
 } from "../lib/explorer";
 import { checkHref } from "../lib/route";
 import { countStatuses } from "../lib/status";
-import { brokenState, emptyState, mapLatest } from "./fixtures/derived";
+import { brokenState, disabledState, emptyState, mapLatest } from "./fixtures/derived";
 import { recorded, RUN_ID, STARTED, type OverviewResponses } from "./fixtures/states";
 import { CLOCK, ok, renderOverview, setClock, stubServer, text, UNAVAILABLE, URLS, type Server } from "./render";
 import CSS from "../styles/app.css?raw";
@@ -572,6 +572,27 @@ describe("E19: narrow screens", () => {
       const rule = CSS.slice(CSS.indexOf(`${selector} {`));
       expect(rule.slice(0, rule.indexOf("}"))).toContain("overflow-wrap: anywhere");
     }
+  });
+});
+
+describe("spec 036 S15: a disabled check's row in the tree", () => {
+  it("shows a neutral 'Disabled' badge next to its name, apart from the status badge", async () => {
+    await renderExplorer(disabledState);
+    const row = document.querySelector<HTMLElement>('[data-check-id="cd3e8103b4318809"]');
+    if (row === null) throw new Error("no row for cd3e8103b4318809");
+    const badge = within(row).getByText("Disabled");
+    expect(badge.className).toContain("badge--disabled");
+    expect(badge.getAttribute("title")).toBe("Disabled — enabled: false in its file; not run");
+    expect(badge.className).not.toMatch(/status--/);
+    // Still has its status badge and last result (never hidden, just not run).
+    expect(within(row).getByText("Pass")).toBeTruthy();
+  });
+
+  it("shows no 'Disabled' badge on an enabled check's row", async () => {
+    await renderExplorer(disabledState);
+    const row = document.querySelector<HTMLElement>('[data-check-id="8b9c5af854ba2a5f"]');
+    if (row === null) throw new Error("no row for 8b9c5af854ba2a5f");
+    expect(within(row).queryByText("Disabled")).toBeNull();
   });
 });
 

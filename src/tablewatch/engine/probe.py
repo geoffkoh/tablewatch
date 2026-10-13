@@ -71,7 +71,7 @@ def probe_project(
     opener = engine_opener or (lambda name: open_engine(project, name, read_only=True))
     by_source: dict[str, list[Dataset]] = {}
     for dataset in project.datasets:
-        if dataset.checks and dataset.datasource in project.config.datasources:
+        if dataset.enabled_checks and dataset.datasource in project.config.datasources:
             by_source.setdefault(dataset.datasource, []).append(dataset)
     result = ConnectResult()
     if not by_source:
@@ -121,7 +121,7 @@ def _probe_dataset(
 ) -> str | None:
     """Probe one dataset; a reason when the database refused for another cause."""
     source = dataset.from_clause()
-    uses = _columns([c for check in dataset.checks for c in check.clauses])
+    uses = _columns([c for check in dataset.enabled_checks for c in check.clauses])
     columns = list(uses)
     if _ok(
         conn, select(*[column(c) for c in columns] or [literal(1)]).select_from(source)

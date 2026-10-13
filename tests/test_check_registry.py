@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 from alembic import command
@@ -13,6 +14,8 @@ from tablewatch.config import Project
 from tablewatch.results.store import MIGRATIONS_DIR, open_store
 from tests.conftest import Workspace, invoke
 from tests.test_server import served
+
+NOW = datetime.now(UTC)
 
 USABLE = """\
 dataset: t
@@ -206,20 +209,22 @@ def test_d4_a_check_registered_by_another_run_is_reused(
             con.execute(
                 text(
                     "INSERT INTO tablewatch_checks"
-                    " (id, project, datasource, dataset, name, check_hash)"
-                    " VALUES (41, 'test', 'duck', 't', 'orders_usable', :h)"
+                    " (id, project, datasource, dataset, name, check_hash,"
+                    "  state, registered_at, state_since)"
+                    " VALUES (41, 'test', 'duck', 't', 'orders_usable', :h,"
+                    "  'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
                 ),
                 {"h": project.checks[0].id},
             )
         from sqlalchemy.orm import Session
 
-        from tablewatch.results.store import _register
+        from tablewatch.results.registry import _register
 
         with Session(store.engine) as session, session.begin():
-            assert _register(session, "test", project.checks[0]) == 41
+            assert _register(session, "test", project.checks[0], NOW) == 41
             # The insert path itself tolerates the row it races with.
             session.execute(text("DELETE FROM tablewatch_checks WHERE id = 41"))
-            assert _register(session, "test", project.checks[0]) != 41
+            assert _register(session, "test", project.checks[0], NOW) != 41
     invoke(workspace.root, "run")
     assert _rows(workspace, "SELECT count(*) FROM tablewatch_checks") == [(1,)]
 

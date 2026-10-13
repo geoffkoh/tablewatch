@@ -12,10 +12,10 @@ import logging
 import re
 import threading
 import time
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, NamedTuple
 
@@ -41,9 +41,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     column as table_column,
 )
-from sqlalchemy import insert as sa_insert
-from sqlalchemy.dialects import postgresql, sqlite
-from sqlalchemy.exc import IntegrityError, NoSuchModuleError, SQLAlchemyError
+from sqlalchemy.exc import NoSuchModuleError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from tablewatch.checks.model import Check, Outcome
@@ -55,14 +53,21 @@ from tablewatch.config.project import (
 from tablewatch.engine.baselines import BaselineRequest, Sample
 from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import CheckResult, ResultSink, RunResult
+from tablewatch.results import registry
+from tablewatch.results.errors import NewerStoreError as NewerStoreError
+from tablewatch.results.errors import NoStoreError as NoStoreError
+from tablewatch.results.errors import OlderStoreError as OlderStoreError
+from tablewatch.results.errors import RecordError as RecordError
+from tablewatch.results.errors import StoreError as StoreError
+from tablewatch.results.errors import fit_row as fit_row
 from tablewatch.results.models import (
     VERSION_TABLE,
-    Base,
     CheckResultRow,
     CheckRow,
     ClauseResultRow,
     RunRow,
 )
+from tablewatch.results.registry import SyncReport, register_all
 from tablewatch.results.state import Entry, State, current_state
 
 log = logging.getLogger(__name__)
@@ -242,29 +247,6 @@ def resolve_store_url(url: str, project_root: Path, *, create: bool = True) -> U
     return parsed
 
 
-class StoreError(Exception):
-    """The results store could not be opened, read or written.
-
-    The message names the store but never its URL, which may hold a password.
-    """
-
-
-class NoStoreError(StoreError):
-    """A command that only reads found no store, and did not create one."""
-
-
-class RecordError(StoreError):
-    """A run could not be written to the results store."""
-
-
-class OlderStoreError(StoreError):
-    """A command that only reads found a store an older version wrote."""
-
-
-class NewerStoreError(StoreError):
-    """The store was upgraded by a newer tablewatch than this one."""
-
-
 @dataclass(frozen=True)
 class Latest:
     """A check's newest recorded result, its run, and its current state."""
@@ -285,71 +267,6 @@ def _alembic_config() -> Config:
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
     return config
-
-
-def fit_row(row: Base) -> None:
-    """Make a row storable the same way on every backend, or `RecordError`.
-
-    A NUL from the data (a message, a value) is replaced: Postgres refuses
-    it, SQLite keeps it. A value longer than a bounded column is an error
-    naming the column — Postgres counts characters and refuses, SQLite would
-    store it silently, so the length is checked here, in characters.
-    """
-    for column in row.__table__.columns:
-        value = getattr(row, column.key, None)
-        if not isinstance(value, str):
-            continue
-        if "\0" in value:
-            value = value.replace("\0", "\ufffd")
-            setattr(row, column.key, value)
-        limit = column.type.length if isinstance(column.type, String) else None
-        if limit is not None and len(value) > limit:
-            raise RecordError(
-                f"results store: {column.table.name}.{column.name} holds at most "
-                f"{limit} characters; this run has a value of {len(value)}"
-            )
-
-
-def _register(session: Session, project: str, check: Check) -> int:
-    """The registry id of `check` in `project`, added on its first run.
-
-    Two runs recording the same new check at once both try to add it; the
-    insert ignores the conflict and both read the one row, rather than one
-    run failing (spec 033 D4).
-    """
-    lookup = select(CheckRow.id).where(
-        CheckRow.project == project, CheckRow.check_hash == check.id
-    )
-    found = session.scalar(lookup)
-    if found is not None:
-        return found
-    row = CheckRow(
-        project=project,
-        datasource=check.dataset.datasource,
-        dataset=check.dataset.name,
-        name=check.name,
-        check_hash=check.id,
-    )
-    fit_row(row)
-    values = {
-        c.key: getattr(row, c.key) for c in CheckRow.__table__.columns if c.key != "id"
-    }
-    dialect = session.get_bind().dialect.name
-    if dialect == "postgresql":
-        session.execute(
-            postgresql.insert(CheckRow).values(values).on_conflict_do_nothing()
-        )
-    elif dialect == "sqlite":
-        session.execute(sqlite.insert(CheckRow).values(values).on_conflict_do_nothing())
-    else:
-        # A backend without ON CONFLICT: the losing insert fails in its own
-        # savepoint, and the winner's row is read below.
-        try:
-            with session.begin_nested():
-                session.execute(sa_insert(CheckRow).values(values))
-        except IntegrityError:
-            pass
-    return session.scalars(lookup).one()
 
 
 def result_rows(results: Iterable[CheckResult]) -> list[CheckResultRow]:
@@ -394,20 +311,6 @@ def result_rows(results: Iterable[CheckResult]) -> list[CheckResultRow]:
             fit_row(clause)
         rows.append(result)
     return rows
-
-
-def register_all(
-    session: Session,
-    project: str,
-    results: Iterable[CheckResult],
-    rows: Iterable[CheckResultRow],
-) -> None:
-    """Point each row at its check's registry id, registering new checks."""
-    registered: dict[str, int] = {}
-    for r, row in zip(results, rows, strict=True):
-        if r.check.id not in registered:
-            registered[r.check.id] = _register(session, project, r.check)
-        row.check_id = registered[r.check.id]
 
 
 @contextmanager
@@ -575,8 +478,16 @@ class ResultStore:
         row.results = result_rows(run.results)
         fit_row(row)
         with Session(self.engine) as session, session.begin():
-            register_all(session, run.project, run.results, row.results)
+            register_all(
+                session, run.project, run.results, row.results, datetime.now(UTC)
+            )
             session.add(row)
+
+    def sync(self, project: str, checks: Sequence[Check], now: datetime) -> SyncReport:
+        """Bring `project`'s check registry in line with `checks`: every
+        check it loaded, enabled or not (spec 036)."""
+        with reading(self.engine), Session(self.engine) as session, session.begin():
+            return registry.sync(session, project, checks, now)
 
     # --- reads, every one scoped to one project: a store can be shared ---
 
@@ -1031,17 +942,23 @@ def open_store(
     return store
 
 
-def store_sink(url: str, project_root: Path) -> ResultSink:
+def store_sink(
+    url: str, project_root: Path, *, sync_checks: Sequence[Check] | None = None
+) -> ResultSink:
     """A sink that records each run it receives in the store at `url`.
 
     The store is opened only when a run arrives, so a run that is never
-    recorded never touches it — not even to create its directory.
+    recorded never touches it — not even to create its directory. With
+    `sync_checks` (every loaded check), the registry is then synced to them,
+    in its own transaction: a failed sync never costs the run its results.
     """
 
     def record(run: RunResult) -> None:
         try:
             with open_store(url, project_root) as store:
                 store.save(run)
+                if sync_checks is not None:
+                    store.sync(run.project, sync_checks, datetime.now(UTC))
         except StoreError as exc:
             raise RecordError(str(exc)) from exc
         except Exception as exc:

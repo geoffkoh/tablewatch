@@ -113,6 +113,7 @@ The full language — every metric, option and rule — is in
 | `tablewatch compile` | Print the SQL each table will run, without running it. |
 | `tablewatch run` | Run checks and record the results. |
 | `tablewatch test-connection` | Connect to each datasource. |
+| `tablewatch sync` | Bring the store's list of checks in line with the files: new, disabled and retired checks ([check lifecycle](docs/check-language.md#turning-a-check-off-and-removing-it)). A recorded run does this itself. |
 | `tablewatch runs` | Show recent runs. |
 | `tablewatch history NAME` | Show one check's outcomes over time (its name, or an id prefix). |
 | `tablewatch report` | Write a recorded run as one static HTML page ([below](#a-report-to-send)). |

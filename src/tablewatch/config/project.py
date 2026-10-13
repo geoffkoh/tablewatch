@@ -149,6 +149,10 @@ class ResultsConfig(_Strict):
     # Relative SQLite paths resolve against the project root, not the cwd,
     # so a cron job run from / writes to the same store as a developer.
     url: str = "sqlite:///.tablewatch/results.db"
+    # `on_run`: every recorded run brings the check registry in line with
+    # the project (lifecycle, spec 036); `manual`: only `tablewatch sync`
+    # does, for stores shared by checkouts that differ.
+    sync: Literal["on_run", "manual"] = "on_run"
 
 
 # The results store keys every read on the project name and part 2 of spec

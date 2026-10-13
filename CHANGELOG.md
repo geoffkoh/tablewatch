@@ -29,6 +29,17 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- **Turning a check off, and removing it.** `enabled: false` on a check
+  (the `clauses:` form) keeps it loaded and validated but never run;
+  `list` marks it `(disabled)`, `/api/v1/checks` gains `enabled`, and the
+  web UI shows a "Disabled" badge. A check deleted from the files is
+  retired in the results store — never deleted — and a name that returns
+  resumes its id and history. A recorded run brings the store's registry
+  in line with the files; `results.sync: manual` leaves that to the new
+  `tablewatch sync` (exit 0 / 2 store / 3 project or a refusal to retire
+  every check). The store migrates on open (revision 0007, additive)
+  (spec 036).
+
 - **Notifications that survive a crash under `--run-key`.** Each dataset's
   state changes are written to the results store (`tablewatch_outbox`,
   revision 0006) with its results and sent at the end of the attempt; what

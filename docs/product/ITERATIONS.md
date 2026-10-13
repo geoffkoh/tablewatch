@@ -10,6 +10,38 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 36 — Named checks, part 3: check lifecycle and registry sync (I-46 part 3), 2026-10-13
+
+- **Spec:** [036-check-lifecycle-sync](specs/036-check-lifecycle-sync.md). **Branch:** `iter/036`.
+  Full track; spec written by the tech lead (owner-fixed item). No items added (freeze). I-46's
+  remaining scope split: this part is the lifecycle and sync; part 4 is definition history, the
+  state table (I-23), retired checks in the API/UI, `store sql` and `results.migrate`.
+- **REFINE.** Architect → D1–D5: sync in its own transaction after the run is saved (a failed sync
+  never costs the results), once per keyed attempt at key open; disabled checks stay in
+  `project.checks` with `select_checks` the one filter and `Dataset.enabled_checks` for the paths
+  that bypass it; `store_sink`/`KeyedRun` take `sync_checks`; `results/registry.py` (with
+  `results/errors.py` to avoid an import cycle). Data-steward → D6–D8: exit 3 when everything is
+  disabled; `results.sync: manual` plus a warning for stores shared by differing checkouts; no new
+  `change()` rule after a gap.
+- **Shipped:** `enabled: false`; retired / returned checks; `tablewatch sync`; `results.sync`;
+  revision 0007; `enabled` in `list --output json` and the API; a "Disabled" badge in the web UI.
+  Build-time departures (small, no re-check): a disabled check's SQL view is compiled as it would
+  run once enabled; `validate --connect` skips disabled checks.
+  Suite: **2,775 passed, 55 skipped, 16 xfailed**; Postgres-backed tests also on Postgres 18 locally.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — pass-with-followups; 31 tests (S1–S19 incl. should).* Fixed: the Postgres
+    run-key advisory lock ignored the schema, so two stores in one database blocked each other's
+    keys (spec 034 code; it also made a Postgres test flaky under `-n auto`); `compile --check`
+    now names a disabled check. Documented: a run that runs nothing does not sync. Pinned: an
+    unsent outbox alert for a check deleted between keyed attempts is dropped (spec 035 behaviour).
+  - *data-steward — accept; S1–S16 via the CLI and API.* Non-blocking, not changed: `validate`'s
+    count leaves out a check whose clause is broken (as for every broken check, disabled or not).
+  - *ui-engineer (builder)* — the badge on the overview list, check page and explorer tree.
+- **Not added (backlog freeze):** none.
+- **Lesson:** "retired" is a claim about the whole project, so the one thing sync must never do is
+  act on a partial view of it — an empty checkout and a feature branch both look like deletions.
+- **Backlog:** I-46 part 4 next, then I-51, I-47, I-48, I-50.
+
 ## Iteration 35 — Resumable runs, part 2: the notification outbox (I-49 part 2), 2026-10-12
 
 - **Spec:** [035-notification-outbox](specs/035-notification-outbox.md). **Branch:** `iter/035`.

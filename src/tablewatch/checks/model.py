@@ -131,6 +131,11 @@ class Dataset:
         return source.from_clause()
 
     @property
+    def enabled_checks(self) -> list[Check]:
+        """Its checks that run: every one but those with `enabled: false`."""
+        return [check for check in self.checks if check.enabled]
+
+    @property
     def table(self) -> TableRef:
         return TableRef.parse(self.name)
 
@@ -143,7 +148,8 @@ class Check:
     worst of its clauses' (`CheckResult.outcome`). Renaming it starts a new
     history.
 
-    Public: `id`, `short_id`, `name`, `location`, `dataset`, `clauses`.
+    Public: `id`, `short_id`, `name`, `location`, `dataset`, `clauses`,
+    `enabled`.
     Other attributes are provisional and may change between releases.
     """
 
@@ -158,6 +164,14 @@ class Check:
     # Notifier names to tell when its state changes. Never part of its
     # identity: adding a notifier keeps the check's history.
     notify: tuple[str, ...] = ()
+    # Where `enabled: false` is written; None when enabled. A disabled check
+    # is loaded and validated but never selected to run (spec 036). Never
+    # part of its identity: disabling and re-enabling keeps its history.
+    disabled_at: SourceLocation | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return self.disabled_at is None
 
     @property
     def source_text(self) -> str | None:

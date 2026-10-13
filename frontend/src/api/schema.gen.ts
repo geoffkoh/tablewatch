@@ -176,6 +176,8 @@ export interface components {
              * @enum {string}
              */
             datasource_state: "defined" | "not_defined" | "not_a_name" | "none";
+            /** Enabled */
+            enabled: boolean;
             /** Expression */
             expression: string;
             /** Id */
@@ -271,6 +273,8 @@ export interface components {
              * @enum {string}
              */
             datasource_state: "defined" | "not_defined" | "not_a_name" | "none";
+            /** Enabled */
+            enabled: boolean;
             /** Expression */
             expression: string;
             /** Id */

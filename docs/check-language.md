@@ -342,6 +342,60 @@ Each clause has its own history too, keyed by its check, its key, its
   in `condition:` it comments out the rest of the dataset's scan and the
   clause errors, and in `query:` it is part of what is measured.
 
+## Turning a check off, and removing it
+
+A check can be **disabled** without deleting it. Use the `clauses:` form
+(a one-line check has nowhere to put the key):
+
+```yaml
+checks:
+  orders_usable:
+    enabled: false          # true or false only; true is the default
+    clauses:
+      - row_count > 0
+```
+
+A disabled check is still loaded and validated — disabling never hides a
+mistake in it — but `run` and `compile` leave it out, and `validate
+--connect` does not look for its columns. `list` marks it `(disabled)`, and
+the web UI shows it with its last result. `run --check orders_usable` names
+it on stderr and does not run it; a run in which every selected check is
+disabled runs nothing and exits `3`. Re-enabling it continues its history,
+and a `change()` clause compares with its last recorded measure (the
+message names that run's date).
+
+A check deleted from the files is **retired**: the results store keeps it
+and all its results (`tablewatch history <id>` still shows them). Put a
+check back with the same name, dataset and datasource and it **returns**,
+with the same id and its history.
+
+The store learns about new, disabled and retired checks on every recorded
+run (`run --no-store`, and a run that runs nothing, leave it alone), or
+from `tablewatch sync`, which runs nothing and prints each change:
+
+```text
+retired   orders.orders_usable  (lake)
+1 change: 1 retired; 14 unchanged
+```
+
+`sync` refuses (exit `3`) a project with no checks while the store has
+live ones: that is a wrong directory or `checks_path`, not a request to
+retire everything.
+
+**A store shared by checkouts that differ** — a feature branch's CI run and
+the main schedule writing to one Postgres under the same project name —
+would retire each other's checks on every run. Set
+
+```yaml
+# tablewatch.yml
+results:
+  sync: manual        # default: on_run
+```
+
+so that runs only register the checks they record, and run `tablewatch
+sync` from the checkout that has every check. Never run `sync` from a
+branch missing checks the project has elsewhere.
+
 ## Change over time
 
 `change(<metric>)` compares a clause with the same clause's previous recorded

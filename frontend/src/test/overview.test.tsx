@@ -11,6 +11,7 @@ import {
   allPassState,
   brokenState,
   brokenYamlState,
+  disabledState,
   emptyState,
   mapLatest,
   noRunsState,
@@ -535,6 +536,26 @@ describe("O11: accessible structure", () => {
     for (const img of screen.getAllByRole("img")) {
       expect(img.getAttribute("aria-label")).toMatch(/\S/);
     }
+  });
+});
+
+describe("spec 036 S15: a disabled check's row", () => {
+  it("shows a neutral 'Disabled' badge next to its name, with its last result intact", async () => {
+    await renderOverview(disabledState);
+    const row = rowFor("cd3e8103b4318809");
+    const badge = within(row).getByText("Disabled");
+    expect(badge.className).toContain("badge--disabled");
+    expect(badge.getAttribute("title")).toBe("Disabled — enabled: false in its file; not run");
+    expect(badge.className).not.toMatch(/status--/);
+    // Still shows its last recorded result (S1/S15): never run, not hidden.
+    expect(row.dataset.status).toBe("pass");
+    expect(within(row).getByText("Pass")).toBeTruthy();
+  });
+
+  it("shows no 'Disabled' badge on an enabled check's row", async () => {
+    await renderOverview(disabledState);
+    const enabledRow = rowFor("8b9c5af854ba2a5f");
+    expect(within(enabledRow).queryByText("Disabled")).toBeNull();
   });
 });
 

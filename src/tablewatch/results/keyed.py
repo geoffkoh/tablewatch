@@ -41,6 +41,7 @@ from tablewatch.results.models import (
     RunRow,
 )
 from tablewatch.results.outbox import forget_unsent, write_alerts
+from tablewatch.results.registry import register_all
 from tablewatch.results.store import (
     PageKey,
     ResultStore,
@@ -48,7 +49,6 @@ from tablewatch.results.store import (
     fit_row,
     open_store,
     reading,
-    register_all,
     result_rows,
 )
 
@@ -113,6 +113,7 @@ class KeyedRun:
         selection: dict[str, Any],
         now: datetime,
         notify: bool = True,
+        sync_checks: Sequence[Check] | None = None,
     ) -> None:
         check_run_key(run_key)
         self.project = project
@@ -128,6 +129,10 @@ class KeyedRun:
             raise RunKeyError(_reason(exc)) from exc
         try:
             self._lock = _lock_for(self.store, project, run_key)
+            if sync_checks is not None:
+                # Once per attempt, a completed key's replay included (spec
+                # 036 D1): the registry follows the files, not the run.
+                self.store.sync(project, sync_checks, now)
             self._begin(rerun, trigger, selection, now)
         except StoreError as exc:
             self.close()
@@ -297,7 +302,7 @@ class KeyedRun:
                 session.begin(),
             ):
                 self._forget(session, dataset)
-                register_all(session, self.project, results, rows)
+                register_all(session, self.project, results, rows, finished)
                 session.add_all([*rows, record])
                 if self.notify:
                     session.flush()
@@ -439,9 +444,13 @@ def _busy(run_key: str) -> RunKeyError:
     return RunKeyError(f"another process is already running run key '{run_key}'")
 
 
-def advisory_key(project: str, run_key: str) -> int:
-    """A stable 64-bit lock key: `hash()` differs between processes."""
-    digest = hashlib.sha256(f"{project}\0{run_key}".encode()).digest()
+def advisory_key(project: str, run_key: str, schema: str = "") -> int:
+    """A stable 64-bit lock key: `hash()` differs between processes.
+
+    Advisory locks are per database, not per schema, so the store's schema
+    is part of the key: two stores in one database never block each other.
+    """
+    digest = hashlib.sha256(f"{schema}\0{project}\0{run_key}".encode()).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
 
 
@@ -449,10 +458,11 @@ class _AdvisoryLock(_Lock):
     """A session lock on its own connection: a process that dies frees it."""
 
     def __init__(self, store: ResultStore, project: str, run_key: str) -> None:
-        self._key = advisory_key(project, run_key)
         with reading(store.engine):
             self._connection: Connection | None = store.engine.connect()
             try:
+                schema = self._connection.scalar(text("SELECT current_schema()"))
+                self._key = advisory_key(project, run_key, schema or "")
                 taken = self._connection.scalar(
                     text("SELECT pg_try_advisory_lock(:key)"), {"key": self._key}
                 )

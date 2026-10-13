@@ -162,8 +162,14 @@ def get_check_sql(context: Context, check_id: str) -> schemas.CheckSql:
     if check is None:
         raise _not_found("check")
     # Compiled per request: nothing to invalidate, and no dialect is imported
-    # at startup. Every loaded check on the dataset feeds its one scan.
-    compiled = compile_dataset(check.dataset, context.project.config.datasources)
+    # at startup. Every check that runs on the dataset feeds its one scan; a
+    # disabled check is shown as it would run once enabled.
+    checks = check.dataset.enabled_checks
+    if not check.enabled:
+        checks = [*checks, check]
+    compiled = compile_dataset(
+        check.dataset, context.project.config.datasources, checks
+    )
     return schemas.CheckSql.of(check, compiled)
 
 

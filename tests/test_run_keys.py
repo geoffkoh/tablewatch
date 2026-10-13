@@ -252,6 +252,7 @@ def test_d5_a_fresh_lock_left_by_a_crash_still_holds(ws: Workspace) -> None:
 def test_d5_the_advisory_key_is_stable_and_per_project() -> None:
     assert advisory_key("p", "k") == advisory_key("p", "k")
     assert advisory_key("p", "k") != advisory_key("q", "k")
+    assert advisory_key("p", "k", "s1") != advisory_key("p", "k", "s2")
     assert -(2**63) <= advisory_key("p", "k") < 2**63
 
 

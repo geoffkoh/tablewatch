@@ -493,7 +493,7 @@ def test_a_keyed_run_on_an_older_store_migrates_first(
     _grow(workspace.root, 2)
     assert _previous(workspace.root, "--run-key", KEY) == 5
     assert _q(workspace.root, "SELECT version_num FROM tablewatch_alembic_version") == [
-        ("0006",)
+        ("0007",)
     ]
     assert _q(workspace.root, "SELECT count(*) FROM tablewatch_dataset_runs") == [(1,)]
 
@@ -720,9 +720,10 @@ def test_postgres_keyed_run_resumes_and_a_dead_holder_frees_the_key(
     engine = create_engine(url)
     try:
         connection = engine.connect()
+        schema = connection.scalar(text("SELECT current_schema()"))
         connection.execute(
             text("SELECT pg_advisory_lock(:k)"),
-            {"k": keyed_module.advisory_key("test", "pg-busy")},
+            {"k": keyed_module.advisory_key("test", "pg-busy", schema)},
         )
         connection.commit()
         assert invoke(ws.root, "run", "--run-key", "pg-busy")[0] == 2

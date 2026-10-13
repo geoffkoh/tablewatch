@@ -65,7 +65,7 @@ CHECK_FILE_SUFFIXES = frozenset({".yml", ".yaml"})
 
 DATASET_KEYS = ("dataset", "datasource", "filter", "owner", "tags", "notify", "checks")
 DEFAULTS_KEYS = ("datasource", "owner", "tags", "notify")
-CHECK_KEYS = ("clauses", "notify")
+CHECK_KEYS = ("clauses", "notify", "enabled")
 COMMON_CLAUSE_KEYS = ("name", "warn", "fail")
 # Check and clause names. `.`, `:` and `/` are kept out for references to
 # checks and clauses (`orders.usable`, `orders.usable.row_count`); a name
@@ -565,6 +565,7 @@ class _ChecksLoader:
         value = checks[name]
         items: list[tuple[Any, SourceLocation]]
         own_notify: tuple[str, ...] | None = None
+        disabled_at: SourceLocation | None = None
         clean = True
         if isinstance(value, str):
             items = [(value, source.of_value(checks, name))]
@@ -575,6 +576,7 @@ class _ChecksLoader:
                 self.diagnostics.append(error(ID_UNUSED, source.of_key(value, "id")))
             self._reject_unknown(source, value, (*CHECK_KEYS, "id"), "key for a check")
             own_notify = self._notify(source, value)
+            disabled_at = self._disabled_at(source, value)
             clauses = value["clauses"]
             if not isinstance(clauses, CommentedSeq) or not clauses:
                 self.diagnostics.append(
@@ -605,6 +607,7 @@ class _ChecksLoader:
             dataset=dataset,
             location=name_at,
             notify=dataset.notify if own_notify is None else own_notify,
+            disabled_at=disabled_at,
         )
         if check.id in self._ids:
             self.diagnostics.append(
@@ -1006,6 +1009,23 @@ class _ChecksLoader:
             )
         )
         return ()
+
+    def _disabled_at(
+        self, source: YAMLSource, node: CommentedMap
+    ) -> SourceLocation | None:
+        """Where `enabled: false` is written; None when the check is enabled.
+
+        A boolean only: `no`, `"false"` or `0` would read as a mistake to
+        one reader and a switch to another.
+        """
+        if "enabled" not in node:
+            return None
+        at = source.of_value(node, "enabled")
+        value = node["enabled"]
+        if not isinstance(value, bool):
+            self.diagnostics.append(error("`enabled:` must be true or false", at))
+            return None
+        return None if value else at
 
     def _notify(self, source: YAMLSource, node: CommentedMap) -> tuple[str, ...] | None:
         """`notify:` as notifier names; None when it is not set (or invalid).
