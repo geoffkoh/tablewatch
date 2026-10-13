@@ -177,6 +177,9 @@ def test_s8_states_combine_and_an_unknown_one_is_400(workspace: Workspace) -> No
     assert {c["state"] for c in every.values()} == {"active", "retired"}
     assert set(every) == {"orders_usable", "has_ids", "other"}
     assert bad.status_code == 400  # as for an unknown `outcome`
+    assert bad.json()["error"]["message"] == (
+        "invalid state — one of active, disabled, retired"
+    )
 
 
 def test_s9_a_retired_check_has_a_page_but_no_sql_or_source(

@@ -10,6 +10,44 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 37 — Named checks, part 4: the check state table and retired checks (I-46 part 4, absorbs I-23), 2026-10-14
+
+- **Spec:** [037-check-state-table](specs/037-check-state-table.md). **Branch:** `iter/037`.
+  Full track; spec written by the tech lead (owner-fixed item). No items added (freeze). I-46 split
+  again: part 5 is the definition history, `store sql` and `results.migrate`.
+- **REFINE.** Architect → D1–D5: a separate `tablewatch_check_heads` (a cache of history, not
+  registry), advance-else-recompute, lock the registry rows then compute, a discriminated union
+  for retired items (no nullable `location` on `CheckSummary`), one `record_heads` helper.
+  Data-steward → D6 (a returning check's "since" continues across the gap), D7
+  (`last_known_location`).
+- **Shipped:** revision 0008 fills the heads from history; `save` and keyed `record_dataset` keep
+  them; `/checks` reads one row per check — **21 ms median at 1,000,000 results**
+  (`benchmarks/checks_overview.py`; I-23's gate). `?state=` on `/checks`, a retired check's page,
+  `state` on every item; "Show retired" in the explorer and a retired check page (ui-engineer).
+  `ResultStore.rebuild_heads()`. The README's Postgres writer grant widens to
+  `SELECT, INSERT, UPDATE, DELETE`, with `ALTER DEFAULT PRIVILEGES` for upgrades. S5 checked by
+  hand: a `main`-recorded 0007 store migrated to 0008 serves identical `/checks` bodies but `state`.
+  Suite: **3,187 passed, 1 skipped, 16 xfailed** with Postgres 18 locally (one unrelated flake,
+  `test_f14_latin1_is_named_never_quoted`, failed once under load and passed on five reruns);
+  vitest 902 passed.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — fail → fixed; 30 tests.* Blocking: a keyed retry dropped the heads of checks
+    no longer in the retry (disabled or deleted between attempts); now recomputed. Non-blocking,
+    fixed though pre-existing: two Postgres writers registering the same new checks in different
+    orders could deadlock; `register_all` now registers in id order.
+  - *architect — targeted re-check (the build departed from D2: FOR NO KEY UPDATE, since FOR
+    UPDATE deadlocked against the FK's KEY SHARE).* Confirmed; follow-ups fixed: a keyed retry
+    locks its checks before dropping heads (`lock_checks`), lock-order note, small cleanups.
+  - *security-reviewer — targeted re-check of the grant change and the retired reads; approve.*
+    Fixed: grants after an upgrade, the README's stale "three tables", `rebuild_heads` scope.
+  - *data-steward — accept; S7–S11, S14, S16 via CLI and API.* Fixed: an invalid `state` names
+    the valid values. Not changed: the explorer hides the toggle when only retired checks exist.
+- **Not added (backlog freeze):** none.
+- **Lesson:** a cache written by several kinds of writer needs one lock helper that every writer
+  calls — the deadlocks came from writers that each locked "correctly" in a different order.
+- **Backlog:** I-46 part 4 and I-23 done. Next: iteration 38 = I-46 part 5, then I-51, I-47,
+  I-48, I-50.
+
 ## Iteration 36 — Named checks, part 3: check lifecycle and registry sync (I-46 part 3), 2026-10-13
 
 - **Spec:** [036-check-lifecycle-sync](specs/036-check-lifecycle-sync.md). **Branch:** `iter/036`.

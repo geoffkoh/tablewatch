@@ -68,6 +68,7 @@ FORBIDDEN_HOST = (
 PARAMETER_RULES = {
     "limit": "invalid limit — a whole number from 1 to 200",
     "outcome": "invalid outcome — one of pass, warn, fail, error, skipped, not_run",
+    "state": "invalid state — one of active, disabled, retired",
     "cursor": "invalid cursor — use next_cursor from a previous page",
 }
 STORE_UNAVAILABLE = "results store: unavailable — see the server log"
