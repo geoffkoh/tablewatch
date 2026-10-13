@@ -29,7 +29,7 @@ from tablewatch.metrics.registry import get_metric
 from tablewatch.paths import scrub_paths
 from tablewatch.results.models import CHECK_METRIC, CheckResultRow, RunRow
 from tablewatch.results.state import Evaluated
-from tablewatch.results.store import Latest
+from tablewatch.results.store import Latest, Retired
 from tablewatch.selection import Selection
 
 Outcome = Literal["pass", "warn", "fail", "error", "skipped"]
@@ -192,6 +192,8 @@ class CheckSummary(_Model):
     clauses: list[ClauseSummary]
     # False for `enabled: false`: listed with its last result, never run.
     enabled: bool
+    # Lifecycle (spec 037); a retired check is a `RetiredCheckSummary`.
+    state: Literal["active", "disabled"]
 
     @classmethod
     def of(cls, check: Check, latest: LatestResult | None) -> CheckSummary:
@@ -211,6 +213,7 @@ class CheckSummary(_Model):
             location=Location.of(check.location),
             latest=latest,
             enabled=check.enabled,
+            state="active" if check.enabled else "disabled",
             clauses=[
                 ClauseSummary(
                     key=c.key,
@@ -288,6 +291,80 @@ class Rule(_Model):
         )
 
 
+class RecordedClause(_Model):
+    """One clause of a retired check, as its last result recorded it."""
+
+    key: str
+    expression: str
+    metric: str
+    unit: Unit | None  # None for a metric this version doesn't know
+
+
+class RetiredCheckSummary(_Model):
+    """A check gone from the project's files (spec 037), as last recorded.
+
+    It has no file, rule or SQL any more. What it measured comes from its
+    last result: `expression`, `metric` and `last_known_location` are null
+    and `clauses` empty for a check that never ran.
+    """
+
+    id: str
+    name: str
+    dataset: str
+    datasource: str
+    state: Literal["retired"]
+    retired_since: Timestamp
+    enabled: bool  # always false: a retired check never runs
+    expression: str | None
+    metric: str | None
+    unit: Unit | None
+    owner: str | None
+    tags: list[str]
+    # Where it was last defined: its last result's `file:line:col`.
+    last_known_location: str | None
+    latest: LatestResult | None
+    clauses: list[RecordedClause]
+
+    @classmethod
+    def of(cls, retired: Retired) -> RetiredCheckSummary:
+        check, found = retired.check, retired.latest
+        result = found.result if found else None
+        clauses = [
+            RecordedClause(
+                key=c.clause_key,
+                expression=c.expression,
+                metric=c.metric,
+                unit=_unit(c.metric, c.unit),
+            )
+            for c in (result.clauses if result else [])
+        ]
+        single = clauses[0] if len(clauses) == 1 else None
+        return cls(
+            id=check.check_hash,
+            name=check.name,
+            dataset=check.dataset,
+            datasource=check.datasource,
+            state="retired",
+            retired_since=check.state_since,
+            enabled=False,
+            expression=result.expression if result else None,
+            metric=None
+            if result is None
+            else single.metric
+            if single
+            else CHECK_METRIC,
+            unit=single.unit if single else None,
+            owner=result.owner if result else None,
+            tags=list(result.tags) if result else [],
+            last_known_location=result.source if result else None,
+            latest=LatestResult.of(found) if found else None,
+            clauses=clauses,
+        )
+
+
+CheckItem = Annotated[CheckSummary | RetiredCheckSummary, Field(discriminator="state")]
+
+
 class CheckDetail(CheckSummary):
     """One check with its rule: what `GET /checks/{id}` serves."""
 
@@ -296,6 +373,11 @@ class CheckDetail(CheckSummary):
     @classmethod
     def of_detail(cls, check: Check, latest: LatestResult | None) -> CheckDetail:
         return cls(**dict(CheckSummary.of(check, latest)), rule=Rule.of(check))
+
+
+CheckDetailItem = Annotated[
+    CheckDetail | RetiredCheckSummary, Field(discriminator="state")
+]
 
 
 class ScanColumn(_Model):
@@ -439,7 +521,7 @@ class CheckSource(_Model):
 
 
 class CheckList(_Model):
-    items: list[CheckSummary]
+    items: list[CheckItem]
     total: int
 
 

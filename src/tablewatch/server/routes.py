@@ -25,6 +25,7 @@ from tablewatch.results.store import PageKey, ResultStore
 from tablewatch.server import schemas
 
 OutcomeFilter = Literal["pass", "warn", "fail", "error", "skipped", "not_run"]
+StateFilter = Literal["active", "disabled", "retired"]
 RUN_ID = re.compile(r"^[0-9a-f]{32}$")
 MAX_CURSOR = 256
 
@@ -110,24 +111,50 @@ def get_project(context: Context) -> schemas.Project:
 def list_checks(
     context: Context,
     outcome: Annotated[list[OutcomeFilter] | None, Query()] = None,
+    state: Annotated[list[StateFilter] | None, Query()] = None,
 ) -> schemas.CheckList:
-    latest = context.store.latest_results(context.name)
+    states = set(state or ("active", "disabled"))
     wanted = set(outcome or ())
-    items = []
-    for check in context.project.checks:
-        found = latest.get(check.id)
-        result = schemas.LatestResult.of(found) if found else None
-        if wanted and (result.outcome if result else "not_run") not in wanted:
-            continue
-        items.append(schemas.CheckSummary.of(check, result))
+    items: list[schemas.CheckSummary | schemas.RetiredCheckSummary] = []
+    if states & {"active", "disabled"}:
+        latest = context.store.latest_results(context.name)
+        for check in context.project.checks:
+            if ("active" if check.enabled else "disabled") not in states:
+                continue
+            found = latest.get(check.id)
+            items.append(
+                schemas.CheckSummary.of(
+                    check, schemas.LatestResult.of(found) if found else None
+                )
+            )
+    if "retired" in states:
+        loaded = {check.id for check in context.project.checks}
+        items.extend(
+            schemas.RetiredCheckSummary.of(retired)
+            for retired in context.store.retired_checks(context.name, loaded)
+        )
+    if wanted:
+        items = [
+            item
+            for item in items
+            if (item.latest.outcome if item.latest else "not_run") in wanted
+        ]
     return schemas.CheckList(items=items, total=len(items))
 
 
-@router.get("/checks/{check_id}", response_model=schemas.CheckDetail)
-def get_check(context: Context, check_id: str) -> schemas.CheckDetail:
-    check = context.check(check_id) if _is_check_id(check_id) else None
-    if check is None:
+@router.get("/checks/{check_id}", response_model=schemas.CheckDetailItem)
+def get_check(
+    context: Context, check_id: str
+) -> schemas.CheckDetail | schemas.RetiredCheckSummary:
+    if not _is_check_id(check_id):
         raise _not_found("check")
+    check = context.check(check_id)
+    if check is None:
+        loaded = {c.id for c in context.project.checks}
+        retired = context.store.retired_checks(context.name, loaded, check_id)
+        if not retired:
+            raise _not_found("check")
+        return schemas.RetiredCheckSummary.of(retired[0])
     found = context.store.latest_results(context.name, check.id).get(check.id)
     return schemas.CheckDetail.of_detail(
         check, schemas.LatestResult.of(found) if found else None

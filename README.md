@@ -251,13 +251,13 @@ matter: tablewatch reads and shows every time in UTC.
 | Who | Needs |
 | --- | --- |
 | The **upgrading process**: the first `run` or `serve` after the store is created or tablewatch is upgraded | `CREATE` on the schema, and to own the `tablewatch_` tables |
-| A **writer**: `run` | `USAGE` on the schema; `SELECT, INSERT` on its tables; `USAGE` on its sequences |
+| A **writer**: `run`, `sync` | `USAGE` on the schema; `SELECT, INSERT, UPDATE, DELETE` on its tables (each check's current state is updated as results are saved; a keyed retry replaces its own rows); `USAGE` on its sequences |
 | A **reader**: `runs`, `history`, `report`, `serve` | `USAGE` on the schema; `SELECT` on its tables |
 
 ```sql
 -- as the role that owns the schema, after the store is at the current version
 GRANT USAGE ON SCHEMA tablewatch TO tw_writer, tw_reader;
-GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA tablewatch TO tw_writer;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA tablewatch TO tw_writer;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA tablewatch TO tw_writer;
 GRANT SELECT ON ALL TABLES IN SCHEMA tablewatch TO tw_reader;
 ```

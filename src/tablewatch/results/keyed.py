@@ -31,6 +31,7 @@ from tablewatch.checks.model import Check, Dataset, Outcome, check_outcome
 from tablewatch.engine.runner import CheckResult, RunResult, SkippedDataset, username
 from tablewatch.errors import TablewatchError
 from tablewatch.jsonvalues import utc
+from tablewatch.results.heads import forget_heads, record_heads
 from tablewatch.results.models import (
     MAX_RUN_KEY,
     CheckResultRow,
@@ -304,6 +305,7 @@ class KeyedRun:
                 self._forget(session, dataset)
                 register_all(session, self.project, results, rows, finished)
                 session.add_all([*rows, record])
+                record_heads(session, rows, self.started_at)
                 if self.notify:
                     session.flush()
                     write_alerts(
@@ -322,17 +324,15 @@ class KeyedRun:
             CheckResultRow.datasource == dataset.datasource,
             CheckResultRow.dataset == dataset.name,
         )
+        checks = select(CheckResultRow.check_id).where(
+            CheckResultRow.run_id == self.run_id,
+            CheckResultRow.datasource == dataset.datasource,
+            CheckResultRow.dataset == dataset.name,
+        )
         # Explicitly, not by cascade: SQLite enforces foreign keys only
         # when asked to. A change already sent stays: it is not sent twice.
-        forget_unsent(
-            session,
-            self.run_id,
-            select(CheckResultRow.check_id).where(
-                CheckResultRow.run_id == self.run_id,
-                CheckResultRow.datasource == dataset.datasource,
-                CheckResultRow.dataset == dataset.name,
-            ),
-        )
+        forget_unsent(session, self.run_id, checks)
+        forget_heads(session, checks)
         session.execute(
             delete(ClauseResultRow).where(ClauseResultRow.check_result_id.in_(earlier))
         )

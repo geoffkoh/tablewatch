@@ -34,6 +34,7 @@ from tests.test_server import (
     assert_error,
     clone_run,
     get,
+    rebuild_heads,
     served,
     serving,
 )
@@ -254,6 +255,7 @@ def test_the_streak_rule_through_the_api(recorded: Recorded) -> None:  # P3
         )
         db.commit()
         db.close()
+        rebuild_heads(recorded.root)
     with served(recorded.root) as client:
         latest = get(client, f"/api/v1/checks/{ORDER_VOLUME}")["latest"]
     assert latest["outcome"] == "fail"
@@ -308,6 +310,7 @@ def test_equal_start_times_since(recorded: Recorded) -> None:  # P4
     )
     db.commit()
     db.close()
+    rebuild_heads(recorded.root)
     with served(recorded.root) as client:
         latest = get(client, f"/api/v1/checks/{CUSTOMERS_EMAIL}")["latest"]
     assert (latest["outcome"], latest["run_id"]) == ("pass", second)

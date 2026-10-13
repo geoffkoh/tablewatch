@@ -25,12 +25,14 @@ from sqlalchemy import create_engine, text, update
 
 import tablewatch as tw
 from tablewatch.checks.model import Dataset, Outcome
+from tablewatch.config import load_project
 from tablewatch.engine.runner import CheckResult, RunResult
 from tablewatch.results import keyed as keyed_module
 from tablewatch.results.keyed import KeyedRun, RunKeyError
-from tablewatch.results.store import StoreError, open_store
+from tablewatch.results.store import ResultStore, StoreError, open_store
 from tests.conftest import TABLEWATCH_YML, Workspace, invoke
 from tests.test_check_registry import _alembic
+from tests.test_check_states import assert_heads_match
 from tests.test_notify import Hook, _serve
 
 KEY = "nightly-10-12"
@@ -167,6 +169,8 @@ def test_errored_dataset_is_replaced_with_its_clause_rows_on_both_stores(
     assert _sql(
         store_url, "SELECT exit_code, total, errored, run_key FROM tablewatch_runs"
     ) == [(1, 3, 0, KEY)]
+    with ResultStore.open(store_url, ws.root) as store:  # spec 037 S3
+        assert_heads_match(store, load_project(ws.root).config.name)
 
 
 def test_an_engine_that_cannot_be_created_errors_every_dataset_then_resumes(
@@ -493,7 +497,7 @@ def test_a_keyed_run_on_an_older_store_migrates_first(
     _grow(workspace.root, 2)
     assert _previous(workspace.root, "--run-key", KEY) == 5
     assert _q(workspace.root, "SELECT version_num FROM tablewatch_alembic_version") == [
-        ("0007",)
+        ("0008",)
     ]
     assert _q(workspace.root, "SELECT count(*) FROM tablewatch_dataset_runs") == [(1,)]
 

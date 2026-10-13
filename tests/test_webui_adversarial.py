@@ -31,6 +31,7 @@ from tests.test_server import (
     assert_error,
     clone_run,
     get,
+    rebuild_heads,
     served,
     start,
 )
@@ -182,6 +183,7 @@ def _set_outcome(root: Path, run_id: str, check_id: str, outcome: str) -> None:
         db.commit()
     finally:
         db.close()
+    rebuild_heads(root)
 
 
 def _started(root: Path, run_id: str) -> str:
@@ -372,6 +374,7 @@ def _write_runs(root: Path, ids: list[str], runs: int) -> None:
                         for n, check in enumerate(ids)
                     ],
                 )
+        store.rebuild_heads()
     finally:
         store.close()
 

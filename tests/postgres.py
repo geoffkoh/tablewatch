@@ -203,10 +203,12 @@ class PgSchema:
         return self._granted(password, "SELECT ON ALL TABLES")
 
     def make_writer(self, password: str = AWKWARD_PASSWORD) -> Role:
-        """The README's writer: SELECT and INSERT on the tables now in this
-        schema, and the sequence behind the results' ids. No DDL."""
+        """The README's writer: SELECT, INSERT, UPDATE and DELETE on the
+        tables now in this schema, and the sequences behind the ids. No DDL."""
         return self._granted(
-            password, "SELECT, INSERT ON ALL TABLES", "USAGE ON ALL SEQUENCES"
+            password,
+            "SELECT, INSERT, UPDATE, DELETE ON ALL TABLES",
+            "USAGE ON ALL SEQUENCES",
         )
 
     def _granted(self, password: str, *grants: str) -> Role:
