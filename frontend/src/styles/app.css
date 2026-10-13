@@ -259,6 +259,16 @@ a {
   font-weight: 600;
 }
 
+/*
+ * The "Disabled" marker (spec 036 S15): neutral, never a status colour —
+ * a disabled check has no outcome, it was simply not run.
+ */
+.badge--disabled {
+  border: 1px solid var(--tw-border);
+  background: var(--tw-surface);
+  color: var(--tw-text-muted);
+}
+
 /* Summary tiles */
 
 .all-clear {
@@ -461,6 +471,13 @@ a {
   gap: 0.125rem;
 }
 
+.check__name-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .check__name {
   display: block;
   font-weight: 600;
@@ -554,6 +571,11 @@ a {
   margin: 0 0 0.25rem;
   font-size: 1.375rem;
   overflow-wrap: anywhere;
+}
+
+.check-title .badge--disabled {
+  margin-inline-start: 0.5rem;
+  vertical-align: middle;
 }
 
 .check-expression {

@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { CheckDetail } from "../../api/types";
+import { DisabledBadge } from "../DisabledBadge";
 import { Marked } from "../Marked";
 
 /**
@@ -39,6 +40,7 @@ export function Identity({ check, sourceLinked }: { check: CheckDetail; sourceLi
     <section className="panel check-identity" aria-labelledby="check-heading">
       <h1 id="check-heading" className="check-title">
         {check.name}
+        {!check.enabled && <DisabledBadge />}
       </h1>
       {check.expression !== check.name && <code className="check__expression check-expression">{check.expression}</code>}
       <dl className="facts facts--wide">

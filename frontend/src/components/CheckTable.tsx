@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import type { CheckSummary } from "../api/types";
 import { checkHref, EXPLORER_HREF } from "../lib/route";
 import { sortProblemsFirst, statusOf } from "../lib/status";
+import { DisabledBadge } from "./DisabledBadge";
 import { Result, When } from "./LatestResult";
 import { StatusBadge } from "./StatusIcon";
 
@@ -13,9 +14,12 @@ function Row({ check, newestRunId, now }: { check: CheckSummary; newestRunId: st
         <StatusBadge status={status} />
       </td>
       <td className="cell-check">
-        <a className="check__name" href={checkHref(check.id)}>
-          {check.name}
-        </a>
+        <span className="check__name-row">
+          <a className="check__name" href={checkHref(check.id)}>
+            {check.name}
+          </a>
+          {!check.enabled && <DisabledBadge />}
+        </span>
         {check.expression !== check.name && <code className="check__expression">{check.expression}</code>}
         <span className="check__where">
           <span className="check__dataset">{check.dataset}</span>

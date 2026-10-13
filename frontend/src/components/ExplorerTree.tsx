@@ -3,6 +3,7 @@ import type { CheckSummary } from "../api/types";
 import { countsText, hasProblems, type FileNode, type FolderNode, type TreeNode } from "../lib/explorer";
 import { checkHref } from "../lib/route";
 import { statusOf } from "../lib/status";
+import { DisabledBadge } from "./DisabledBadge";
 import { ResultValue } from "./LatestResult";
 import { StatusBadge } from "./StatusIcon";
 
@@ -27,6 +28,7 @@ function CheckRow({ check }: { check: CheckSummary }): ReactElement {
         <a className="check__name" href={checkHref(check.id)}>
           {check.name}
         </a>{" "}
+        {!check.enabled && <DisabledBadge />}
         {check.expression !== check.name && <code className="check__expression">{check.expression}</code>}
       </span>
       {measured !== null && (
