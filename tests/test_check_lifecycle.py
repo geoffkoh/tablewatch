@@ -443,3 +443,9 @@ def test_results_sync_rejects_other_values(workspace: Workspace) -> None:
     workspace.write("tablewatch.yml", TABLEWATCH_YML + "results:\n  sync: always\n")
     assert invoke(workspace.root, "validate")[0] == 3
 
+
+def test_compile_naming_a_disabled_check_says_so(workspace: Workspace) -> None:
+    workspace.write("checks/t.yml", DROPPED)
+    code, _, err = invoke(workspace.root, "compile", "--check", "gone")
+    assert code == 3
+    assert "check gone is disabled (enabled: false at checks/t.yml:6:14)" in err

@@ -444,9 +444,13 @@ def _busy(run_key: str) -> RunKeyError:
     return RunKeyError(f"another process is already running run key '{run_key}'")
 
 
-def advisory_key(project: str, run_key: str) -> int:
-    """A stable 64-bit lock key: `hash()` differs between processes."""
-    digest = hashlib.sha256(f"{project}\0{run_key}".encode()).digest()
+def advisory_key(project: str, run_key: str, schema: str = "") -> int:
+    """A stable 64-bit lock key: `hash()` differs between processes.
+
+    Advisory locks are per database, not per schema, so the store's schema
+    is part of the key: two stores in one database never block each other.
+    """
+    digest = hashlib.sha256(f"{schema}\0{project}\0{run_key}".encode()).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
 
 
@@ -454,10 +458,11 @@ class _AdvisoryLock(_Lock):
     """A session lock on its own connection: a process that dies frees it."""
 
     def __init__(self, store: ResultStore, project: str, run_key: str) -> None:
-        self._key = advisory_key(project, run_key)
         with reading(store.engine):
             self._connection: Connection | None = store.engine.connect()
             try:
+                schema = self._connection.scalar(text("SELECT current_schema()"))
+                self._key = advisory_key(project, run_key, schema or "")
                 taken = self._connection.scalar(
                     text("SELECT pg_try_advisory_lock(:key)"), {"key": self._key}
                 )

@@ -294,6 +294,14 @@ def _select(
     try:
         selection = Selection(**selectors).resolve(project, Path.cwd())
         checks = select_checks(project, selection, include_disabled=include_disabled)
+        if selection.check_ids and not include_disabled:
+            for check in select_checks(project, selection, include_disabled=True):
+                if check.disabled_at is not None:
+                    log.warning(
+                        "check %s is disabled (enabled: false at %s) — not compiled",
+                        check.name,
+                        check.disabled_at,
+                    )
         if not checks and selection.as_dict():
             # As `run` does: selectors that each match but not together.
             raise SelectionError("no checks matched the selection — nothing ran")

@@ -370,8 +370,8 @@ check back with the same name, dataset and datasource and it **returns**,
 with the same id and its history.
 
 The store learns about new, disabled and retired checks on every recorded
-run (`run --no-store` leaves it alone), or from `tablewatch sync`, which
-runs nothing and prints each change:
+run (`run --no-store`, and a run that runs nothing, leave it alone), or
+from `tablewatch sync`, which runs nothing and prints each change:
 
 ```text
 retired   orders.orders_usable  (lake)
