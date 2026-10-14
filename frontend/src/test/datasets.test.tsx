@@ -214,7 +214,9 @@ describe("the page's own requests and title", () => {
     await waitLoaded();
     const urls = fetchMock.mock.calls.map((c) => String(c[0])).sort();
     expect(urls).toEqual([URLS.checks, URLS.project, URLS.problems].sort());
-    expect(document.title).toBe("Datasets — retail-example");
+    await vi.waitFor(() => {
+      expect(document.title).toBe("Datasets — retail-example");
+    });
   });
 
   it("marks Datasets current in the nav", async () => {

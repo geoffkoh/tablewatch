@@ -127,7 +127,10 @@ describe("E1: the page at /checks", () => {
     expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
     const urls = fetchMock.mock.calls.map(([input]) => String(input)).sort();
     expect(urls).toEqual([EXPLORER_CHECKS_URL, URLS.project, URLS.problems].sort());
-    expect(document.title).toBe("Checks — retail-example");
+    // The title follows the project's own slot, which may settle after the tree.
+    await vi.waitFor(() => {
+      expect(document.title).toBe("Checks — retail-example");
+    });
   });
 });
 
