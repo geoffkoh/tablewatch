@@ -294,12 +294,12 @@ def derive_clause_id(
     compared with whitespace collapsed. An independent hash, never the
     check's id extended, so a prefix of a check id never matches a clause.
     """
-    text = f"clause\0{check_id}\0{key}\0{_collapse(where or '')}"
+    text = f"clause\0{check_id}\0{key}\0{collapse_whitespace(where or '')}"
     for option, value in identity:
-        text += f"\0{option}={_collapse(value)}"
+        text += f"\0{option}={collapse_whitespace(value)}"
     return hashlib.sha1(text.encode(), usedforsecurity=False).hexdigest()[:16]
 
 
-def _collapse(text: str) -> str:
+def collapse_whitespace(text: str) -> str:
     """Whitespace runs as one space: the one rule for text that feeds an id."""
     return " ".join(text.split())

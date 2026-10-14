@@ -18,16 +18,20 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from tablewatch.checks.model import Check
+from tablewatch.checks.model import Check, collapse_whitespace
 from tablewatch.engine.runner import CheckResult
-from tablewatch.metrics.registry import all_metrics
 from tablewatch.results.heads import lock_checks
 from tablewatch.results.inserts import insert_unless_present
 from tablewatch.results.models import CheckDefinitionRow, CheckResultRow
 
 
 def definition_of(check: Check) -> dict[str, Any]:
-    """What `check` checks: its clauses as written, in file order."""
+    """What `check` checks: its clauses as written, in file order.
+
+    Each clause also names its options that are SQL (`sql_options`, its
+    metric's `identity_options`), so the fingerprint depends only on what
+    is stored, never on the metric registry of the version reading it.
+    """
     return {
         "clauses": [
             {
@@ -36,6 +40,9 @@ def definition_of(check: Check) -> dict[str, Any]:
                 "where": clause.where,
                 # Through JSON: an option may be a date, stored as its text.
                 "options": json.loads(json.dumps(clause.options, default=str)),
+                "sql_options": sorted(
+                    set(clause.metric.identity_options) & set(clause.options)
+                ),
             }
             for clause in check.clauses
         ]
@@ -55,29 +62,20 @@ def fingerprint(definition: Mapping[str, Any]) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def _sql_options() -> frozenset[str]:
-    """Options whose text is SQL: what a metric's identity collapses."""
-    return frozenset(
-        option for metric in all_metrics() for option in metric.identity_options
-    )
-
-
 def _normalised(clause: Mapping[str, Any]) -> dict[str, Any]:
-    sql = _sql_options()
+    sql = set(clause.get("sql_options", ()))
     options = {
-        name: _collapse(value) if name in sql and isinstance(value, str) else value
+        name: collapse_whitespace(value)
+        if name in sql and isinstance(value, str)
+        else value
         for name, value in clause["options"].items()
     }
     where = clause["where"]
     return {
         **clause,
-        "where": _collapse(where) if isinstance(where, str) else where,
+        "where": collapse_whitespace(where) if isinstance(where, str) else where,
         "options": options,
     }
-
-
-def _collapse(text: str) -> str:
-    return " ".join(text.split())
 
 
 def record_definitions(
