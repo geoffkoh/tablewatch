@@ -26,17 +26,17 @@ store migrate` upgrades on demand.
 |----|----|----|----|
 | S1 | must | a check's first recorded run | one definition, version 1: its clauses (`key`, `expression` with triggers, `where`, options), `recorded_at`, the `run_id` that first carried it |
 | S2 | must | the threshold of one clause changed, then `run` | version 2; the check's id, history and baselines unchanged; results from then on reference version 2 |
-| S3 | must | `run` again with no change; the file moved or reformatted; `notify:`, `enabled:` or a dataset's `owner`/`tags` changed | no new version (D-list: what is not a definition) |
+| S3 | must | `run` again with no change; the file moved or reformatted; clauses reordered in the file with no other change; an option's value re-quoted or re-spaced with the same meaning; `notify:`, `enabled:` or a dataset's `owner`/`tags` changed | no new version (D-list: what is not a definition; order and raw formatting are not part of the fingerprint) |
 | S4 | must | a change reverted (A → B → A) | three versions; never two consecutive equal versions for a check, including two writers recording the same new definition at once (Postgres) |
 | S5 | must | `tablewatch sync` (or `results.sync: on_run`) with a changed definition and no run | a new version with `run_id: null`; a check registered by sync and never run has version 1 |
 | S6 | must | `GET /api/v1/checks/{id}/definitions` | versions newest first: `version`, `recorded_at`, `run_id`, `clauses`; 404 for an unknown id; works for a retired check |
 | S7 | must | history items (`/checks/{id}/history`) | gain `definition_version` (int, null for results recorded before this change) |
-| S8 | must | web UI, a check's page | a "Definition" section lists the versions (date, run, clauses, what changed from the previous); the history chart marks where the version changes |
+| S8 | must | web UI, a check's page | a "Definition" section lists the versions (date, run, clauses, what changed from the previous, matched by clause `key`: added, removed, or changed shown as old → new); the history chart marks where the version changes |
 | S9 | must | a store at revision 0008 with history | revision 0009 adds the table and the nullable result column; no backfill (old results have no version); `test_migrations_match_the_models` passes |
 | S10 | must | `tablewatch store sql` (no project, no credentials) | PostgreSQL DDL on stdout from an empty database to head, including `tablewatch_alembic_version`; no `BEGIN`/`COMMIT` (the migration tool owns the transaction); exit 0 |
 | S11 | must | that SQL applied with `psql` to an empty Postgres, then `run` with `results.migrate: never` | the run records; `schema()` is `current`; the tables match the models (autogenerate finds no difference) |
 | S12 | must | `store sql --from 0008` | only 0009's DDL and its version update; `--from` at head prints a comment and nothing else |
-| S13 | must | `store sql --from 0006` (a revision after it reads data: 0007, 0008) | exit 3: `revision 0007 rewrites existing rows and cannot be written as SQL — upgrade this store once with \`tablewatch store migrate\``; nothing on stdout; an unknown revision is exit 3 listing the known ones |
+| S13 | must | `store sql --from 0007` (0008 reads rows in Python) | exit 3: `revision 0008 reads existing rows and cannot be written as SQL — upgrade this store once with \`tablewatch store migrate\``; nothing on stdout; an unknown revision is exit 3 listing the known ones |
 | S14 | must | `results.migrate: never`, store at 0008 | `run` scans, reports, then fails to record: exit 2 with `results store: its schema is at revision 0008, this tablewatch needs 0009 — apply \`tablewatch store sql --from 0008\` or run \`tablewatch store migrate\``; a keyed `run`, `sync` exit 2 before scanning; `serve` exits 3; the store is unchanged |
 | S15 | must | `results.migrate: never`, empty database | as S14, naming `tablewatch store sql` with no `--from` |
 | S16 | must | `tablewatch store migrate` | upgrades to head whatever `results.migrate` says; exit 0 (and `already current` when it was); 2 when the store is unreachable or newer; 3 for an invalid project |
@@ -100,4 +100,47 @@ Decisions (below) override this section where they differ.
 
 ## Decisions
 
-(REFINE)
+- **D1 (Q1, architect).** `definition_id` on every result (a time lookup is
+  wrong for out-of-order saves and sync-recorded versions); the chart marks
+  a change where neighbouring points' `definition_id` differ. Concurrency by
+  `UNIQUE(check_id, version)`: insert latest+1 on-conflict-do-nothing
+  (`registry._insert` generalised to take the table), re-read on conflict,
+  reuse a matching fingerprint or try the next version; checks in registry
+  id order. Called between `register_all` and `record_heads`; no new lock,
+  `sync` included.
+- **D2 (Q2, architect).** Replay revisions offline (`dialect_name=
+  "postgresql"`, `literal_binds`, `transactional_ddl=False` drops BEGIN/
+  COMMIT). Only 0004 and 0008 read rows in Python: they carry
+  `READS_ROWS_IN_PYTHON = True` and guard the read with
+  `context.is_offline_mode()`; 0007's backfill is plain SQL. A test replays
+  each `prev:rev` offline: it must succeed or carry the flag. The flag is
+  checked before any output.
+- **D3 (Q3, architect).** `store` group; `store sql` needs no project,
+  `store migrate` loads it. Unkeyed `run` under `never` fails at record
+  (the sink opens late). One `migrate` bool from `ResultsConfig` reaches
+  `open_store`, `store_sink`, `KeyedRun`, `sync` and `serve`; under `never`
+  writers open with `create=False`. The writer message (S14/S15) and S19's
+  are built in `store.py`. S6 reads through a `ResultStore` method.
+- **Q4 (data-steward).** The Design's list is right: per clause, `key`, `expression`
+  (canonical, triggers included), `where`, `options`. `owner` does not
+  belong — it names who to ask, not what is checked, and changing it must
+  not look like a data-quality event on a check's history. Same for `tags`
+  and `notify`.
+  Order is cosmetic: reordering clauses in the file, or re-quoting /
+  re-spacing an option's value with the same meaning, must not fingerprint
+  as a change — a steward reordering checks for readability should not see
+  a spurious version or an alert.
+  The UI's "what changed" matches clauses across versions by `key` (stable
+  and chosen by the author), not by clause id (which itself changes when
+  `where`/options change what is measured):
+  - a key only in the new version: **added** `<key>`.
+  - a key only in the old version: **removed** `<key>`.
+  - a key in both with the same canonical text: not shown.
+  - a key in both with different canonical text: **changed**, showing the
+    rendered clause old → new in full (expression, triggers, `where`). Do
+    not try to label it "threshold" vs. "scope" changed automatically —
+    the full old → new text already answers Priya's question (was it the
+    data, or did the rule move) without claiming a distinction tablewatch
+    cannot reliably draw (a `where` edit and a threshold edit can land in
+    the same version).
+
