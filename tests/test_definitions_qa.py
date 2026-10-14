@@ -82,12 +82,6 @@ def test_requoting_an_option_is_not_a_change(workspace: Workspace) -> None:
     assert len(prints) == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="spec 038: fingerprint() collapses whitespace inside every string, "
-    "so a regex or a value list whose meaning is its spaces fingerprints the "
-    "same — the edit records no version (definitions.py:_collapsed)",
-)
 @pytest.mark.parametrize(
     ("before", "after"),
     [
@@ -480,13 +474,6 @@ def _hold(
 
 
 @pytest.mark.db_postgres
-@pytest.mark.xfail(
-    strict=True,
-    reason="spec 038 D1: sync updates registry rows then inserts definitions, "
-    "while save inserts definitions then locks registry rows (lock_checks): "
-    "a sync and a run recording one new version deadlock on Postgres and one "
-    "of them fails (registry.py:198, store.py:576)",
-)
 def test_sync_and_a_run_recording_one_new_version_do_not_deadlock(
     workspace: Workspace, pg_schema: PgSchema, monkeypatch: pytest.MonkeyPatch
 ) -> None:

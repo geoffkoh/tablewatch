@@ -149,7 +149,7 @@ def test_s3_fingerprint_ignores_order_and_spacing(workspace: Workspace) -> None:
     _write(workspace)
     one = definition_of(workspace.load().checks[0])
     reordered = {"clauses": list(reversed(one["clauses"]))}
-    spaced = json.loads(json.dumps(one).replace(" < ", "  <  "))
+    spaced = json.loads(json.dumps(one).replace("status != 'x'", "status  !=   'x'"))
     assert fingerprint(one) == fingerprint(reordered) == fingerprint(spaced)
     other = json.loads(json.dumps(one).replace("< 5", "< 6"))
     assert fingerprint(other) != fingerprint(one)

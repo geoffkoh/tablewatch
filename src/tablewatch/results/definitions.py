@@ -20,6 +20,8 @@ from sqlalchemy.orm import Session
 
 from tablewatch.checks.model import Check
 from tablewatch.engine.runner import CheckResult
+from tablewatch.metrics.registry import all_metrics
+from tablewatch.results.heads import lock_checks
 from tablewatch.results.inserts import insert_unless_present
 from tablewatch.results.models import CheckDefinitionRow, CheckResultRow
 
@@ -41,21 +43,41 @@ def definition_of(check: Check) -> dict[str, Any]:
 
 
 def fingerprint(definition: Mapping[str, Any]) -> str:
-    """The definition's identity: clauses by key, text with whitespace
-    collapsed, so reordering or re-spacing is not a change."""
-    clauses = sorted(definition["clauses"], key=lambda clause: str(clause["key"]))
-    text = json.dumps(_collapsed(clauses), sort_keys=True, default=str)
+    """The definition's identity: clauses by key, so reordering them is not a
+    change. Whitespace is collapsed only where clause identity collapses it
+    (`where:` and SQL options such as `condition:`), never in a value whose
+    spaces are its meaning (a regex, a value list)."""
+    clauses = sorted(
+        (_normalised(clause) for clause in definition["clauses"]),
+        key=lambda clause: str(clause["key"]),
+    )
+    text = json.dumps(clauses, sort_keys=True, default=str)
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def _collapsed(value: Any) -> Any:
-    if isinstance(value, str):
-        return " ".join(value.split())
-    if isinstance(value, list):
-        return [_collapsed(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _collapsed(v) for k, v in value.items()}
-    return value
+def _sql_options() -> frozenset[str]:
+    """Options whose text is SQL: what a metric's identity collapses."""
+    return frozenset(
+        option for metric in all_metrics() for option in metric.identity_options
+    )
+
+
+def _normalised(clause: Mapping[str, Any]) -> dict[str, Any]:
+    sql = _sql_options()
+    options = {
+        name: _collapse(value) if name in sql and isinstance(value, str) else value
+        for name, value in clause["options"].items()
+    }
+    where = clause["where"]
+    return {
+        **clause,
+        "where": _collapse(where) if isinstance(where, str) else where,
+        "options": options,
+    }
+
+
+def _collapse(text: str) -> str:
+    return " ".join(text.split())
 
 
 def record_definitions(
@@ -141,8 +163,14 @@ def attach_definitions(
     run_id: str,
     now: datetime,
 ) -> None:
-    """Point each registered result row at its check's definition."""
+    """Point each registered result row at its check's definition.
+
+    The checks are locked first (`lock_checks`), as every writer of their
+    heads does: inserting a version before taking that lock deadlocked
+    against a `sync` recording the same version (Postgres).
+    """
     pairs = list(zip(results, rows, strict=True))
+    lock_checks(session, {row.check_id for _, row in pairs})
     ids = record_definitions(
         session, {row.check_id: r.check for r, row in pairs}, run_id, now
     )
