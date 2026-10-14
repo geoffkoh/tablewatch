@@ -118,7 +118,8 @@ checks (owner, 2026-10-04): **Dashboard** (health and trend, failing now,
 changed since the last run, stale or missed runs, recent sync changes),
 **Checks** (the explorer, with lifecycle filters), **Datasets**, **Runs**
 (with run detail, C5), **Alerts** and **Settings** (read-only). It collapses
-to an icon rail, and to a drawer on narrow screens.
+to an icon rail, and to a drawer on narrow screens. Part 1 (iteration 39):
+the shell with Dashboard, Checks and Datasets.
 
 ## Phase 2 — Visibility & alerting → `0.2.0`
 

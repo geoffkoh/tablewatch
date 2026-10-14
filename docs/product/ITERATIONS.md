@@ -10,6 +10,38 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 39 — App shell and side navigation, part 1: Dashboard, Checks, Datasets (I-51 part 1), 2026-10-14
+
+- **Spec:** [039-app-shell-datasets](specs/039-app-shell-datasets.md). **Branch:** `iter/039`.
+  Light track (frontend only, no API change); spec written by the tech lead (owner-fixed item).
+  No items added (freeze). I-51 split: part 2 is Alerts, Settings and the Dashboard's panels.
+- **Shipped:** `AppShell` on every page: a "Sections" nav (Dashboard, Checks, Datasets) with
+  `aria-current`, a "Checks, N failing or in error" count from `/checks?outcome=fail&outcome=error`,
+  an icon rail on wide screens remembered under `localStorage` `tablewatch.nav` (only `"rail"`;
+  only `lib/navPreference.ts` may touch storage — the security test and the bundle test allow
+  exactly that), a drawer from **Menu** under 60rem. `/datasets`: one row per (datasource,
+  dataset), built in the browser from `/checks`; the explorer gains `?dataset=` with a chip.
+  `useLoads` takes `background` slots that never hold `busy` (the nav count, N3).
+  Suite: **3,153 passed, 86 skipped (Postgres), 16 xfailed**; vitest 1,024.
+- **Reviewer findings and resolution:**
+  - *ui-engineer (builder):* the bundle test banned `localStorage`; relaxed by the tech lead to the
+    one key. The builder left the nav count holding `busy` (a slow count kept "Loading…"); the
+    tech lead fixed it with `background` slots (6293025).
+  - *qa-engineer — pass-with-followups, no blockers; 52 tests, 3 `it.fails`, all fixed (1ee28dc).*
+    "Menu" lacked `aria-expanded`/`aria-controls`; the closed drawer stayed in the Tab order
+    (now `visibility: hidden`); a stored rail made the narrow drawer icon-only with no way to
+    expand (the drawer now ignores the rail); search text cut by UTF-16 unit, now by code point
+    (Explorer too). Kept as specified: the Checks column counts disabled checks, as the overview's
+    Summary does.
+  - *data-steward — accept; 15/15 must scenarios* on a scratch project from `examples/acceptance/kit.py`
+    and the live server; layout judged from the CSS only (no browser).
+- **Not added (backlog freeze):** `examples/retail` has no disabled-only, never-run or
+  same-name-on-two-datasources dataset to demonstrate D1/D2/D4 (data-steward).
+- **Lesson:** a request added "just for the chrome" joins the page's load accounting unless
+  told otherwise — the nav count needed its own rule for `busy`, not only for rendering.
+- **Backlog:** I-51 part 1 done. Next: iteration 40 = I-51 part 2 (Alerts, Settings, Dashboard
+  panels), then I-47, I-48, I-50.
+
 ## Iteration 38 — Named checks, part 5: definition history, `store sql`, `results.migrate` (I-46 part 5), 2026-10-14
 
 - **Spec:** [038-definition-history-store-sql](specs/038-definition-history-store-sql.md). **Branch:** `iter/038`.

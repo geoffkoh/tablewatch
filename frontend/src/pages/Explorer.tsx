@@ -23,9 +23,9 @@ import { RetiredChecks } from "../components/RetiredChecks";
 import {
   buildTree,
   commonFolder,
+  cutQuery,
   explorerSearch,
   FACET_KEYS,
-  cutQuery,
   facetOptions,
   filterChecks,
   filterRetired,

@@ -40,6 +40,17 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- **The web UI has a side navigation** (spec 039, I-51 part 1): Dashboard
+  (the overview), Checks and Datasets on every page, with the number of
+  checks failing or in error beside Checks. It collapses to an icon rail on
+  wide screens (remembered in this browser, under one `localStorage` key that
+  holds only `rail`) and opens as a drawer from **Menu** on narrow ones.
+- **A Datasets page** (`/datasets`): one row per datasource and dataset,
+  problems first, with its worst status, its checks by status, when it was
+  last scanned, owners and tags, and a search box. Each dataset links to the
+  check explorer, which now takes `?dataset=` and shows it as a removable
+  chip.
+
 - **Definition history.** The results store keeps each check's definition
   versions (`tablewatch_check_definitions`, revision 0009): a new version
   when a recorded run or `sync` finds a clause added, removed, or changed in
