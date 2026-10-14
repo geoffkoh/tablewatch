@@ -23,7 +23,7 @@ import {
   type DatasetRow,
 } from "../lib/datasets";
 import { cutQuery, EMPTY_QUERY, explorerSearch, isRetired, MAX_QUERY_LENGTH } from "../lib/explorer";
-import { fetchNavProblems } from "../lib/navProblems";
+import { fetchNavProblems, NAV_BACKGROUND } from "../lib/navProblems";
 import { EXPLORER_HREF } from "../lib/route";
 import { useLoads, type Requests } from "../lib/useLoads";
 
@@ -52,7 +52,7 @@ function datasetHref(datasource: string, dataset: string): string {
 }
 
 export function Datasets({ path, search }: { path: string; search: string }): ReactElement {
-  const { slots, busy, now, reload } = useLoads(REQUESTS);
+  const { slots, busy, now, reload } = useLoads(REQUESTS, NAV_BACKGROUND);
   const { project, checks, problems } = slots;
   const loadedProject = project.state === "ok" ? project.data : null;
   const [q, setQ] = useState<string>(() => cutQuery(new URLSearchParams(search).get("q") ?? ""));

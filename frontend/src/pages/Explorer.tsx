@@ -37,7 +37,7 @@ import {
   showFacet,
   type ExplorerQuery,
 } from "../lib/explorer";
-import { fetchNavProblems } from "../lib/navProblems";
+import { fetchNavProblems, NAV_BACKGROUND } from "../lib/navProblems";
 import { EXPLORER_HREF } from "../lib/route";
 import { countStatuses, STATUS_META, STATUS_ORDER, type Status } from "../lib/status";
 import { useLoads, type Requests } from "../lib/useLoads";
@@ -105,7 +105,7 @@ function StatusFilter({
 }
 
 export function Explorer({ path, search }: { path: string; search: string }): ReactElement {
-  const { slots, busy, now, reload } = useLoads(REQUESTS);
+  const { slots, busy, now, reload } = useLoads(REQUESTS, NAV_BACKGROUND);
   const { project, checks, problems } = slots;
   const loadedProject = project.state === "ok" ? project.data : null;
   const [query, setQuery] = useState<ExplorerQuery>(() => parseExplorerQuery(search));

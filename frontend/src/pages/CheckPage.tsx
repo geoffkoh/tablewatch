@@ -32,7 +32,7 @@ import { SourceSection } from "../components/check/SourceSection";
 import { SqlSection } from "../components/check/SqlSection";
 import { HISTORY_LIMIT, useOlderHistory } from "../components/check/useOlderHistory";
 import { LoadError } from "../components/LoadError";
-import { fetchNavProblems } from "../lib/navProblems";
+import { fetchNavProblems, NAV_BACKGROUND } from "../lib/navProblems";
 import { useLoads, type Requests } from "../lib/useLoads";
 
 interface CheckSlots {
@@ -69,7 +69,7 @@ export function CheckPage({ id }: { id: string }): ReactElement {
     }),
     [id],
   );
-  const { slots, busy, now, generation, reload, capture } = useLoads(requests);
+  const { slots, busy, now, generation, reload, capture } = useLoads(requests, NAV_BACKGROUND);
   const { project, check, history, runs, sql, source, definitions, problems } = slots;
 
   const loadedProject = project.state === "ok" ? project.data : null;

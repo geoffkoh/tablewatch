@@ -9,6 +9,9 @@ import { listChecks } from "../api/api";
 import type { CheckList } from "../api/types";
 import type { Load } from "./useLoads";
 
+/** The slots `useLoads` must not wait on for `busy` (N3): pass as its second argument. */
+export const NAV_BACKGROUND = ["problems"] as const;
+
 export function fetchNavProblems(): Promise<CheckList> {
   return listChecks(["active"], ["fail", "error"]);
 }

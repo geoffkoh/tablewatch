@@ -581,7 +581,15 @@ def test_the_committed_bundle_is_self_contained() -> None:  # W2, X2, X3
         for marker in ("/Users/", "/home/", "C:\\\\"):
             assert marker not in text, marker
         assert "serviceWorker" not in text
-        assert "localStorage" not in text and "sessionStorage" not in text
+        assert "sessionStorage" not in text
+        # One layout preference, the nav's collapsed state (spec 039 P-D5), is
+        # the only thing ever stored in the browser.
+        # get, set, remove: no other use.
+        assert text.count("localStorage") <= 3, (
+            "localStorage outside the nav preference"
+        )
+        if "localStorage" in text:
+            assert "tablewatch.nav" in text
 
 
 def test_the_committed_bundle_is_served(recorded: Recorded) -> None:  # W1, W2

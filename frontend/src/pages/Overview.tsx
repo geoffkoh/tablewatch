@@ -8,7 +8,7 @@ import { LoadError } from "../components/LoadError";
 import { ProjectProblems } from "../components/ProjectProblems";
 import { Summary } from "../components/Summary";
 import { isRetired } from "../lib/explorer";
-import { fetchNavProblems } from "../lib/navProblems";
+import { fetchNavProblems, NAV_BACKGROUND } from "../lib/navProblems";
 import { notLoadedFromRun } from "../lib/status";
 import { useLoads, type Requests } from "../lib/useLoads";
 
@@ -43,7 +43,7 @@ const REQUESTS: Requests<OverviewSlots> = {
 };
 
 export function Overview(): ReactElement {
-  const { slots, busy, now, reload } = useLoads(REQUESTS);
+  const { slots, busy, now, reload } = useLoads(REQUESTS, NAV_BACKGROUND);
   const { project, results, problems } = slots;
   const loadedProject = project.state === "ok" ? project.data : null;
   const latestRun = results.state === "ok" ? (results.data.runs.items[0] ?? null) : null;

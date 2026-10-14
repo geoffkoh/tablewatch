@@ -170,6 +170,11 @@ describe("N3: the badge's request fails or is slow", () => {
       expect(screen.getByRole("table")).toBeTruthy();
     });
     expect(screen.queryByRole("link", { name: /failing or in error/ })).toBeNull();
+    // A slow badge never holds the page busy: the status settles and Refresh is free.
+    await vi.waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe("Up to date.");
+    });
+    expect(screen.getByRole("button", { name: "Refresh" }).getAttribute("aria-busy")).toBe("false");
     release(new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 }));
   });
 });
