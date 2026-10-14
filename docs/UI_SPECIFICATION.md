@@ -473,14 +473,20 @@ A `<figure>`:
    It names every shape shown: "Fail", "Warn", "Pass", "Skipped", "Could not
    evaluate", "Fail: no value measured" (and "Warn: …", "Pass: …" if they
    ever occur), "Fails the current rule", "Warns under the current rule",
-   "Rule changed between two runs", "The current streak". Each has a swatch
-   drawn with the chart's own shapes and classes.
+   "Rule changed between two runs", "Definition changed between two runs"
+   (spec 038 S8), "The current streak". Each has a swatch drawn with the
+   chart's own shapes and classes.
 4. The SVG, inside a focusable group (4A.6.6).
 5. Captions under it (`<figcaption>`, one list):
    - rule changes: "Rule changed between runs *time* and *time*: from `A` to
      `B`." Numbered ("Rule change 1: between runs …") when there is more than
      one. A dataset change adds "dataset from `x` to `y`". Times are full, in
      the viewer's zone with the zone named, inside `<time datetime>`.
+   - definition changes (spec 038 S8): "Definition changed between runs
+     *time* and *time*, to version *n*." Numbered ("Definition change 1: …")
+     when there is more than one. Independent of the rule-change captions
+     above: a result's `definition_version` is a store-side version number
+     across every clause, not the one clause the chart's current rule reads.
    - "No run has used the current rule yet, so no threshold is drawn. Every
      result here was judged by an earlier rule." (edited-pending)
    - "This check is not in the loaded check files, so no rule is drawn."
@@ -622,6 +628,16 @@ up) it falls back to JavaScript's shortest round-trip form, which is exact:
   midway between the two runs, labelled "Rule changed" (or "Rule change
   1", "2", … when more than one) in a row above the plot. Labels that would
   overlap take the next row (`assignRows`).
+- **Definition-change markers** (spec 038 S8): the same hairline, dashed
+  (`stroke-dasharray: 2 2`) so it reads as a different kind of change,
+  between every two consecutive entries whose recorded `definition_version`
+  differs *and both are known* — `null` next to a number (a result recorded
+  before definitions were kept, spec 038 S7) is not a change. Labelled
+  "definition v*n*" (the newer entry's version; the literal lower-case form
+  the spec asks for), sharing the row-stacking pass with rule-change labels
+  so the two kinds never overlap. A rule change and a definition change
+  between the same two runs are two markers, not one: they answer different
+  questions (did the one clause the chart reads change, or did any clause).
 - **The current streak** (D19): when the latest outcome has a "since"
   wording, a hairline bracket in its own top row from `latest.since` to the
   latest result, labelled with the overview's words and the full time:
@@ -939,6 +955,71 @@ or show. `/checks/{id}/sql` and `/checks/{id}/source` both answer `404` for
 its id; the page expects this and does not treat it as a failure (the same
 suppression as `checkMissing` in §4A.9/§4A.10's tables, extended to a
 retired check).
+
+### 4A.12 Definition history (spec 038 S8)
+
+A panel headed "Definition", below History and above SQL, fed
+`GET /checks/{id}/definitions` (`DefinitionList`, newest first). Unlike SQL
+and Source it is **not** a file-derived section: a definition lives in the
+results store, so it has something to say for a retired check too (its one
+difference from §4A.9/§4A.10: it drops their `retiredCheck === null`
+condition). It is absent only while `/checks/{id}` is still loading, or for
+`unknown` — the same "where the section waits" rule as SQL/Source, minus
+the retired exclusion.
+
+**Each version** (`DefinitionSection` → `VersionItem`), newest first:
+
+- "**Version** *n*, *Ago*, *run or sync*." `Ago` is the same relative-time
+  component as every other date on the page (`<time>`, full time and zone on
+  hover/focus) over `recorded_at`. The run is "from run `<run_id>`" when
+  `run_id` is set, else "recorded by sync" (spec 038 S5: a sync-recorded
+  version has no run). `run_id` is text, not a link — the UI has no page to
+  send it to yet (§11, "History rows do not link to runs yet").
+- **The first version** (no older one to diff against) lists its clauses
+  plainly: `<key>`: *rendered clause* (`renderClause`, below).
+- **Every later version** lists what changed from the one before it,
+  matched by clause `key`, never by position or clause id (spec 038 Q4):
+  **Added** `<key>`: *clause*; **Removed** `<key>`: *clause*; **Changed**
+  `<key>`: *old clause* → *new clause*. A key present in both is compared on
+  its **expression, `where`, and options** (deep-equal, ignoring the
+  options object's own key order — an array inside stays order-sensitive, a
+  list is a list) and, matching on all three, is not listed: reordering
+  clauses in the file, or re-quoting/re-spacing an option's value with the
+  same meaning, is never a change (the fingerprint that decides whether a
+  version exists at all already ignores both). Options are compared and
+  rendered because a version is recorded when one changes on its own — a
+  `valid_values: [a, b, c]` → `[a, b]` edit with the expression and `where`
+  untouched — and leaving them out would show "no change" for exactly the
+  edit Priya needs to see. tablewatch does not try to label *what kind* of
+  change it was (a `where` edit and a threshold edit can land in the same
+  version); the full old → new text answers Priya's question either way.
+  **`renderClause`**: the expression, then " where *text*" when `where` is
+  set, then each option as `key: value` (sorted by key, a short one inline
+  after a `; `, a long one — typically `query:` or `condition:`, past 48
+  characters — on its own line) so a clause with no options renders exactly
+  as before. "No visible clause change." is a defensive fallback for a
+  version whose fingerprint differs by something this comparison does not
+  yet reach, not a state any of today's checks can reach.
+- **Compactness**: the newest 3 versions are always open; beyond that, a
+  `<details>` disclosure ("*n* earlier versions") holds the rest, each
+  diffed against *its* previous version (not the newest), so opening it
+  reads the same history the check actually has.
+- **No definitions recorded**: "No definition recorded yet." (an empty
+  `items`, e.g. an active check sync has not yet registered under spec
+  038's rules, or whose history predates this feature entirely).
+- **Loading/failure** follow the SQL/Source table (§4A.9), with one change:
+  a 404 is expected ("No definitions are recorded: this check is not in the
+  loaded check files or the results store.") only when `/checks/{id}` itself
+  is 404 (`checkMissing` — no row exists at all); a 404 for a *retired*
+  check is a genuine failure (its row should exist), unlike SQL/Source.
+
+**The chart** marks a definition-version change independently (§4A.6.4),
+from `HistoryEntry.definition_version` (nullable, spec 038 S7) on
+`/checks/{id}/history`; this section reads `/checks/{id}/definitions`
+instead. The two endpoints describe the same store rows from different
+angles — one per result, one per version — so the version numbers the chart
+marks line up with the ones this section lists, without either page
+reading the other's response.
 
 ## 4B. The check explorer (`/checks`)
 
@@ -1391,13 +1472,15 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | `test/sql.test.tsx` | spec 005 P1–P15 and S9 on the page: words, the wording guard on every fixture, schema, cannot compile, not loaded, section-scoped failures and a late `/sql` after Refresh, text is text, copy / Copied / refused / Select all, P10, `#sql`, regions, unknown kinds; the clipboard source rules |
 | `test/source.test.tsx` | spec 006 P4–P16 on the page: the block (one numbered span per line, `textContent === text`, blank lines, digits), the exact captions, below the SQL, `/project` failing, the wording guard on every fixture (lines exempt), not loaded, section-scoped failures and a late `/source` after Refresh, Try again, text is text, copy and Select all of the `<code>` only, `#source` / `#sql` / other fragments, the identity link, P13's filter sentences by `applies` and metric, P14's marked characters (U+202E, U+2028, U+200B path, BOM, ESC in a file name), P15, P16's region and CSS rules; `getCheckSource`'s URL |
 | `test/loaderror.test.tsx` | `LoadError`: unique `useId` ids, heading level, section wording |
-| `test/check.test.tsx` | spec 004 D1–D20 at component level, including the rendered chart (lanes, bands, markers, streak, tooltip by keyboard and pointer, label collisions) |
-| `test/chart.test.ts` | the chart's pure functions: the D6 bands table, the D10 tick table and domain cases, series and lanes (D5, D9), rule changes and the band's span (D7), recorded outcomes (D8), other metrics (D20), label stacking and rows, hover columns, tooltip placement, the key, x ticks, the summary (D11) |
+| `test/check.test.tsx` | spec 004 D1–D20 at component level, including the rendered chart (lanes, bands, markers, streak, tooltip by keyboard and pointer, label collisions); requests the seven check-page endpoints (adds `/definitions` to D1's six) |
+| `test/chart.test.ts` | the chart's pure functions: the D6 bands table, the D10 tick table and domain cases, series and lanes (D5, D9), rule changes and the band's span (D7), definition-change markers — null-next-to-a-number is not a change, numbering, the dashed marker, the legend and summary text, sharing rows with a rule change (spec 038 S8) —, recorded outcomes (D8), other metrics (D20), label stacking and rows, hover columns, tooltip placement, the key, x ticks, the summary (D11) |
+| `test/definitionDiff.test.ts` | `diffDefinition`/`renderClause` (spec 038, Q4): the first version has no diff, added/removed/changed, an unchanged clause (expression + where + options) is not shown, an option-only change is, options rendered compactly inline and a long one on its own line, options compared deep and ignoring key order while an array inside stays order-sensitive, reordering is not a change, order of the result |
+| `test/definition.test.tsx` | spec 038 S6/S8 on the page: empty and loading states, a 404 that means "not available" vs. a genuine failure (with Try again), the first version's clauses, "recorded by sync" vs. "from run `<id>`", changed/added/removed rendering including an option-only change, reordering, the latest-3-open/rest-behind-a-disclosure compactness, the chart's definition marker and caption end to end |
 | `test/polish.test.tsx` | spec 012: "Current" from the band's run (K1–K4), "No value measured" everywhere and its one source (L1–L4, including a non-finite value), `between` boundary labels and `formatThreshold` (B1–B6), right-label sides and gaps (B7), the latest label near its mark on the four B7 fixtures (B8), the stack function's ranks and per-pair gaps, sticky numbers in CSS and generated content (N1) |
 | `test/route.test.ts` | the route table and `checkHref` (decision 7) |
 | `test/explorer.test.tsx` | spec 015 E1–E19 by scenario id: requests, the tree and its counts, order, open on load, the root rule, search fields, status toggles, the URL (`replaceState`, no new entry, restore, normal form), hostile queries, no match, no checks, load failure with Refresh and Try again, the overview link, the banner, 500 checks in 40 folders under 200 ms and no fetch while typing, the narrow-screen CSS. E20 (these docs) is checked in review: Vite will not import files outside `frontend/` |
 | `test/security.test.tsx` | X4 rendering, source rules (§9), the chart's source rules (decision 14) |
-| `test/retired.test.tsx` | spec 037 S12/S13: `lib/explorer.ts`'s retired helpers (`isRetired`, `matchesRetiredText`, `filterRetired`, the `retired=1` URL roundtrip); the explorer's "Show retired" toggle off by default, the Retired and Disabled badges together, the header count, the URL; a retired check's page header, "Retired since …", the last known file (present and omitted), latest result and history as for any check, no SQL/source failure noise |
+| `test/retired.test.tsx` | spec 037 S12/S13: `lib/explorer.ts`'s retired helpers (`isRetired`, `matchesRetiredText`, `filterRetired`, the `retired=1` URL roundtrip); the explorer's "Show retired" toggle off by default, the Retired and Disabled badges together, the header count, the URL; a retired check's page header, "Retired since …", the last known file (present and omitted), latest result and history as for any check, no SQL/source failure noise; the Definition section still shows (spec 038 S8) |
 | `test/contrast.test.ts` | the palette and the chart tokens, both schemes (§5) |
 | `test/lib.test.ts` | age boundaries and rounding, DST, absolute format, selection wording, status order and counts |
 | `test/api.test.ts` | the client: URLs, init, envelope errors, non-JSON, network failure |
@@ -1442,6 +1525,13 @@ its last result) or from nothing, for one registered but never run
 `checks` answer serves both the overview's request (no `state`) and the
 explorer's (`?state=active&state=disabled&state=retired`,
 `EXPLORER_CHECKS_URL`).
+`test/fixtures/definitions.ts` (spec 038) has three small builders,
+`clause`, `version` and `definitions`, used to build `DefinitionList`
+bodies inline per test rather than capturing real ones — there is no
+behaviour particular to one metric here, unlike SQL/Source. `test/render.tsx`'s
+`CheckServer.definitions` follows `sql`/`source`'s 404 rule (`defaultDefinitions`),
+except it answers `{ items: [] }` rather than a captured body, and does not
+read `retiredCheck` into that rule (§4A.12).
 
 ## 11. Known limits and follow-ups
 
@@ -1464,7 +1554,9 @@ explorer's (`?state=active&state=disabled&state=retired`,
 - Each age is a tab stop (hover/focus requirement of O4). A check list
   with hundreds of rows will want roving focus or a detail view instead.
   Revisit with I-04 and I-05.
-- History rows do not link to runs yet (I-15).
+- History rows do not link to runs yet (I-15). The Definition section's
+  "from run `<id>`" (spec 038 S8, §4A.12) is text for the same reason — a
+  run id with nowhere to go would be a link that does nothing.
 - **The Source block by hand (spec 006 P16).** At a 360 px viewport with a
   200-character line the page must not scroll sideways and each number
   must stay level with its line; real text selection must not pick up the

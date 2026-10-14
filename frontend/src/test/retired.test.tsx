@@ -202,6 +202,7 @@ describe("S13: a retired check's page", () => {
           display_value: RETIRED_RAN.latest?.display_value ?? "20.00%",
           message: RETIRED_RAN.latest?.message ?? null,
           duration_ms: 3.2,
+          definition_version: null,
           name: RETIRED_RAN.name,
           expression: RETIRED_RAN.expression,
           source: RETIRED_RAN.last_known_location,
@@ -220,6 +221,11 @@ describe("S13: a retired check's page", () => {
     expect(screen.queryByRole("region", { name: "Source" })).toBeNull();
     expect(document.getElementById("sql")).toBeNull();
     expect(document.getElementById("source")).toBeNull();
+  });
+
+  it("shows the Definition section too (spec 038 S8): it comes from the store, not a file", async () => {
+    await renderRetiredCheck(RETIRED_RAN, ok({ items: [], next_cursor: null }));
+    expect(screen.getByRole("region", { name: "Definition" })).toBeTruthy();
   });
 
   it("does not request /sql or /source as a failure: the status line stays clean", async () => {

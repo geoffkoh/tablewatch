@@ -59,6 +59,10 @@ export function chartSummary({ entries, series, rule, pending, more }: SummaryIn
     const k = series.ruleChanges.length;
     sentences.push(`The rule changed ${k === 1 ? "once" : `${String(k)} times`}.`);
   }
+  if (series.definitionChanges.length > 0) {
+    const k = series.definitionChanges.length;
+    sentences.push(`The definition changed ${k === 1 ? "once" : `${String(k)} times`}.`);
+  }
   if (rule !== null) {
     sentences.push(`Current rule: ${ruleSentence(rule)}${pending ? ", not yet used by any run" : ""}.`);
   } else {

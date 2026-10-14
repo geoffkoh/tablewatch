@@ -41,6 +41,11 @@ export type BetweenCondition = Schemas["BetweenCondition"];
 export type Condition = CompareCondition | BetweenCondition;
 export type HistoryEntry = Schemas["HistoryEntry"];
 export type HistoryPage = Schemas["HistoryPage"];
+/** One version of a check's definition (spec 038), newest first in `DefinitionList`. */
+export type Definition = Schemas["Definition"];
+/** One clause of a definition version, as it was written. */
+export type DefinitionClause = Schemas["DefinitionClause"];
+export type DefinitionList = Schemas["DefinitionList"];
 /** A metric's unit; `null` on a history entry whose metric this version does not know. */
 export type Unit = CheckSummary["unit"];
 

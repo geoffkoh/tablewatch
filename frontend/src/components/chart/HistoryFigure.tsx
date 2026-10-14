@@ -9,7 +9,7 @@ import type { HistoryEntry, Rule } from "../../api/types";
 import { unitLabel } from "../../lib/chart/format";
 import type { ChartModel } from "../../lib/chart/layout";
 import { legendItems } from "../../lib/chart/legend";
-import type { RuleChange } from "../../lib/chart/series";
+import type { DefinitionChange, RuleChange } from "../../lib/chart/series";
 import { ruleSentence } from "../../lib/rule";
 import { absolute } from "../../lib/time";
 import { ChartKey } from "./ChartKey";
@@ -40,6 +40,15 @@ function ChangeCaption({ change, numbered }: { change: RuleChange; numbered: boo
   );
 }
 
+function DefinitionChangeCaption({ change, numbered }: { change: DefinitionChange; numbered: boolean }): ReactElement {
+  return (
+    <li data-definition-change={change.number}>
+      {numbered ? `Definition change ${String(change.number)}: between runs ` : "Definition changed between runs "}
+      <RunTime entry={change.older} /> and <RunTime entry={change.newer} />, to version {change.version}.
+    </li>
+  );
+}
+
 interface HistoryFigureProps {
   model: ChartModel;
   title: string;
@@ -55,6 +64,7 @@ interface HistoryFigureProps {
 export function HistoryFigure({ model, title, summary, rule, pending, partialCount }: HistoryFigureProps): ReactElement {
   const { series } = model;
   const changes = series.ruleChanges;
+  const definitionChanges = series.definitionChanges;
   const k = series.offAxis.length;
   return (
     <figure className="chart">
@@ -81,6 +91,9 @@ export function HistoryFigure({ model, title, summary, rule, pending, partialCou
           )}
           {changes.map((c) => (
             <ChangeCaption key={c.number} change={c} numbered={changes.length > 1} />
+          ))}
+          {definitionChanges.map((c) => (
+            <DefinitionChangeCaption key={c.number} change={c} numbered={definitionChanges.length > 1} />
           ))}
           {k > 0 && (
             <li data-caption="other-metric">

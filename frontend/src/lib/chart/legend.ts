@@ -34,7 +34,10 @@ export function legendItems(model: ChartModel): KeyItem[] {
   if (model.bands.some((b) => b.severity === "warn") || model.lines.some((l) => l.severity === "warn")) {
     items.push({ kind: "band", key: "band-warn", severity: "warn", label: "Warns under the current rule" });
   }
-  if (model.markers.length > 0) items.push({ kind: "marker", key: "marker", label: "Rule changed between two runs" });
+  if (model.markers.some((m) => m.kind === "rule"))
+    items.push({ kind: "marker", key: "marker-rule", label: "Rule changed between two runs" });
+  if (model.markers.some((m) => m.kind === "definition"))
+    items.push({ kind: "marker", key: "marker-definition", label: "Definition changed between two runs" });
   if (model.streak !== null) items.push({ kind: "streak", key: "streak", label: "The current streak" });
   return items;
 }

@@ -11,6 +11,7 @@ import type {
   CheckSource,
   CheckSql,
   CheckState,
+  DefinitionList,
   ErrorBody,
   ErrorCode,
   HistoryPage,
@@ -160,4 +161,12 @@ export function getCheckSql(id: string): Promise<CheckSql> {
  */
 export function getCheckSource(id: string): Promise<CheckSource> {
   return get<CheckSource>(`/checks/${encodeURIComponent(id)}/source`);
+}
+
+/**
+ * `GET /api/v1/checks/{id}/definitions`: the check's definition versions,
+ * newest first (spec 038). Works for a retired check too.
+ */
+export function getDefinitions(id: string): Promise<DefinitionList> {
+  return get<DefinitionList>(`/checks/${encodeURIComponent(id)}/definitions`);
 }

@@ -312,6 +312,70 @@ describe("D7: rule changes and the band's span", () => {
   });
 });
 
+describe("spec 038 S8: definition-change markers", () => {
+  it("null next to a number is not a change; the same version twice is not either", () => {
+    const hist = [
+      entry(emailSummary, "F", { value: 20, display_value: "20.00%", definition_version: 2 }),
+      entry(emailSummary, "B", { value: 20, display_value: "20.00%", definition_version: 2 }),
+      entry(emailSummary, "A", { value: 20, display_value: "20.00%", definition_version: null }),
+    ];
+    const s = buildSeries(hist, EMAIL);
+    expect(s.definitionChanges).toHaveLength(0);
+  });
+
+  it("a differing version between neighbours is one change, carrying the newer version", () => {
+    const hist = [
+      entry(emailSummary, "F", { value: 20, display_value: "20.00%", definition_version: 3 }),
+      entry(emailSummary, "A", { value: 20, display_value: "20.00%", definition_version: 1 }),
+    ];
+    const s = buildSeries(hist, EMAIL);
+    expect(s.definitionChanges).toHaveLength(1);
+    expect(s.definitionChanges[0]).toMatchObject({ version: 3, older: hist[1], newer: hist[0] });
+  });
+
+  it("A(1) -> B(2) -> A(1) gives two markers, numbered oldest first", () => {
+    const hist = [
+      entry(emailSummary, "F", { value: 20, display_value: "20.00%", definition_version: 1 }),
+      entry(emailSummary, "B", { value: 20, display_value: "20.00%", definition_version: 2 }),
+      entry(emailSummary, "A", { value: 20, display_value: "20.00%", definition_version: 1 }),
+    ];
+    const s = buildSeries(hist, EMAIL);
+    expect(s.definitionChanges.map((c) => [c.number, c.version])).toEqual([
+      [1, 2],
+      [2, 1],
+    ]);
+  });
+
+  it("draws a marker labelled 'definition v2', named in the legend and the summary", () => {
+    const hist = [
+      entry(emailSummary, "F", { value: 20, display_value: "20.00%", definition_version: 2 }),
+      entry(emailSummary, "A", { value: 20, display_value: "20.00%", definition_version: 1 }),
+    ];
+    const model = layoutChart({ entries: hist, check: EMAIL, rule: null, streak: null });
+    const marker = model.markers.find((m) => m.kind === "definition");
+    expect(marker?.label).toBe("definition v2");
+    expect(legendItems(model).map((i) => i.label)).toContain("Definition changed between two runs");
+    const summary = chartSummary({ entries: hist, series: model.series, rule: null, pending: false, more: false });
+    expect(summary).toContain("The definition changed once.");
+  });
+
+  it("a rule change and a definition change between the same two runs get separate rows", () => {
+    const hist = [
+      entry(emailSummary, "F", { value: 20, display_value: "20.00%", definition_version: 2 }),
+      entry(emailSummary, "A", {
+        expression: "missing_percent(email) < 25%",
+        value: 20,
+        display_value: "20.00%",
+        definition_version: 1,
+      }),
+    ];
+    const model = layoutChart({ entries: hist, check: EMAIL, rule: null, streak: null });
+    expect(model.markers.map((m) => m.kind).sort()).toEqual(["definition", "rule"]);
+    const labelYs = new Set(model.markers.map((m) => m.labelY));
+    expect(labelYs.size).toBe(2);
+  });
+});
+
 describe("D8: marks keep the recorded outcome", () => {
   it("A passed under < 25%; its mark is pass although 20 is in today's failing region", () => {
     const model = layoutChart({ entries: threeRules.history.items, check: current(threeRules.check), rule: threeRules.check.rule, streak: null });

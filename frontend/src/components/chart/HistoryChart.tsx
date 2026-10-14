@@ -144,7 +144,7 @@ export function HistoryChart({ model, title, summary }: HistoryChartProps): Reac
         )}
 
         {model.markers.map((m) => (
-          <g key={`m${String(m.number)}`} className="chart__marker" data-marker={m.number}>
+          <g key={m.key} className={`chart__marker chart__marker--${m.kind}`} data-marker={m.number} data-kind={m.kind}>
             <line x1={m.x} x2={m.x} y1={m.y0} y2={m.y1} />
             <text className="chart__label" x={m.labelX} y={m.labelY} dy="0.32em">
               {m.label}

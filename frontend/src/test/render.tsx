@@ -128,6 +128,12 @@ export interface CheckServer {
    * check is not loaded, otherwise the captured body for the id or a generic one.
    */
   source?: Answer;
+  /**
+   * `/checks/{id}/definitions` (spec 038). Unlike `sql`/`source` it comes from
+   * the results store, not a file, so it answers for a retired check too; by
+   * default, an empty list (most tests do not care about definition history).
+   */
+  definitions?: Answer;
   /** Later history pages, by cursor. */
   older?: Record<string, Answer>;
 }
@@ -140,6 +146,7 @@ export function checkUrls(id: string): {
   runs: string;
   sql: string;
   source: string;
+  definitions: string;
 } {
   const enc = encodeURIComponent(id);
   return {
@@ -149,6 +156,7 @@ export function checkUrls(id: string): {
     runs: URLS.runs,
     sql: `/api/v1/checks/${enc}/sql`,
     source: `/api/v1/checks/${enc}/source`,
+    definitions: `/api/v1/checks/${enc}/definitions`,
   };
 }
 
@@ -170,6 +178,17 @@ export function defaultSource(id: string, check: Answer | undefined): Answer {
   if (check === undefined || (check !== "network-error" && check.status === 404)) return notFound();
   const captured = SOURCE_BY_ID[id];
   return ok(captured === undefined ? genericSource(id) : { ...captured, check_id: id });
+}
+
+/**
+ * The default `/definitions` answer: 404 only when `/checks/{id}` itself is
+ * 404 (no row at all); an empty list otherwise, including for a retired
+ * check, which has no file but may still have a store row (see
+ * `CheckServer.definitions`).
+ */
+export function defaultDefinitions(check: Answer | undefined): Answer {
+  if (check === undefined || (check !== "network-error" && check.status === 404)) return notFound();
+  return ok({ items: [] });
 }
 
 export function olderUrl(id: string, cursor: string): string {
@@ -195,6 +214,7 @@ export function stubCheckServer(id: string, server: CheckServer, base: OverviewR
     [urls.runs]: server.runs ?? ok(base.runs),
     [urls.sql]: server.sql ?? defaultSql(id, server.check),
     [urls.source]: server.source ?? defaultSource(id, server.check),
+    [urls.definitions]: server.definitions ?? defaultDefinitions(server.check),
   };
   for (const [cursor, answer] of Object.entries(server.older ?? {})) answers[olderUrl(id, cursor)] = answer;
   const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {

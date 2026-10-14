@@ -23,7 +23,7 @@ function Swatch({ item }: { item: KeyItem }): ReactElement {
       break;
     case "marker":
       inner = (
-        <g className="chart__marker">
+        <g className={`chart__marker${item.key === "marker-definition" ? " chart__marker--definition" : ""}`}>
           <line x1="8" x2="8" y1="0" y2="16" />
         </g>
       );

@@ -778,6 +778,11 @@ a {
   fill: none;
 }
 
+/* A definition change is a dashed line, next to a rule change's solid one. */
+.chart__marker--definition line {
+  stroke-dasharray: 2 2;
+}
+
 .chart__crosshair {
   stroke: var(--tw-text-muted);
   stroke-width: 1;
@@ -882,6 +887,62 @@ a {
 .history-table__note {
   display: block;
   font-size: 0.8125rem;
+}
+
+/* Definition history (spec 038) */
+
+.definition__versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.definition__version + .definition__version {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--tw-border);
+}
+
+.definition__meta {
+  margin: 0 0 0.375rem;
+}
+
+.definition__clauses,
+.definition__changes {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.definition__clauses li,
+.definition__changes li {
+  margin: 0.125rem 0;
+  overflow-wrap: anywhere;
+}
+
+/* A rendered clause may carry a long option (`query:`, `condition:`) on its
+   own line (an embedded "\n"); `pre-wrap` keeps it visible without turning
+   the `<code>` into a block. */
+.definition__clauses code,
+.definition__changes code {
+  white-space: pre-wrap;
+}
+
+.definition__key {
+  font-weight: 600;
+}
+
+.definition__flag {
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.definition__older {
+  margin-top: 0.75rem;
+}
+
+.definition__older .definition__versions {
+  margin-top: 0.75rem;
 }
 
 /* Narrow screens: one check per block, labels from the cells' order. */

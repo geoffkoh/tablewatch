@@ -14,6 +14,10 @@
  *   anything in between (D5).
  * - A rule-change marker sits between every two consecutive entries whose
  *   recorded `expression` (or `dataset`) differs (D7, D20).
+ * - A definition-change marker sits between every two consecutive entries
+ *   whose recorded `definition_version` differs, when both are known (spec
+ *   038 S8): `null` next to a number is not a change, since it only says
+ *   the older result predates definitions being kept.
  * - The current rule's band covers only the newest run of entries whose
  *   recorded `expression` equals the check's; if the newest entry was judged
  *   by another rule (an edit not yet run), no band is drawn (D7). That run is
@@ -48,6 +52,17 @@ export interface RuleChange {
   datasetChanged: boolean;
 }
 
+export interface DefinitionChange {
+  /** 1-based, oldest first. */
+  number: number;
+  /** Midway between the two runs. */
+  t: number;
+  older: HistoryEntry;
+  newer: HistoryEntry;
+  /** The newer entry's version; never null (the pair that made this change both are). */
+  version: number;
+}
+
 export interface CurrentCheck {
   metric: string;
   unit: Unit;
@@ -65,6 +80,7 @@ export interface Series {
   /** Metrics of the values left off the axis, in first-seen order. */
   otherMetrics: string[];
   ruleChanges: RuleChange[];
+  definitionChanges: DefinitionChange[];
   /** The metric on the y-axis, or null when nothing can be plotted on one axis. */
   axisMetric: string | null;
   axisUnit: Unit | null;
@@ -151,6 +167,24 @@ export function buildSeries(entries: readonly HistoryEntry[], check: CurrentChec
     }
   }
 
+  const definitionChanges: DefinitionChange[] = [];
+  for (let i = 1; i < points.length; i += 1) {
+    const older = points[i - 1];
+    const newer = points[i];
+    if (older === undefined || newer === undefined) continue;
+    const prior = older.entry.definition_version;
+    const next = newer.entry.definition_version;
+    if (prior !== null && next !== null && prior !== next) {
+      definitionChanges.push({
+        number: definitionChanges.length + 1,
+        t: (older.t + newer.t) / 2,
+        older: older.entry,
+        newer: newer.entry,
+        version: next,
+      });
+    }
+  }
+
   let band: Series["band"] = null;
   const currentRun = new Set<number>();
   const newest = points[points.length - 1];
@@ -179,6 +213,7 @@ export function buildSeries(entries: readonly HistoryEntry[], check: CurrentChec
     offAxis,
     otherMetrics: [...new Set(offAxis.map((p) => p.entry.metric))],
     ruleChanges,
+    definitionChanges,
     axisMetric: axis.metric,
     axisUnit: axis.unit,
     band,
