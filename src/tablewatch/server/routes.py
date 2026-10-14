@@ -183,6 +183,19 @@ def get_check_history(
     )
 
 
+@router.get("/checks/{check_id}/definitions", response_model=schemas.DefinitionList)
+def get_check_definitions(context: Context, check_id: str) -> schemas.DefinitionList:
+    """A check's definition versions, newest first: a retired check's too."""
+    if not _is_check_id(check_id):
+        raise _not_found("check")
+    rows = context.store.definitions(context.name, check_id)
+    if rows is None and context.check(check_id) is None:
+        raise _not_found("check")
+    return schemas.DefinitionList(
+        items=[schemas.Definition.of(row) for row in rows or []]
+    )
+
+
 @router.get("/checks/{check_id}/sql", response_model=schemas.CheckSql)
 def get_check_sql(context: Context, check_id: str) -> schemas.CheckSql:
     check = context.check(check_id) if _is_check_id(check_id) else None

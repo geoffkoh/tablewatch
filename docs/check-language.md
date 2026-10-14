@@ -404,6 +404,19 @@ so that runs only register the checks they record, and run `tablewatch
 sync` from the checkout that has every check. Never run `sync` from a
 branch missing checks the project has elsewhere.
 
+### Definition history
+
+A check keeps its id and history when its clauses change, so the store
+also keeps what it was told to check: a new **definition version** each
+time a recorded run or `sync` finds a clause added, removed, or changed in
+its expression, triggers, `where:` or options. Each result records the
+version it ran under, so the check's page can show whether a change in
+outcome came with a change in the rule. Not a new version: moving or
+reformatting the file, reordering clauses, changing whitespace or quoting,
+and changing `owner`, `tags`, `notify` or `enabled`. A change that is
+reverted is a version of its own (1, 2, 3), so the history reads as it
+happened.
+
 ## Change over time
 
 `change(<metric>)` compares a clause with the same clause's previous recorded

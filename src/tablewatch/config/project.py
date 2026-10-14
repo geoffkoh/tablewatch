@@ -153,6 +153,15 @@ class ResultsConfig(_Strict):
     # the project (lifecycle, spec 036); `manual`: only `tablewatch sync`
     # does, for stores shared by checkouts that differ.
     sync: Literal["on_run", "manual"] = "on_run"
+    # `auto`: a writer brings the store's schema up to date when it opens it;
+    # `never`: it refuses a store not at this version's schema, which is
+    # then managed outside tablewatch (`tablewatch store sql`, spec 038).
+    migrate: Literal["auto", "never"] = "auto"
+
+    @property
+    def managed(self) -> bool:
+        """Whether the schema is managed outside tablewatch (`never`)."""
+        return self.migrate == "never"
 
 
 # The results store keys every read on the project name and part 2 of spec

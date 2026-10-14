@@ -31,6 +31,7 @@ from tablewatch.checks.model import Check, Dataset, Outcome, check_outcome
 from tablewatch.engine.runner import CheckResult, RunResult, SkippedDataset, username
 from tablewatch.errors import TablewatchError
 from tablewatch.jsonvalues import utc
+from tablewatch.results.definitions import attach_definitions
 from tablewatch.results.heads import (
     forget_heads,
     lock_checks,
@@ -120,6 +121,7 @@ class KeyedRun:
         now: datetime,
         notify: bool = True,
         sync_checks: Sequence[Check] | None = None,
+        managed: bool = False,
     ) -> None:
         check_run_key(run_key)
         self.project = project
@@ -130,7 +132,7 @@ class KeyedRun:
         self._write = threading.Lock()
         self._lock: _Lock | None = None
         try:
-            self.store: ResultStore = open_store(url, project_root)
+            self.store: ResultStore = open_store(url, project_root, managed=managed)
         except StoreError as exc:
             raise RunKeyError(_reason(exc)) from exc
         try:
@@ -309,6 +311,7 @@ class KeyedRun:
             ):
                 forgotten = self._forget(session, dataset)
                 register_all(session, self.project, results, rows, finished)
+                attach_definitions(session, results, rows, self.run_id, finished)
                 session.add_all([*rows, record])
                 record_heads(session, rows, self.started_at)
                 # A check the earlier attempt recorded but this one did not

@@ -17,12 +17,17 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 revision: str = "0004"
 down_revision: str | None = "0003"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# It reads existing rows in Python, so it cannot be written as SQL from a
+# store that has them (`tablewatch store sql --from`, spec 038). From an
+# empty database, offline, there is nothing to read.
+READS_ROWS_IN_PYTHON = True
 
 # MAX_PROJECT_NAME when this revision was written; a migration never imports
 # a value that may change after it.
@@ -122,7 +127,7 @@ def upgrade() -> None:
         sa.Column("check_hash", sa.String(64), nullable=False),
         sa.UniqueConstraint("project", "check_hash"),
     )
-    moved = _clause_rows(op.get_bind())
+    moved = [] if context.is_offline_mode() else _clause_rows(op.get_bind())
     op.execute(
         sa.text(
             "DELETE FROM tablewatch_check_results WHERE metric <> :summary"

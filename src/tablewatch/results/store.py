@@ -56,6 +56,7 @@ from tablewatch.engine.executor import error_message
 from tablewatch.engine.runner import CheckResult, ResultSink, RunResult
 from tablewatch.jsonvalues import utc
 from tablewatch.results import registry
+from tablewatch.results.definitions import attach_definitions
 from tablewatch.results.errors import NewerStoreError as NewerStoreError
 from tablewatch.results.errors import NoStoreError as NoStoreError
 from tablewatch.results.errors import OlderStoreError as OlderStoreError
@@ -66,6 +67,7 @@ from tablewatch.results.heads import recompute, record_heads, state_of
 from tablewatch.results.models import (
     RETIRED,
     VERSION_TABLE,
+    CheckDefinitionRow,
     CheckHeadRow,
     CheckResultRow,
     CheckRow,
@@ -101,6 +103,15 @@ NEWER = "it was upgraded by a newer tablewatch — upgrade tablewatch to read it
 OLDER = (
     "it was written by an older tablewatch and is upgraded by the next "
     "`tablewatch run` or `serve`; reading never upgrades it"
+)
+# `results.migrate: never` (spec 038): the schema is someone else's to change.
+MANAGED_OLDER = (
+    "its schema is at revision {current}, this tablewatch needs {head} — apply "
+    "`tablewatch store sql --from {current}` or run `tablewatch store migrate`"
+)
+MANAGED_EMPTY = (
+    "it has no tablewatch tables and results.migrate is never — apply "
+    "`tablewatch store sql` or run `tablewatch store migrate`"
 )
 ENV_PLACEMENT = (
     "results.url can use ${env:} as the whole URL, or in its user, password, "
@@ -282,6 +293,55 @@ def _alembic_config() -> Config:
     return config
 
 
+class SchemaSqlError(Exception):
+    """`store sql` cannot write the upgrade asked for as SQL."""
+
+
+def schema_sql(since: str | None = None) -> str:
+    """The PostgreSQL that brings a store from revision `since` (an empty
+    database when None) to this version's schema, for a migration tool such
+    as Flyway or Liquibase to apply (spec 038).
+
+    Needs no database. Refuses an upgrade through a revision that reads
+    existing rows in Python (`READS_ROWS_IN_PYTHON`): from an empty
+    database there are none, but from a store that has them, SQL alone
+    cannot do what that revision does.
+    """
+    import io
+
+    from alembic.script import ScriptDirectory
+
+    config = _alembic_config()
+    scripts = ScriptDirectory.from_config(config)
+    known = [revision.revision for revision in scripts.walk_revisions()]
+    known.reverse()
+    head = known[-1]
+    if since is not None:
+        if since not in known:
+            raise SchemaSqlError(
+                f"no revision {since!r} — the revisions are {', '.join(known)}"
+            )
+        if since == head:
+            return (
+                f"-- the store is at {head}, this version's schema: nothing to apply\n"
+            )
+        for revision in known[known.index(since) + 1 :]:
+            module = scripts.get_revision(revision).module
+            if getattr(module, "READS_ROWS_IN_PYTHON", False):
+                raise SchemaSqlError(
+                    f"revision {revision} reads existing rows and cannot be written "
+                    "as SQL — upgrade this store once with `tablewatch store migrate`"
+                )
+    buffer = io.StringIO()
+    config.output_buffer = buffer
+    command.upgrade(config, f"{since}:head" if since else "head", sql=True)
+    start = f"revision {since}" if since else "an empty database"
+    return (
+        f"-- tablewatch results store, PostgreSQL: from {start} to {head}\n"
+        + buffer.getvalue()
+    )
+
+
 def result_rows(results: Iterable[CheckResult]) -> list[CheckResultRow]:
     """The rows recording `results`, each checked against its columns."""
     rows = []
@@ -384,12 +444,15 @@ class ResultStore:
             )
             return context.get_current_revision(), known
 
-    def require_current(self, oldest: str | None = None) -> None:
+    def require_current(
+        self, oldest: str | None = None, *, managed: bool = False
+    ) -> None:
         """For a read: `NoStoreError` if nothing was ever recorded,
         `OlderStoreError` or `NewerStoreError` if the schema differs.
 
         `oldest` accepts an older store from that revision on: a read that
-        needs only what that revision already holds.
+        needs only what that revision already holds. `managed`
+        (`results.migrate: never`) names how to upgrade it by hand.
         """
         schema = self.schema()
         if schema == "empty":
@@ -398,9 +461,26 @@ class ResultStore:
             current, known = self._revisions()
             if oldest is not None and known.index(str(current)) >= known.index(oldest):
                 return
-            raise OlderStoreError(f"results store: {OLDER}")
+            raise OlderStoreError(f"results store: {self._older(managed)}")
         if schema == "newer":
             raise NewerStoreError(f"results store: {NEWER}")
+
+    def require_writable(self) -> None:
+        """For a writer under `results.migrate: never`: the store must be at
+        this version's schema, which it never changes (spec 038)."""
+        schema = self.schema()
+        if schema == "empty":
+            raise NoStoreError(f"results store: {MANAGED_EMPTY}")
+        if schema == "older":
+            raise OlderStoreError(f"results store: {self._older(managed=True)}")
+        if schema == "newer":
+            raise NewerStoreError(f"results store: {NEWER}")
+
+    def _older(self, managed: bool) -> str:
+        if not managed:
+            return OLDER
+        current, known = self._revisions()
+        return MANAGED_OLDER.format(current=current, head=known[-1])
 
     def older_than(self, revision: str) -> bool:
         """Whether this store's schema predates `revision`, without migrating."""
@@ -491,9 +571,9 @@ class ResultStore:
         row.results = result_rows(run.results)
         fit_row(row)
         with Session(self.engine) as session, session.begin():
-            register_all(
-                session, run.project, run.results, row.results, datetime.now(UTC)
-            )
+            now = datetime.now(UTC)
+            register_all(session, run.project, run.results, row.results, now)
+            attach_definitions(session, run.results, row.results, run.id, now)
             session.add(row)
             record_heads(session, row.results, run.started_at)
 
@@ -877,11 +957,33 @@ class ResultStore:
             )
             .order_by(RunRow.started_at.desc(), RunRow.id.desc())
             .limit(limit)
+            .options(selectinload(CheckResultRow.definition))
         )
         with reading(self.engine), Session(self.engine) as session:
             return [
                 (result, run) for result, run in session.execute(statement).unique()
             ]
+
+    def definitions(
+        self, project: str, check_id: str
+    ) -> list[CheckDefinitionRow] | None:
+        """A check's definition versions, newest first (spec 038); None when
+        the registry has never heard of it."""
+        with reading(self.engine), Session(self.engine) as session:
+            registry_id = session.scalar(
+                select(CheckRow.id).where(
+                    CheckRow.project == project, CheckRow.check_hash == check_id
+                )
+            )
+            if registry_id is None:
+                return None
+            return list(
+                session.scalars(
+                    select(CheckDefinitionRow)
+                    .where(CheckDefinitionRow.check_id == registry_id)
+                    .order_by(CheckDefinitionRow.version.desc())
+                )
+            )
 
 
 _CHUNK = 500
@@ -999,16 +1101,26 @@ def open_store(
     create: bool = True,
     migrate: bool = True,
     oldest: str | None = None,
+    managed: bool = False,
 ) -> ResultStore:
     """Open the store, or raise `StoreError` without the URL.
 
     `create=False` raises `NoStoreError` for a store not yet created;
     `migrate=False` opens it only to read: its schema must be this version's,
     or at least `oldest` (`OlderStoreError`, or `NewerStoreError`,
-    otherwise), and it is never changed.
+    otherwise), and it is never changed. `managed` is `results.migrate:
+    never`: a writer opens the store as it is, never creating or upgrading
+    it, and refuses one not at this version's schema (spec 038).
     """
+    held = migrate and managed  # a writer that may not change the schema
     try:
-        store = ResultStore.open(url, project_root, create=create, migrate=migrate)
+        store = ResultStore.open(
+            url, project_root, create=create and not held, migrate=migrate and not held
+        )
+    except NoStoreError:
+        if held:
+            raise NoStoreError(f"results store: {MANAGED_EMPTY}") from None
+        raise
     except StoreError:
         raise
     except AlembicCommandError as exc:
@@ -1016,17 +1128,39 @@ def open_store(
         raise NewerStoreError(f"results store: {NEWER}") from exc
     except Exception as exc:
         raise StoreError(f"results store: {store_problem(url, exc)}") from exc
-    if not migrate:
-        try:
-            store.require_current(oldest)
-        except BaseException:
-            store.close()
-            raise
+    try:
+        if held:
+            store.require_writable()
+        elif not migrate:
+            store.require_current(oldest, managed=managed)
+    except BaseException:
+        store.close()
+        raise
     return store
 
 
+def migrate_store(url: str, project_root: Path) -> bool:
+    """Bring the store to this version's schema, whatever `results.migrate`
+    says (`tablewatch store migrate`, spec 038). False when it already was;
+    `StoreError` without the URL when it cannot be."""
+    try:
+        with ResultStore.open(url, project_root, migrate=False) as store:
+            if store.schema() == "current":
+                return False
+    except StoreError:
+        raise
+    except Exception as exc:
+        raise StoreError(f"results store: {store_problem(url, exc)}") from exc
+    with open_store(url, project_root):
+        return True
+
+
 def store_sink(
-    url: str, project_root: Path, *, sync_checks: Sequence[Check] | None = None
+    url: str,
+    project_root: Path,
+    *,
+    sync_checks: Sequence[Check] | None = None,
+    managed: bool = False,
 ) -> ResultSink:
     """A sink that records each run it receives in the store at `url`.
 
@@ -1038,7 +1172,7 @@ def store_sink(
 
     def record(run: RunResult) -> None:
         try:
-            with open_store(url, project_root) as store:
+            with open_store(url, project_root, managed=managed) as store:
                 store.save(run)
                 if sync_checks is not None:
                     store.sync(run.project, sync_checks, datetime.now(UTC))

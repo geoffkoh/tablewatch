@@ -16,7 +16,7 @@ from dataclasses import fields
 from datetime import datetime
 from typing import Annotated, Literal, assert_never, cast
 
-from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, WithJsonSchema
 
 from tablewatch import dsl
 from tablewatch._version import __version__
@@ -27,7 +27,12 @@ from tablewatch.engine.compiled import CompiledDataset, QueryUse, ScanUse
 from tablewatch.jsonvalues import JsonFloat, Timestamp
 from tablewatch.metrics.registry import get_metric
 from tablewatch.paths import scrub_paths
-from tablewatch.results.models import CHECK_METRIC, CheckResultRow, RunRow
+from tablewatch.results.models import (
+    CHECK_METRIC,
+    CheckDefinitionRow,
+    CheckResultRow,
+    RunRow,
+)
 from tablewatch.results.state import Evaluated
 from tablewatch.results.store import Latest, Retired
 from tablewatch.selection import Selection
@@ -545,6 +550,9 @@ class HistoryEntry(_Model):
     metric: str
     dataset: str
     unit: Unit | None  # None for a metric this version doesn't know
+    # The definition version it ran under (spec 038); null for a result
+    # recorded before definitions were kept.
+    definition_version: int | None
 
     @classmethod
     def of(cls, result: CheckResultRow, run: RunRow) -> HistoryEntry:
@@ -563,12 +571,55 @@ class HistoryEntry(_Model):
             metric=CHECK_METRIC,
             dataset=result.dataset,
             unit=_unit(CHECK_METRIC, result.unit),
+            definition_version=result.definition.version if result.definition else None,
         )
 
 
 class HistoryPage(_Model):
     items: list[HistoryEntry]
     next_cursor: str | None
+
+
+class DefinitionClause(_Model):
+    """One clause of a definition version, as it was written."""
+
+    key: str
+    expression: str  # with its triggers
+    where: str | None
+    options: dict[str, JsonValue]
+
+
+class Definition(_Model):
+    """One version of a check's definition (spec 038)."""
+
+    version: int
+    recorded_at: Timestamp
+    # The run that first carried it; null when a sync recorded it.
+    run_id: str | None
+    clauses: list[DefinitionClause]
+
+    @classmethod
+    def of(cls, row: CheckDefinitionRow) -> Definition:
+        return cls(
+            version=row.version,
+            recorded_at=row.recorded_at,
+            run_id=row.run_id,
+            clauses=[
+                DefinitionClause(
+                    key=clause["key"],
+                    expression=clause["expression"],
+                    where=clause["where"],
+                    options=clause["options"],
+                )
+                for clause in row.definition["clauses"]
+            ],
+        )
+
+
+class DefinitionList(_Model):
+    """A check's definition versions, newest first."""
+
+    items: list[Definition]
 
 
 class Counts(_Model):

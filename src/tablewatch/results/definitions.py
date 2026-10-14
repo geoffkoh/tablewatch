@@ -1,0 +1,150 @@
+"""Each check's definition history (spec 038).
+
+A check keeps its id and history when its clauses change (spec 032), so
+the store keeps what it was told to check at each point: a new version
+whenever what a clause measures or how it judges changes. What it is not
+(where it is written, the order of its clauses, who owns it, whom it
+notifies, whether it is enabled) never makes a version.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Iterable, Mapping
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from tablewatch.checks.model import Check
+from tablewatch.engine.runner import CheckResult
+from tablewatch.results.inserts import insert_unless_present
+from tablewatch.results.models import CheckDefinitionRow, CheckResultRow
+
+
+def definition_of(check: Check) -> dict[str, Any]:
+    """What `check` checks: its clauses as written, in file order."""
+    return {
+        "clauses": [
+            {
+                "key": clause.key,
+                "expression": clause.canonical,
+                "where": clause.where,
+                # Through JSON: an option may be a date, stored as its text.
+                "options": json.loads(json.dumps(clause.options, default=str)),
+            }
+            for clause in check.clauses
+        ]
+    }
+
+
+def fingerprint(definition: Mapping[str, Any]) -> str:
+    """The definition's identity: clauses by key, text with whitespace
+    collapsed, so reordering or re-spacing is not a change."""
+    clauses = sorted(definition["clauses"], key=lambda clause: str(clause["key"]))
+    text = json.dumps(_collapsed(clauses), sort_keys=True, default=str)
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _collapsed(value: Any) -> Any:
+    if isinstance(value, str):
+        return " ".join(value.split())
+    if isinstance(value, list):
+        return [_collapsed(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _collapsed(v) for k, v in value.items()}
+    return value
+
+
+def record_definitions(
+    session: Session,
+    checks: Mapping[int, Check],
+    run_id: str | None,
+    now: datetime,
+) -> dict[int, int]:
+    """The definition id of each registered check, recording a new version
+    where its definition differs from its latest.
+
+    `checks` maps registry ids to checks. Two writers recording one new
+    version meet on `UNIQUE(check_id, version)`: the loser reads the
+    winner's row and uses it when it is the same definition, or tries the
+    next version when it is not (spec 038 D1). Checks go in registry id
+    order, so two writers wait on each other in one order.
+    """
+    if not checks:
+        return {}
+    newest = (
+        select(
+            CheckDefinitionRow.check_id,
+            func.max(CheckDefinitionRow.version).label("version"),
+        )
+        .where(CheckDefinitionRow.check_id.in_(sorted(checks)))
+        .group_by(CheckDefinitionRow.check_id)
+        .subquery()
+    )
+    latest = {
+        row.check_id: row
+        for row in session.execute(
+            select(
+                CheckDefinitionRow.check_id,
+                CheckDefinitionRow.id,
+                CheckDefinitionRow.version,
+                CheckDefinitionRow.fingerprint,
+            ).join(
+                newest,
+                (CheckDefinitionRow.check_id == newest.c.check_id)
+                & (CheckDefinitionRow.version == newest.c.version),
+            )
+        )
+    }
+    ids: dict[int, int] = {}
+    for check_id in sorted(checks):
+        definition = definition_of(checks[check_id])
+        wanted = fingerprint(definition)
+        found = latest.get(check_id)
+        if found is not None and found.fingerprint == wanted:
+            ids[check_id] = found.id
+            continue
+        version = 1 if found is None else found.version + 1
+        while True:
+            insert_unless_present(
+                session,
+                CheckDefinitionRow,
+                {
+                    "check_id": check_id,
+                    "version": version,
+                    "fingerprint": wanted,
+                    "definition": definition,
+                    "recorded_at": now,
+                    "run_id": run_id,
+                },
+            )
+            row_id, stored = session.execute(
+                select(CheckDefinitionRow.id, CheckDefinitionRow.fingerprint).where(
+                    CheckDefinitionRow.check_id == check_id,
+                    CheckDefinitionRow.version == version,
+                )
+            ).one()
+            if stored == wanted:
+                ids[check_id] = row_id
+                break
+            version += 1  # another writer recorded a different definition
+    return ids
+
+
+def attach_definitions(
+    session: Session,
+    results: Iterable[CheckResult],
+    rows: Iterable[CheckResultRow],
+    run_id: str,
+    now: datetime,
+) -> None:
+    """Point each registered result row at its check's definition."""
+    pairs = list(zip(results, rows, strict=True))
+    ids = record_definitions(
+        session, {row.check_id: r.check for r, row in pairs}, run_id, now
+    )
+    for _, row in pairs:
+        row.definition_id = ids[row.check_id]

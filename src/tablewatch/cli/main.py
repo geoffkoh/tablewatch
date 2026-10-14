@@ -68,7 +68,14 @@ from tablewatch.output import REPORTERS, console
 from tablewatch.results import ResultStore
 from tablewatch.results.keyed import RunKeyError, check_run_key
 from tablewatch.results.registry import ChangeKind, NothingToSyncError
-from tablewatch.results.store import NoStoreError, StoreError, open_store
+from tablewatch.results.store import (
+    NoStoreError,
+    SchemaSqlError,
+    StoreError,
+    migrate_store,
+    open_store,
+    schema_sql,
+)
 from tablewatch.selection import Selection, SelectionError, select_checks
 
 EXIT_OK = 0
@@ -199,7 +206,11 @@ def _reading_store(project: Project) -> Iterator[ResultStore | None]:
     """
     try:
         with open_store(
-            project.config.results.url, project.root, create=False, migrate=False
+            project.config.results.url,
+            project.root,
+            create=False,
+            migrate=False,
+            managed=project.config.results.managed,
         ) as store:
             yield store
     except NoStoreError:
@@ -694,7 +705,11 @@ def serve(
     try:
         if not is_persistent(project.config.results.url):
             _fail("serve needs a results store on disk, not an in-memory database")
-        store = open_store(project.config.results.url, project.root)
+        store = open_store(
+            project.config.results.url,
+            project.root,
+            managed=project.config.results.managed,
+        )
     except StoreError as exc:
         # The store module's reasons never hold the URL or driver text (that
         # goes to -v), so they are shown as they are.
@@ -816,7 +831,11 @@ def sync(ctx: click.Context) -> None:
     """
     project = _project(ctx)
     try:
-        with open_store(project.config.results.url, project.root) as store:
+        with open_store(
+            project.config.results.url,
+            project.root,
+            managed=project.config.results.managed,
+        ) as store:
             report = store.sync(project.config.name, project.checks, datetime.now(UTC))
     except NothingToSyncError as exc:
         _fail(str(exc))
@@ -937,6 +956,56 @@ def report(ctx: click.Context, run_id: str | None, output_file: Path | None) -> 
     if not _write_output(output_file, render(view)):
         return
     click.echo(f"wrote {output_file} (run {view.run_id[:12]})")
+
+
+@cli.group()
+def store() -> None:
+    """Manage the results store's schema.
+
+    By default a recorded run, `sync` or `serve` brings the schema up to
+    date itself. With `results.migrate: never` the schema is managed outside
+    tablewatch: apply `store sql` with a migration tool, or run `store
+    migrate`.
+    """
+
+
+@store.command("sql")
+@click.option(
+    "--from",
+    "since",
+    metavar="REVISION",
+    help="The store's current revision; an empty database when left out.",
+)
+def store_sql(since: str | None) -> None:
+    """Print the PostgreSQL that brings a store to this version's schema.
+
+    For Flyway, Liquibase or a DBA to apply. Reads no project and connects
+    to nothing; the output has no BEGIN/COMMIT, so the tool that applies it
+    owns the transaction. Exit 3 when the upgrade cannot be written as SQL.
+    """
+    try:
+        text_ = schema_sql(since)
+    except SchemaSqlError as exc:
+        _fail(str(exc))
+    click.echo(text_, nl=False)
+
+
+@store.command("migrate")
+@click.pass_context
+def store_migrate(ctx: click.Context) -> None:
+    """Bring the project's results store to this version's schema.
+
+    Upgrades whatever `results.migrate` says: 0 when upgraded or already
+    current, 2 when the store could not be used, 3 when the project is
+    invalid.
+    """
+    project = _project(ctx)
+    try:
+        upgraded = migrate_store(project.config.results.url, project.root)
+    except StoreError as exc:
+        reason = str(exc).removeprefix("results store: ")
+        _fail(f"could not migrate the results store: {reason}", EXIT_CHECK_ERROR)
+    click.echo(f"results store: {'upgraded' if upgraded else 'already current'}")
 
 
 @cli.command()
