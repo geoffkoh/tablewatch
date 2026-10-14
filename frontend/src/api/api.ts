@@ -15,6 +15,7 @@ import type {
   ErrorBody,
   ErrorCode,
   HistoryPage,
+  OutcomeFilter,
   Project,
   RunPage,
 } from "./types";
@@ -116,14 +117,16 @@ export function getProject(): Promise<Project> {
 }
 
 /**
- * `GET /api/v1/checks[?state=…]`: every check with its latest result. With
- * no `states`, the server's default (active and disabled, never retired).
- * `states` is repeated, one `state=` per value (spec 037).
+ * `GET /api/v1/checks[?state=…][&outcome=…]`: every check with its latest
+ * result. With no `states`, the server's default (active and disabled,
+ * never retired); with no `outcomes`, every outcome. Both are repeated, one
+ * parameter per value (spec 037, spec 039 P-D3), `state` first.
  */
-export function listChecks(states?: readonly CheckState[]): Promise<CheckList> {
-  if (states === undefined) return get<CheckList>("/checks");
-  const query = states.map((s) => `state=${encodeURIComponent(s)}`).join("&");
-  return get<CheckList>(`/checks?${query}`);
+export function listChecks(states?: readonly CheckState[], outcomes?: readonly OutcomeFilter[]): Promise<CheckList> {
+  const params: string[] = [];
+  for (const s of states ?? []) params.push(`state=${encodeURIComponent(s)}`);
+  for (const o of outcomes ?? []) params.push(`outcome=${encodeURIComponent(o)}`);
+  return get<CheckList>(params.length === 0 ? "/checks" : `/checks?${params.join("&")}`);
 }
 
 /** `GET /api/v1/runs?limit=N`: runs, newest first. */

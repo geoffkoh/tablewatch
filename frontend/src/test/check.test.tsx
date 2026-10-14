@@ -117,7 +117,7 @@ describe("D1: every check has a link, and the link survives a reload", () => {
     expect(screen.getByRole("link", { name: "Back to the overview" }).getAttribute("href")).toBe("/");
   });
 
-  it("requests the seven endpoints, with the id encoded", async () => {
+  it("requests the eight endpoints, with the id encoded", async () => {
     const id = "orders:volume";
     const detail: CheckDetail = { ...detailOf(interrupted, EMAIL), id };
     const fetchMock = stubCheckServer(id, { check: ok(detail), history: ok(emailHistory) });
@@ -125,7 +125,7 @@ describe("D1: every check has a link, and the link survives a reload", () => {
     await screen.findByRole("table");
     const urls = checkUrls(id);
     expect(fetchMock.mock.calls.map((c) => String(c[0])).sort()).toEqual(
-      [urls.project, urls.check, urls.history, urls.runs, urls.sql, urls.source, urls.definitions].sort(),
+      [urls.project, urls.check, urls.history, urls.runs, urls.sql, urls.source, urls.definitions, urls.problems].sort(),
     );
     expect(urls.sql).toBe("/api/v1/checks/orders%3Avolume/sql");
     expect(urls.source).toBe("/api/v1/checks/orders%3Avolume/source");
@@ -626,7 +626,7 @@ describe("D14: one load/refresh hook", () => {
     });
     const urls = checkUrls(EMAIL);
     expect(second.mock.calls.map((c) => String(c[0])).sort()).toEqual(
-      [urls.check, urls.history, urls.project, urls.runs, urls.sql, urls.source, urls.definitions].sort(),
+      [urls.check, urls.history, urls.project, urls.runs, urls.sql, urls.source, urls.definitions, urls.problems].sort(),
     );
     expect(historyRows()).toHaveLength(4);
   });

@@ -4,7 +4,9 @@
  * A page names its requests as independent slots. `reload` starts every slot
  * again; only the newest round may write state, so an older answer that
  * arrives late is dropped (the generation guard). `busy` is true until every
- * slot of the newest round has settled. A one-minute clock re-renders ages
+ * slot of the newest round has settled, except the `background` slots (the
+ * nav's problems count, spec 039 N3): those reload with the rest but never hold
+ * `busy`, so a slow one cannot keep the page "Loading…". A one-minute clock re-renders ages
  * and fetches nothing: the page never polls.
  *
  * Follow-up requests a page makes itself (for example "Load older results")
@@ -40,10 +42,12 @@ function loadingSlots<S>(requests: Requests<S>): Slots<S> {
   return slots;
 }
 
-export function useLoads<S>(requests: Requests<S>): Loads<S> {
+export function useLoads<S>(requests: Requests<S>, background: readonly (keyof S)[] = []): Loads<S> {
   // The latest request functions; reload always uses these.
   const latest = useRef(requests);
   latest.current = requests;
+  const backgroundRef = useRef(background);
+  backgroundRef.current = background;
   const [slots, setSlots] = useState<Slots<S>>(() => loadingSlots(requests));
   const [busy, setBusy] = useState(true);
   const [now, setNow] = useState(() => Date.now());
@@ -72,7 +76,8 @@ export function useLoads<S>(requests: Requests<S>): Loads<S> {
         },
       ),
     );
-    void Promise.all(settled).then(() => {
+    const waited = settled.filter((_, index) => !backgroundRef.current.includes(keys[index] as keyof S));
+    void Promise.all(waited).then(() => {
       if (current()) {
         setNow(Date.now());
         setBusy(false);

@@ -16,11 +16,14 @@ export const FACET_KEYS: readonly FacetKey[] = ["tag", "owner", "datasource"];
 
 /**
  * What the explorer shows: a search text, the selected statuses, the
- * selected tag, owner and datasource values, and whether retired checks are
+ * selected tag, owner and datasource values, the dataset names narrowed to
+ * (spec 039 P-D7, from the Datasets page), and whether retired checks are
  * added (spec 037, S12). None selected in a filter means all. The empty
  * value `""` stands for "No tags", "No owner", "No datasource" (decision 1).
- * `retired` is optional on a hand-built query (a stale test fixture, say);
- * every reader treats a missing value as `false`.
+ * `dataset` matches exactly (not "none": every check has one) and combines
+ * with OR, like a facet, but has no checkbox UI of its own — only a
+ * removable chip. `retired` is optional on a hand-built query (a stale test
+ * fixture, say); every reader treats a missing value as `false`.
  */
 export interface ExplorerQuery {
   q: string;
@@ -28,11 +31,20 @@ export interface ExplorerQuery {
   tag: string[];
   owner: string[];
   datasource: string[];
+  dataset: string[];
   retired?: boolean;
 }
 
 /** Nothing searched, nothing filtered, retired checks not shown. */
-export const EMPTY_QUERY: ExplorerQuery = { q: "", statuses: [], tag: [], owner: [], datasource: [], retired: false };
+export const EMPTY_QUERY: ExplorerQuery = {
+  q: "",
+  statuses: [],
+  tag: [],
+  owner: [],
+  datasource: [],
+  dataset: [],
+  retired: false,
+};
 
 /** The fieldset legend of each filter. */
 export const FACET_LEGENDS: Readonly<Record<FacetKey, string>> = {
@@ -97,8 +109,8 @@ function urlValues(values: readonly string[]): string[] {
 /**
  * The query from `location.search`. Unknown statuses are ignored; `q` and
  * filter values to 1,000 code points (E12, F12, decision 5). Unknown filter
- * values are kept: a stale link explains itself (F11, decision 2). `retired`
- * (S12) is on only for the exact value `1`.
+ * and dataset values are kept: a stale link explains itself (F11, decision
+ * 2). `retired` (S12) is on only for the exact value `1`.
  */
 export function parseExplorerQuery(search: string): ExplorerQuery {
   const params = new URLSearchParams(search);
@@ -108,13 +120,15 @@ export function parseExplorerQuery(search: string): ExplorerQuery {
     tag: urlValues(params.getAll("tag")),
     owner: urlValues(params.getAll("owner")),
     datasource: urlValues(params.getAll("datasource")),
+    dataset: urlValues(params.getAll("dataset")),
     retired: params.get("retired") === "1",
   };
 }
 
 /**
  * The query as a `location.search` string, parameters in the order `q`,
- * `status`, `tag`, `owner`, `datasource`, `retired` (F10; `retired` is new in
+ * `status`, `tag`, `owner`, `datasource`, `dataset`, `retired` (F10;
+ * `dataset` is new in spec 039 and sits after the facets, `retired` new in
  * spec 037 and sits last), or "" for everything. A search of only spaces is
  * no search.
  */
@@ -123,6 +137,7 @@ export function explorerSearch(query: ExplorerQuery): string {
   if (query.q.trim() !== "") params.set("q", cutQuery(query.q));
   for (const status of orderStatuses(query.statuses)) params.append("status", status);
   for (const key of FACET_KEYS) for (const value of orderValues(query[key])) params.append(key, value);
+  for (const value of orderValues(query.dataset)) params.append("dataset", value);
   if (query.retired === true) params.set("retired", "1");
   const text = params.toString();
   return text === "" ? "" : `?${text}`;
@@ -130,7 +145,12 @@ export function explorerSearch(query: ExplorerQuery): string {
 
 /** True when the query narrows anything (F14). Showing retired checks (S12) does not narrow: it adds. */
 export function isFiltering(query: ExplorerQuery): boolean {
-  return query.q.trim() !== "" || query.statuses.length > 0 || FACET_KEYS.some((key) => query[key].length > 0);
+  return (
+    query.q.trim() !== "" ||
+    query.statuses.length > 0 ||
+    FACET_KEYS.some((key) => query[key].length > 0) ||
+    query.dataset.length > 0
+  );
 }
 
 /** A loaded `CheckList` item that is a retired check (spec 037). */
@@ -200,7 +220,9 @@ export function matchesText(check: CheckSummary, q: string): boolean {
 
 /**
  * The search and every filter together (E10, F5: AND across filters, OR
- * within one). `except` leaves one filter out, for that filter's counts (F6).
+ * within one), including the dataset chip (P-D7), which is always applied:
+ * it has no counted checkbox of its own to exclude itself for. `except`
+ * leaves one other filter out, for that filter's counts (F6).
  */
 export function filterChecks(
   checks: readonly CheckSummary[],
@@ -211,11 +233,13 @@ export function filterChecks(
   const facets = FACET_KEYS.filter((key) => key !== except && query[key].length > 0).map(
     (key) => [key, new Set(query[key])] as const,
   );
+  const datasets = new Set(query.dataset);
   return checks.filter(
     (c) =>
       matchesText(c, query.q) &&
       (statuses.size === 0 || statuses.has(statusOf(c))) &&
-      facets.every(([key, chosen]) => valuesOf(c, key).some((v) => chosen.has(v))),
+      facets.every(([key, chosen]) => valuesOf(c, key).some((v) => chosen.has(v))) &&
+      (datasets.size === 0 || datasets.has(c.dataset)),
   );
 }
 

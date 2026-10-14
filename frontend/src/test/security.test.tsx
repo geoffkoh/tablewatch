@@ -121,9 +121,20 @@ describe("source rules", () => {
   });
 
   it("keeps no API data in web storage and registers no service worker", () => {
-    for (const api of [j("local", "Storage"), j("session", "Storage"), j("indexed", "DB"), j("service", "Worker")]) {
+    // `lib/navPreference.ts` is the one app-source exception (spec 039,
+    // P-D5): it stores a single layout preference, never API data, inside
+    // try/catch. Test files (paths starting with "./", this file's own
+    // directory) may touch storage directly to exercise it, the same
+    // allowance the fetch rule below makes for mocking `fetch`.
+    const NAV_PREFERENCE = "../lib/navPreference.ts";
+    const app = Object.fromEntries(
+      Object.entries(SOURCES).filter(([p]) => p !== NAV_PREFERENCE && !p.startsWith("./")),
+    );
+    for (const api of [j("session", "Storage"), j("indexed", "DB"), j("service", "Worker")]) {
       expect(offenders(new RegExp(api)), api).toEqual([]);
     }
+    expect(offenders(new RegExp(j("local", "Storage")), app)).toEqual([]);
+    expect(SOURCES[NAV_PREFERENCE]).toMatch(/\blocalStorage\b/);
   });
 
   it("calls fetch only from the one client", () => {

@@ -14,6 +14,7 @@ the UI does it: wording, layout, colour, and the rules behind them.
 | I-04 (part 1) | `specs/015-check-explorer-tree.md` | The check explorer (`/checks`): the `checks/` tree with counts, search and a status filter kept in the URL; "Browse all checks" on the overview |
 | I-04 (part 2) | `specs/016-explorer-tag-owner-datasource.md` | The explorer's Tag, Owner and Datasource filters (`FacetFilter`), OR within a filter and AND across, counts per value, kept in the URL; search over tags, owner and datasource |
 | I-46 part 4 | `specs/037-check-state-table.md` | Retired checks in the web UI (S12, S13): the explorer's "Show retired" toggle (off by default, kept in the URL) adds a flat retired list below the tree; a retired check's own page gets a `RetiredIdentity` header ("Retired" badge, "Retired since …", its last known file) in place of `Identity`, with no SQL or source sections |
+| I-51 part 1 | `specs/039-app-shell-datasets.md` | The app shell (`components/AppShell.tsx`): every page wrapped in a top bar and a `<nav aria-label="Sections">` (Dashboard, Checks, Datasets), collapsible to an icon rail or opened as a drawer on narrow screens; the Checks link's "N failing or in error" badge; the one web-storage exception (`lib/navPreference.ts`); the Datasets page (`/datasets`, §4C); the explorer's `?dataset=` chip (§4B.3) |
 
 ## 1. Who it is for
 
@@ -97,21 +98,27 @@ It has no inline script or style and no absolute URL.
 ```
 frontend/src/
   main.tsx                 mounts <App path={location.pathname} search={location.search}>
-  App.tsx                  parseRoute(path) -> Overview | Explorer | CheckPage | NotFound
+  App.tsx                  parseRoute(path) -> Overview | Explorer | CheckPage | Datasets | NotFound
   api/schema.gen.ts        GENERATED from docs/api/openapi.json; never edit
   api/types.ts             aliases into schema.gen.ts (Project, CheckSummary, CheckDetail,
                            RetiredCheckSummary, RecordedClause, CheckListItem, CheckState,
                            CheckDetailItem, Rule, Condition, HistoryEntry, HistoryPage, Run,
-                           Unit, ...)
-  api/api.ts               the ONE client: getProject, listChecks (an optional `states`
-                           array), listRuns, getCheck (CheckDetail | RetiredCheckSummary),
-                           getHistory, getCheckSql, getCheckSource; failureOf, isNotFound
+                           Unit, OutcomeFilter, ...)
+  api/api.ts               the ONE client: getProject, listChecks (optional `states` and
+                           `outcomes` arrays, spec 039 P-D3), listRuns, getCheck (CheckDetail
+                           | RetiredCheckSummary), getHistory, getCheckSql, getCheckSource;
+                           failureOf, isNotFound
   lib/route.ts             parseRoute(path), checkHref(id), EXPLORER_HREF, the id pattern
-  lib/explorer.ts          the explorer's query (parse, to URL, including `retired`), search,
-                           the status, tag, owner and datasource filters and their counts
-                           (facetOptions), commonFolder, buildTree, counts wording
-                           (countsText), and the retired list's own search (isRetired,
-                           matchesRetiredText, filterRetired, spec 037 S12)
+  lib/explorer.ts          the explorer's query (parse, to URL, including `retired` and
+                           `dataset`, spec 039 P-D7), search, the status, tag, owner and
+                           datasource filters and their counts (facetOptions), commonFolder,
+                           buildTree, counts wording (countsText), and the retired list's own
+                           search (isRetired, matchesRetiredText, filterRetired, spec 037 S12)
+  lib/datasets.ts          the Datasets page's pure parts (spec 039 P-D6): buildDatasets,
+                           sortDatasets, filterDatasets, hasProblems, datasetCountsText
+  lib/navProblems.ts       the nav's Checks badge: fetchNavProblems, navProblemsCount
+  lib/navPreference.ts     the collapsed-rail preference in web storage (spec 039 P-D5); the
+                           only module allowed to touch it
   lib/clipboard.ts         canCopy, copyText, selectContents: the only clipboard code
   lib/invisible.ts         which code points are marked, and the text split into segments
   lib/useLoads.ts          the one load/refresh hook (named slots, generation guard,
@@ -122,15 +129,16 @@ frontend/src/
   lib/selection.ts         how a run's selection reads
   lib/chart/               the chart's pure functions: scale, ticks, format, domain,
                            bands, series, labels, layout, legend, summary
-  components/              Header, ProjectProblems, Summary, LatestRun, CheckTable,
-                           LatestResult (Result, When, LastEvaluatedNote), HistoryTable,
-                           StatusIcon/StatusBadge, shapes (status shapes), Time (Ago, Since),
-                           LoadError (useId heading id; `level` 2|3; `scope` page|section),
-                           CodeBlock, SourceBlock (numbered, never wraps), CopyButton,
-                           Marked (invisible characters), ExplorerTree (the `checks/` tree),
-                           FacetFilter (one Tag, Owner or Datasource filter),
-                           DisabledBadge, RetiredBadge, RetiredChecks (the "Show retired"
-                           list, spec 037 S12)
+  components/              AppShell (spec 039: the top bar, the nav, `<main>`), NavIcons
+                           (the nav's inline SVG icons), Header, ProjectProblems, Summary,
+                           LatestRun, CheckTable, LatestResult (Result, When,
+                           LastEvaluatedNote), HistoryTable, StatusIcon/StatusBadge, shapes
+                           (status shapes), Time (Ago, Since), LoadError (useId heading id;
+                           `level` 2|3; `scope` page|section), CodeBlock, SourceBlock
+                           (numbered, never wraps), CopyButton, Marked (invisible
+                           characters), ExplorerTree (the `checks/` tree), FacetFilter (one
+                           Tag, Owner or Datasource filter), DisabledBadge, RetiredBadge,
+                           RetiredChecks (the "Show retired" list, spec 037 S12)
   components/check/        the check page's sections: Identity, RetiredIdentity (a retired
                            check's header, spec 037 S13), RuleSection, LatestSection,
                            NotFoundPanel, HistorySection, SqlSection, SourceSection;
@@ -141,9 +149,10 @@ frontend/src/
   pages/Overview.tsx       the overview
   pages/Explorer.tsx       the check explorer: loads, filters in memory, keeps the URL
   pages/CheckPage.tsx      a check's page: decides which sections show from what loaded
+  pages/Datasets.tsx       the Datasets page (spec 039 §4C)
   pages/NotFound.tsx       "Page not found"
   styles/tokens.css        colour tokens, light and dark (status and chart)
-  styles/app.css           layout, components and the chart
+  styles/app.css           layout, components, the chart and the app shell
   test/                    vitest tests and typed fixtures
 ```
 
@@ -157,8 +166,39 @@ frontend/src/
   `cache: 'no-store'`. A non-2xx answer becomes `ApiError` with the
   envelope's `code` and `message`. A rejected fetch becomes a network
   failure with its own message.
-- **No web storage** and no service worker. API data lives only in React
-  state.
+- **No web storage** and no service worker, with one exception (spec 039,
+  P-D5): `lib/navPreference.ts` remembers whether the side nav is collapsed
+  to a rail, in `localStorage` key `tablewatch.nav` (value exactly `"rail"`;
+  absent means expanded), inside try/catch (storage may throw or be
+  absent — the default and every failure is expanded). It is the only
+  module that touches web storage (`src/test/security.test.tsx` scans every
+  other app file for it); no API data is ever stored, only this one layout
+  preference. API data otherwise lives only in React state.
+- **The app shell** (spec 039, P-D2). `components/AppShell.tsx` wraps every
+  page, including Not found: the top bar (`Header`: brand, project,
+  Refresh, and "Menu" on narrow screens), a `<nav aria-label="Sections">`
+  of plain `<a href>` links (Dashboard, Checks, Datasets — P-D1; a later
+  section arrives only once it is built, never as a dead link), and
+  `<main id="main">` holding the page's own content. The current page's
+  link carries `aria-current="page"` (a check's own page marks Checks; Not
+  found marks none). On wide screens (> 60rem) the nav is a left column,
+  collapsible to an icon rail (P-D4); on narrow screens (≤ 60rem) the same
+  `<nav>` becomes a drawer opened by "Menu", closed by Escape, its own
+  close button or a click outside, returning focus to "Menu". Both
+  mechanisms live in the DOM together; CSS alone decides which a human
+  sees at a given width (jsdom cannot lay out, so that part is for VERIFY;
+  the elements and their behaviour are tested regardless of viewport).
+  Icons are inline SVG in `components/NavIcons.tsx`, under the chart's own
+  rules (no `href`, no `<use>`, classes only), even though they are not
+  under `components/chart/`.
+- **The Checks badge** (P-D3). The nav's Checks link carries the count of
+  active checks whose latest outcome is `fail` or `error`
+  (`lib/navProblems.ts`: `GET /checks?state=active&outcome=fail&outcome=
+  error`, read `.total`), as a slot of its own in the page's `useLoads`, so
+  Refresh reloads it. Hidden while loading, on failure, or at zero; its own
+  state never changes what the rest of the page shows. Accessible name
+  "Checks, 3 failing or in error" (`aria-label` on the link, overriding its
+  visible "Checks" + badge).
 - **Routing** (spec 004, decision 7). The server answers every extensionless
   non-API path with `index.html` (W3). Links are plain `<a href>` and every
   navigation is a full page load: no router, no `pushState`, and the Back
@@ -170,16 +210,21 @@ frontend/src/
   | Path | Page |
   | --- | --- |
   | `/`, `/index.html` | the overview |
-  | `/checks`, `/checks/` | the check explorer (§4B); `?q=`, `?status=`, `?tag=`, `?owner=`, `?datasource=` and `?retired=1` (spec 037 S12, §4B.6) are read by the page |
+  | `/checks`, `/checks/` | the check explorer (§4B); `?q=`, `?status=`, `?tag=`, `?owner=`, `?datasource=`, `?dataset=` (spec 039 P-D7, §4B.3) and `?retired=1` (spec 037 S12, §4B.6) are read by the page |
   | `/checks/<id>`, `/checks/<id>/` | the check page, when `<id>` is one non-empty segment that decodes (once, inside try/catch) to a string matching `^[A-Za-z0-9][A-Za-z0-9_.:-]*$` of at most 64 characters (the loader's `ID_PATTERN` and the store's column width) |
+  | `/datasets`, `/datasets/` | the Datasets page (§4C, spec 039 P-D6); `?q=` is read by the page |
   | anything else | "Page not found", and **no request is made**: `/checks//`, `/checks/a/b`, `/checks/..`, `/checks/%2e%2e`, `/checks/a%2Fb`, `/checks/a%3Fb`, a malformed `%`, 65 characters |
 
   `checkHref(id)` is `/checks/` + `encodeURIComponent(id)`. Every API path
   segment and query value is built with `encodeURIComponent` in `api.ts`.
 - **One load/refresh hook** (`lib/useLoads.ts`, D14, decision 8). A page
   names its requests as independent slots (the overview: `project`,
-  `results`; the explorer: `project`, `checks`; the check page: `project`, `check`, `history`, `runs`, `sql`,
-  `source`). Each
+  `results`, `problems`; the explorer: `project`, `checks`, `problems`; the
+  check page: `project`, `check`, `history`, `runs`, `sql`, `source`,
+  `definitions`, `problems`; the Datasets page: `project`, `checks`,
+  `problems`). `problems` feeds only the shell's Checks badge (P-D3) on
+  every page that has one; Not found has no slots at all (it makes no
+  request). Each
   slot is `loading`, `ok` or `failed`. `reload` starts every slot again and
   bumps a generation counter; only the newest round writes state, so an
   older answer that lands late is dropped. `busy` holds until every slot of
@@ -1131,9 +1176,16 @@ The overview links here: "Browse all checks" sits beside the heading
   checks." otherwise (`aria-live="polite"`). *N* and *n* count retired
   checks only while "Show retired" is on (§4B.6, spec 037 S12): the toggle
   changes what the line counts, not just what the tree shows.
+- **A Dataset filter** (spec 039 P-D7). `?dataset=<name>…` matches exactly
+  (never case-folded, every check has one, so there is no "none" value) and
+  combines with OR like a facet, but has no `<fieldset>` of its own: with
+  it, a removable chip "Dataset: *name*" (one per value) sits above the
+  tree; removing a chip drops that value, keeping the rest. The Datasets
+  page's link (§4C) sets both `datasource` and `dataset`.
 - **The URL.** The query is
-  `?q=<text>&status=<s>…&tag=<t>…&owner=<o>…&datasource=<d>…`, parameters in
-  that order (F10); statuses in the overview's order (`fail`, `error`,
+  `?q=<text>&status=<s>…&tag=<t>…&owner=<o>…&datasource=<d>…&dataset=<n>…`,
+  parameters in that order (F10; `dataset` is new in spec 039 and sits
+  after the facets); statuses in the overview's order (`fail`, `error`,
   `warn`, `none`, `skipped`, `pass`); filter values in the list's order,
   with the "none" value written as the empty value (`owner=`, decision 1);
   `q` omitted when blank, and nothing at all when nothing is filtered.
@@ -1193,10 +1245,59 @@ a flat "Retired" block below the tree, only while the toggle below is on.
   `enabled: false` (D3), so the two always appear together. No dataset (a
   retired check has no file to read one from) and no nesting: the list is
   flat, under one heading reading its count, or "No retired checks match."
-- **The URL.** `retired=1` is appended after `datasource` (F10) only when
+- **The URL.** `retired=1` is appended after `dataset` (F10) only when
   the toggle is on; absent means off. It round-trips through
   `history.replaceState` exactly as the search and the other filters do, so
   reloading, sharing the address, or Back from a check's page keeps it set.
+
+## 4C. The Datasets page (`/datasets`)
+
+Spec 039, P-D6. "Which tables are in trouble?" without reading checks one by
+one. It reads `GET /api/v1/project` and `GET /api/v1/checks` (the server's
+default: active and disabled checks, never retired — a retired check has no
+file to read a dataset from) through the shared hook, as two slots, plus the
+shell's `problems` slot (§3); everything else runs in memory over the one
+loaded list, like the explorer. The document title is "Datasets — *project*".
+The page's own `<h1>Datasets</h1>` (P-D8).
+
+One row per distinct (datasource, dataset) pair among the loaded checks
+(`lib/datasets.ts`, `buildDatasets`): the same dataset name on two
+datasources is two rows (D2). Columns:
+
+| Column | Content |
+| --- | --- |
+| Dataset | a link to the explorer filtered to it: `/checks?datasource=<ds>&dataset=<name>` (built with `lib/explorer.ts`'s own `explorerSearch`, so the encoding matches exactly what the explorer reads back, §4B.3) |
+| Datasource | the name, as written |
+| Status | the worst latest status over its **enabled** checks, in `STATUS_ORDER` (a `StatusBadge`); "Disabled" (`DisabledBadge`) when every check on it is disabled; "No result recorded" (`STATUS_META.none`) when none of its enabled checks has ever run |
+| Checks | the total, then its non-zero counts in the overview's Summary words ("failing", "error(s)", "warning(s)", "no result", "skipped", "passing"; `datasetCountsText`), not the console's tree words — this is the Summary's vocabulary, for the same persona |
+| Last scanned | the newest `latest.started_at` over its checks, as an age with the full time on hover/focus (`Ago`); "Never" when none has ever run |
+| Owner | its checks' distinct owners, comma-separated; "—" when none |
+| Tags | its checks' distinct tags, comma-separated; "—" when none |
+
+**Order** (`sortDatasets`): problems first — the loaded statuses in
+`STATUS_ORDER`, then `"disabled"` last (a dataset nobody runs is the least
+urgent row) — then by datasource, then by dataset, names compared
+case-insensitively then exactly.
+
+**Search.** A search box (`?q=`, cut to 200 code points like the explorer's,
+`cutQuery` from `lib/explorer.ts`), matching a row's dataset, datasource, an
+owner or a tag, case-insensitively, leading/trailing spaces ignored
+(`matchesDatasetText`). Kept in the URL the same way as the explorer's
+(`history.replaceState`, no new entry).
+
+**Summary line.** "*N* datasets, *k* with problems" — *k* is the count of
+rows whose status is `fail` or `error` (`hasProblems`), over every loaded
+row, not just what the search matches.
+
+**Empty and failed loads.** No checks loaded at all: "No datasets yet." (no
+search box). A search with no match: "No datasets match." `/checks` or
+`/project` failing: the shared `LoadError` with **Try again**, as every
+other page (§4.6); no summary line, search box or table underneath.
+
+**Non-goals** (spec 039). A dataset detail page; freshness shown here (it
+needs per-clause values, not a dataset-level rollup); a Datasource filter of
+its own (the Dataset chip plus the explorer's existing Datasource facet
+cover it).
 
 ## 5. Status: label, icon, colour
 
@@ -1429,10 +1530,13 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
   `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`,
   `document.write`, `eval(`, `new Function`, `srcdoc` or
   `createContextualFragment`. `src/test/security.test.tsx` scans every file
-  under `frontend/src` for these, and for `localStorage`, `sessionStorage`,
+  under `frontend/src` for these, and for `sessionStorage`,
   `indexedDB`, `serviceWorker`, any `fetch(` outside `api.ts`, any
   `import.meta.env` other than `MODE`/`PROD`, and any `http(s)://` or CSS
-  `@import` in app code.
+  `@import` in app code. `localStorage` is banned the same way everywhere in
+  app source except `lib/navPreference.ts` (spec 039, P-D5): the layout
+  preference it holds is never API data, read and written inside try/catch
+  (storage may throw or be absent), under one key (`tablewatch.nav`).
 - X4 is tested with a check named `<img src=x onerror=alert(1)>`, an error
   message `<script>alert(1)</script>`, a project name and a diagnostic
   holding markup. All of them appear as literal text, and no element is
@@ -1452,11 +1556,18 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
   name are marked in place, never stripped.
 - **Routes** make no request for an id that fails the id pattern, and the
   not-found page shows only a well-formed id, inside `<code>`.
-- **The explorer's query** (spec 015, E12) is untrusted input from the
-  address bar. `q` is cut to 200 characters (code points) and shown only as the search
-  box's value, never in an `href` or as markup; `status` keeps only the six
-  known values. A `q` of `<img src=x onerror=alert(1)>` is tested to create
-  no element.
+- **The explorer's and Datasets' query** (spec 015, E12; spec 039 P-D5/P-D7)
+  is untrusted input from the address bar. `q` is cut to 200 characters
+  (code points) and shown only as the search box's value, never in an
+  `href` or as markup; `status` keeps only the six known values; `dataset`
+  values render only as text inside a chip, never as markup. A `q` of
+  `<img src=x onerror=alert(1)>` is tested to create no element on either
+  page.
+- **The nav** (spec 039). A hostile check name never reaches the nav: the
+  Checks badge is a count (`total`) and an `aria-label` built from it, never
+  a name. Nav icons (`components/NavIcons.tsx`) follow the chart's source
+  rules (above) even though they sit outside `components/chart/`: no
+  `href` of any kind, no `<use>`, no `style`, classes only.
 - Nothing is loaded from a third party: no web fonts (system font stack),
   no CDN, no analytics, no remote images.
 
@@ -1472,7 +1583,7 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | `test/sql.test.tsx` | spec 005 P1–P15 and S9 on the page: words, the wording guard on every fixture, schema, cannot compile, not loaded, section-scoped failures and a late `/sql` after Refresh, text is text, copy / Copied / refused / Select all, P10, `#sql`, regions, unknown kinds; the clipboard source rules |
 | `test/source.test.tsx` | spec 006 P4–P16 on the page: the block (one numbered span per line, `textContent === text`, blank lines, digits), the exact captions, below the SQL, `/project` failing, the wording guard on every fixture (lines exempt), not loaded, section-scoped failures and a late `/source` after Refresh, Try again, text is text, copy and Select all of the `<code>` only, `#source` / `#sql` / other fragments, the identity link, P13's filter sentences by `applies` and metric, P14's marked characters (U+202E, U+2028, U+200B path, BOM, ESC in a file name), P15, P16's region and CSS rules; `getCheckSource`'s URL |
 | `test/loaderror.test.tsx` | `LoadError`: unique `useId` ids, heading level, section wording |
-| `test/check.test.tsx` | spec 004 D1–D20 at component level, including the rendered chart (lanes, bands, markers, streak, tooltip by keyboard and pointer, label collisions); requests the seven check-page endpoints (adds `/definitions` to D1's six) |
+| `test/check.test.tsx` | spec 004 D1–D20 at component level, including the rendered chart (lanes, bands, markers, streak, tooltip by keyboard and pointer, label collisions); requests the eight check-page endpoints (adds `/definitions` and the shell's `problems` request to D1's six) |
 | `test/chart.test.ts` | the chart's pure functions: the D6 bands table, the D10 tick table and domain cases, series and lanes (D5, D9), rule changes and the band's span (D7), definition-change markers — null-next-to-a-number is not a change, numbering, the dashed marker, the legend and summary text, sharing rows with a rule change (spec 038 S8) —, recorded outcomes (D8), other metrics (D20), label stacking and rows, hover columns, tooltip placement, the key, x ticks, the summary (D11) |
 | `test/definitionDiff.test.ts` | `diffDefinition`/`renderClause` (spec 038, Q4): the first version has no diff, added/removed/changed, an unchanged clause (expression + where + options) is not shown, an option-only change is, options rendered compactly inline and a long one on its own line, options compared deep and ignoring key order while an array inside stays order-sensitive, reordering is not a change, order of the result |
 | `test/definition.test.tsx` | spec 038 S6/S8 on the page: empty and loading states, a 404 that means "not available" vs. a genuine failure (with Try again), the first version's clauses, "recorded by sync" vs. "from run `<id>`", changed/added/removed rendering including an option-only change, reordering, the latest-3-open/rest-behind-a-disclosure compactness, the chart's definition marker and caption end to end |
@@ -1482,6 +1593,8 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | `test/security.test.tsx` | X4 rendering, source rules (§9), the chart's source rules (decision 14) |
 | `test/retired.test.tsx` | spec 037 S12/S13: `lib/explorer.ts`'s retired helpers (`isRetired`, `matchesRetiredText`, `filterRetired`, the `retired=1` URL roundtrip); the explorer's "Show retired" toggle off by default, the Retired and Disabled badges together, the header count, the URL; a retired check's page header, "Retired since …", the last known file (present and omitted), latest result and history as for any check, no SQL/source failure noise; the Definition section still shows (spec 038 S8) |
 | `test/contrast.test.ts` | the palette and the chart tokens, both schemes (§5) |
+| `test/shell.test.tsx` | spec 039 N1–N7 and S2: the nav's order and `aria-current` on every page including Not found (no request); the Checks badge's count, accessible name, zero case, and a failing/slow `problems` slot leaving the rest of the page unaffected; collapsing to a rail and its persistence across a reload; storage that throws; an unrecognised stored value; the narrow-screen drawer (Escape, the close button, a click outside, focus moved in and returned to "Menu"); keyboard order |
+| `test/datasets.test.tsx` | spec 039 D1–D7: one row per dataset, problems first, with a disabled-only row; the same dataset on two datasources as two rows with the right links; following a Datasets link into the explorer (the chip, its removal); a never-run dataset; search, including a hostile query; empty and failed loads; a hostile dataset name or owner as text |
 | `test/lib.test.ts` | age boundaries and rounding, DST, absolute format, selection wording, status order and counts |
 | `test/api.test.ts` | the client: URLs, init, envelope errors, non-JSON, network failure |
 

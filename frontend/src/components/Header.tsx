@@ -1,5 +1,6 @@
-import type { ReactElement } from "react";
+import { forwardRef, type ReactElement } from "react";
 import type { Project } from "../api/types";
+import { MenuIcon } from "./NavIcons";
 import { Ago } from "./Time";
 
 interface HeaderProps {
@@ -12,16 +13,44 @@ interface HeaderProps {
    * `<h1>` in the main content, so the project name is a paragraph there.
    */
   projectIsHeading?: boolean;
+  /**
+   * Opens the navigation drawer (spec 039, P-D4). Shown only on narrow
+   * screens (CSS); the button is always in the DOM so it is reachable by
+   * keyboard regardless of layout.
+   */
+  onMenu?: () => void;
+  /** Whether the drawer "Menu" opens is open, and its element id (N7). */
+  menuExpanded?: boolean;
+  menuControls?: string;
 }
 
-/** Project, version, the age of the check files (O7), and Refresh (O10). */
-export function Header({ project, now, busy, onRefresh, projectIsHeading = true }: HeaderProps): ReactElement {
+/**
+ * Project, version, the age of the check files (O7), and Refresh (O10). The
+ * "Menu" button (spec 039) opens the side navigation as a drawer on narrow
+ * screens; `ref` is the button `AppShell` returns focus to when it closes.
+ */
+export const Header = forwardRef<HTMLButtonElement, HeaderProps>(function Header(
+  { project, now, busy, onRefresh, projectIsHeading = true, onMenu, menuExpanded = false, menuControls },
+  menuRef,
+): ReactElement {
   return (
     <header className="app-header">
       <a className="skip-link" href="#main">
         Skip to content
       </a>
       <div className="app-header__inner">
+        {onMenu !== undefined && (
+          <button
+            type="button"
+            ref={menuRef}
+            className="button nav-menu"
+            onClick={onMenu}
+            aria-expanded={menuExpanded}
+            aria-controls={menuControls}
+          >
+            <MenuIcon /> Menu
+          </button>
+        )}
         <p className="brand">
           <span className="brand__product">tablewatch</span>
           {project !== null && (
@@ -51,4 +80,4 @@ export function Header({ project, now, busy, onRefresh, projectIsHeading = true 
       </div>
     </header>
   );
-}
+});

@@ -94,6 +94,7 @@ describe("D13/D14: paging and refresh together", () => {
       [urls.sql]: () => Promise.resolve(new Response(JSON.stringify({ ...EMAIL_SQL, check_id: EMAIL }), { status: 200 })),
       [urls.source]: () => Promise.resolve(new Response(JSON.stringify(EMAIL_SOURCE), { status: 200 })),
       [urls.definitions]: () => Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 })),
+      [urls.problems]: () => Promise.resolve(new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 })),
       [urls.history]: () => refreshed.promise,
       [olderUrl(EMAIL, "OLD")]: () => Promise.resolve(new Response(JSON.stringify(page([run(3)], null)), { status: 200 })),
       [olderUrl(EMAIL, "NEW")]: () =>

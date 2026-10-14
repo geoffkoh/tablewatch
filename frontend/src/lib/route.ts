@@ -6,6 +6,8 @@
  * `/checks` and `/checks/` are the check explorer (spec 015); its query
  * (`?q=…&status=…`) is read by the page, not here.
  *
+ * `/datasets` and `/datasets/` are the datasets page (spec 039).
+ *
  * A check path is `/checks/<id>` or `/checks/<id>/`, with exactly one
  * non-empty segment. The segment is decoded once, inside try/catch, and must
  * match the loader's id pattern (`config/loader.py` `ID_PATTERN`, at most 64
@@ -21,6 +23,7 @@ export type Route =
   | { page: "overview" }
   | { page: "explorer" }
   | { page: "check"; id: string }
+  | { page: "datasets" }
   | { page: "not-found" };
 
 /** True for a string the server could hold as a check id. */
@@ -32,6 +35,7 @@ export function isCheckId(id: string): boolean {
 export function parseRoute(path: string): Route {
   if (path === "/" || path === "/index.html") return { page: "overview" };
   if (path === "/checks" || path === "/checks/") return { page: "explorer" };
+  if (path === "/datasets" || path === "/datasets/") return { page: "datasets" };
   const match = /^\/checks\/([^/]+)\/?$/.exec(path);
   if (match === null) return { page: "not-found" };
   const raw = match[1] ?? "";
