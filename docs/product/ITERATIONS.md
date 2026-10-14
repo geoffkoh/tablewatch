@@ -10,6 +10,38 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 38 — Named checks, part 5: definition history, `store sql`, `results.migrate` (I-46 part 5), 2026-10-14
+
+- **Spec:** [038-definition-history-store-sql](specs/038-definition-history-store-sql.md). **Branch:** `iter/038`.
+  Full track; spec written by the tech lead (owner-fixed item). No items added (freeze). **I-46 is done.**
+- **REFINE.** Architect → D1 (`definition_id` on every result; concurrency by `UNIQUE(check_id,
+  version)`, no new lock), D2 (replay revisions offline on PostgreSQL; only 0004 and 0008 read rows
+  in Python and say so), D3 (`store` group, `store sql` project-less, an unkeyed run fails at record).
+  Data-steward → Q4 (what a definition is; owner/tags/notify/enabled/order are not; the UI diff
+  matches clauses by key).
+- **Shipped:** `tablewatch_check_definitions` (revision 0009, no backfill), recorded by runs, keyed
+  runs and `sync`; `GET /checks/{id}/definitions`, `definition_version` on history; a check page's
+  "Definition" section and version markers on the chart (ui-engineer). `tablewatch store sql
+  [--from]` (offline PostgreSQL, no BEGIN/COMMIT), `results.migrate: auto | never`, `tablewatch store
+  migrate`. Applied by hand to Postgres 18 and run by a writer role with no DDL (S11, S17).
+  Suite: **3,238 passed, 1 skipped, 16 xfailed** with Postgres 18 locally; vitest 937.
+- **Reviewer findings and resolution:**
+  - *qa-engineer — fail → fixed; 24 tests.* Blocking: a `sync` and a run recording one new version
+    deadlocked on Postgres (the run inserted definitions before `lock_checks`); `attach_definitions`
+    now locks first. Non-blocking, fixed: the fingerprint collapsed whitespace in every option (a
+    regex, a value list); now only in `where:` and SQL options.
+  - *architect — targeted re-check (the lock fix departed from D1).* Confirmed. Fixed: a definition
+    stores its SQL option names, so its fingerprint never depends on the registry; one
+    `collapse_whitespace`. Not changed (pre-existing, from iteration 37): `KeyedRun._forget` locks the
+    earlier attempt's checks before registering, and `register_all` reactivates rows in public-id
+    order — both can still cycle with another writer on Postgres; folded into I-14 part 2.
+  - *ui-engineer:* first build left options out of the diff; changed so an option-only edit shows.
+  - *data-steward — accept; S1–S7, S14–S16, S18 via CLI and API.*
+- **Not added (backlog freeze):** none.
+- **Lesson:** a new write inside an existing transaction inherits the lock order of the writers
+  around it — "no new lock" was right, but the existing lock had to come first.
+- **Backlog:** I-46 done. Next: iteration 39 = I-51 (app shell), then I-47, I-48, I-50.
+
 ## Iteration 37 — Named checks, part 4: the check state table and retired checks (I-46 part 4, absorbs I-23), 2026-10-14
 
 - **Spec:** [037-check-state-table](specs/037-check-state-table.md). **Branch:** `iter/037`.
