@@ -206,7 +206,14 @@ describe("F6 counts equal a brute-force recount", () => {
     { ...EMPTY_QUERY, statuses: ["fail"] },
     { ...EMPTY_QUERY, statuses: ["fail", "pass"], tag: ["tier-1", ""], owner: [""] },
     { ...EMPTY_QUERY, q: "orders", datasource: ["", "warehouse"], owner: ["sales-data@example.com"] },
-    { q: "e", statuses: ["warn", "pass"], tag: ["catalogue", "sales"], owner: ["", "data-platform@example.com"], datasource: ["lake"] },
+    {
+      q: "e",
+      statuses: ["warn", "pass"],
+      tag: ["catalogue", "sales"],
+      owner: ["", "data-platform@example.com"],
+      datasource: ["lake"],
+      dataset: [],
+    },
   ];
 
   const values = (c: CheckSummary, key: FacetKey): string[] =>

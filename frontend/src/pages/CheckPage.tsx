@@ -8,7 +8,9 @@
  * the SQL (spec 006).
  *
  * This module decides which sections the page shows from what loaded; each
- * section lives in `components/check/`.
+ * section lives in `components/check/`. An eighth slot, `problems`, feeds
+ * the shell's nav badge only (spec 039 P-D3); its own state never changes
+ * what this page shows.
  *
  * `/checks/{id}` answers with `state: "retired"` for a check gone from the
  * project's files but kept in the store (spec 037 S13): its header is
@@ -17,7 +19,8 @@
  */
 import { useEffect, useMemo, useRef, type ReactElement } from "react";
 import { getCheck, getCheckSource, getCheckSql, getDefinitions, getHistory, getProject, isNotFound, listRuns } from "../api/api";
-import type { CheckDetailItem, CheckSource, CheckSql, DefinitionList, HistoryPage, Project, RunPage } from "../api/types";
+import type { CheckDetailItem, CheckList, CheckSource, CheckSql, DefinitionList, HistoryPage, Project, RunPage } from "../api/types";
+import { AppShell } from "../components/AppShell";
 import { DefinitionSection } from "../components/check/DefinitionSection";
 import { HistorySection } from "../components/check/HistorySection";
 import { Identity } from "../components/check/Identity";
@@ -28,8 +31,8 @@ import { RuleSection } from "../components/check/RuleSection";
 import { SourceSection } from "../components/check/SourceSection";
 import { SqlSection } from "../components/check/SqlSection";
 import { HISTORY_LIMIT, useOlderHistory } from "../components/check/useOlderHistory";
-import { Header } from "../components/Header";
 import { LoadError } from "../components/LoadError";
+import { fetchNavProblems } from "../lib/navProblems";
 import { useLoads, type Requests } from "../lib/useLoads";
 
 interface CheckSlots {
@@ -40,6 +43,7 @@ interface CheckSlots {
   sql: CheckSql;
   source: CheckSource;
   definitions: DefinitionList;
+  problems: CheckList;
 }
 
 /**
@@ -61,11 +65,12 @@ export function CheckPage({ id }: { id: string }): ReactElement {
       sql: () => getCheckSql(id),
       source: () => getCheckSource(id),
       definitions: () => getDefinitions(id),
+      problems: fetchNavProblems,
     }),
     [id],
   );
   const { slots, busy, now, generation, reload, capture } = useLoads(requests);
-  const { project, check, history, runs, sql, source, definitions } = slots;
+  const { project, check, history, runs, sql, source, definitions, problems } = slots;
 
   const loadedProject = project.state === "ok" ? project.data : null;
   const loadedItem = check.state === "ok" ? check.data : null;
@@ -131,16 +136,22 @@ export function CheckPage({ id }: { id: string }): ReactElement {
   }, [busy]);
 
   return (
-    <>
-      <Header project={loadedProject} now={now} busy={busy} onRefresh={reload} projectIsHeading={false} />
-      <main id="main" className="page" tabIndex={-1} aria-busy={busy}>
-        <p className="visually-hidden" role="status">
-          {status}
-        </p>
-        <p className="back">
-          <a href="/">Back to the overview</a>
-        </p>
-        {project.state === "failed" && <LoadError what="the project" failure={project.failure} onRetry={reload} />}
+    <AppShell
+      current="checks"
+      project={loadedProject}
+      now={now}
+      busy={busy}
+      onRefresh={reload}
+      problems={problems}
+      projectIsHeading={false}
+    >
+      <p className="visually-hidden" role="status">
+        {status}
+      </p>
+      <p className="back">
+        <a href="/">Back to the overview</a>
+      </p>
+      {project.state === "failed" && <LoadError what="the project" failure={project.failure} onRetry={reload} />}
 
         {check.state === "loading" && <p className="loading">Loading…</p>}
         {check.state === "failed" && !checkMissing && (
@@ -225,7 +236,6 @@ export function CheckPage({ id }: { id: string }): ReactElement {
             onRetry={reload}
           />
         )}
-      </main>
-    </>
+    </AppShell>
   );
 }

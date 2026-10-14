@@ -1,29 +1,26 @@
 import type { ReactElement } from "react";
+import { AppShell } from "../components/AppShell";
 
-/** Any path the UI does not know (W3). Later pages arrive as client routes. */
+/**
+ * Any path the UI does not know (W3). Later pages arrive as client routes.
+ * It still wears the shell (spec 039, P-D2), with no section current (N1)
+ * and no problems count: it makes no request of its own, so there is
+ * nothing to refresh and the nav's Checks badge stays hidden.
+ */
 export function NotFound({ path }: { path: string }): ReactElement {
   return (
-    <>
-      <header className="app-header">
-        <div className="app-header__inner">
-          <p className="brand">
-            <span className="brand__product">tablewatch</span>
-          </p>
-        </div>
-      </header>
-      <main id="main" className="page">
-        <section className="panel" aria-labelledby="not-found-heading">
-          <h1 id="not-found-heading" className="panel__title">
-            Page not found
-          </h1>
-          <p>
-            There is no page at <code>{path}</code>.
-          </p>
-          <p>
-            <a href="/">Go to the overview</a>
-          </p>
-        </section>
-      </main>
-    </>
+    <AppShell current={null} project={null} now={Date.now()} busy={false} onRefresh={() => undefined} projectIsHeading={false}>
+      <section className="panel" aria-labelledby="not-found-heading">
+        <h1 id="not-found-heading" className="panel__title">
+          Page not found
+        </h1>
+        <p>
+          There is no page at <code>{path}</code>.
+        </p>
+        <p>
+          <a href="/">Go to the overview</a>
+        </p>
+      </section>
+    </AppShell>
   );
 }

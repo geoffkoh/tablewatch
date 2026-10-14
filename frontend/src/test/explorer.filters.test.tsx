@@ -275,16 +275,24 @@ describe("F10: the URL restores the view", () => {
     expect(url()).toBe(`/checks${search}`);
   });
 
-  it("writes parameters in the order q, status, tag, owner, datasource whatever the click order", () => {
+  it("writes parameters in the order q, status, tag, owner, datasource, dataset whatever the click order", () => {
     expect(
-      explorerSearch({ q: "x", statuses: ["pass"], datasource: ["lake"], owner: ["o"], tag: ["t", "a"] }),
-    ).toBe("?q=x&status=pass&tag=a&tag=t&owner=o&datasource=lake");
+      explorerSearch({
+        q: "x",
+        statuses: ["pass"],
+        datasource: ["lake"],
+        owner: ["o"],
+        tag: ["t", "a"],
+        dataset: ["orders"],
+      }),
+    ).toBe("?q=x&status=pass&tag=a&tag=t&owner=o&datasource=lake&dataset=orders");
     expect(parseExplorerQuery("?datasource=lake&tag=t&owner=o&q=x")).toEqual({
       q: "x",
       statuses: [],
       tag: ["t"],
       owner: ["o"],
       datasource: ["lake"],
+      dataset: [],
       retired: false,
     });
   });

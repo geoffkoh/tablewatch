@@ -121,13 +121,13 @@ function withFiles(base: OverviewResponses, fileOf: (c: CheckSummary, i: number)
 // ---- E1 ------------------------------------------------------------------------
 
 describe("E1: the page at /checks", () => {
-  it.each(["/checks", "/checks/"])("opens %s with one /checks and one /project request", async (path) => {
+  it.each(["/checks", "/checks/"])("opens %s with /checks, /project and the nav badge's request", async (path) => {
     const { fetchMock } = await renderExplorer(recorded, "", {}, path);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Checks");
     expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
     const urls = fetchMock.mock.calls.map(([input]) => String(input)).sort();
-    expect(urls).toEqual([EXPLORER_CHECKS_URL, URLS.project].sort());
-    expect(document.title).toBe("Checks · tablewatch");
+    expect(urls).toEqual([EXPLORER_CHECKS_URL, URLS.project, URLS.problems].sort());
+    expect(document.title).toBe("Checks — retail-example");
   });
 });
 

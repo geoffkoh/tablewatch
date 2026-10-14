@@ -11,6 +11,13 @@ export interface Server {
   project?: Answer;
   checks?: Answer;
   runs?: Answer;
+  /**
+   * The shell's nav badge request (spec 039 P-D3): `/checks?state=active&
+   * outcome=fail&outcome=error`. Defaults to the same answer as `checks`
+   * (the generic path-based fallback below), which is a harmless
+   * over-count in tests that do not care about the badge's exact number.
+   */
+  problems?: Answer;
 }
 
 /** The URLs the overview is expected to request, and nothing else. */
@@ -18,6 +25,7 @@ export const URLS = {
   project: "/api/v1/project",
   checks: "/api/v1/checks",
   runs: "/api/v1/runs?limit=1",
+  problems: "/api/v1/checks?state=active&outcome=fail&outcome=error",
 } as const;
 
 /**
@@ -31,11 +39,13 @@ export function ok(body: unknown): Answer {
 }
 
 /**
- * Replace `fetch` with one that answers the three overview endpoints. A
- * `/checks` request matches on its path alone, whatever `?state=` it carries
- * (the overview and the explorer ask for different states), so one fixture's
- * `checks` answer serves both pages; the other two endpoints still match the
- * exact URL.
+ * Replace `fetch` with one that answers the overview's endpoints, the
+ * shell's nav badge request, and (for the Datasets page) a bare `/checks`.
+ * A `/checks` request matches the exact URL first; failing that, any
+ * request whose path is `/api/v1/checks` falls back to the `checks` answer,
+ * whatever `?state=`/`?outcome=` it carries, so one fixture's `checks`
+ * answer serves the overview, the explorer and the nav badge alike unless a
+ * test overrides one specifically.
  */
 export function stubServer(fixture: OverviewResponses, overrides: Server = {}): ReturnType<typeof vi.fn> {
   const answers: Record<string, Answer> = {
@@ -43,10 +53,11 @@ export function stubServer(fixture: OverviewResponses, overrides: Server = {}): 
     [URLS.checks]: overrides.checks ?? ok(fixture.checks),
     [URLS.runs]: overrides.runs ?? ok(fixture.runs),
   };
+  if (overrides.problems !== undefined) answers[URLS.problems] = overrides.problems;
   const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const path = url.split("?")[0] ?? url;
-    const answer = path === URLS.checks ? answers[URLS.checks] : answers[url];
+    const answer = answers[url] ?? (path === URLS.checks ? answers[URLS.checks] : undefined);
     if (answer === undefined) return Promise.reject(new Error(`unexpected request: ${url}`));
     if (answer === "network-error") return Promise.reject(new TypeError("Failed to fetch"));
     return Promise.resolve(
@@ -136,6 +147,8 @@ export interface CheckServer {
   definitions?: Answer;
   /** Later history pages, by cursor. */
   older?: Record<string, Answer>;
+  /** The shell's nav badge request (spec 039 P-D3). Defaults to no problems. */
+  problems?: Answer;
 }
 
 /** The URLs the check page requests for an id. */
@@ -147,6 +160,7 @@ export function checkUrls(id: string): {
   sql: string;
   source: string;
   definitions: string;
+  problems: string;
 } {
   const enc = encodeURIComponent(id);
   return {
@@ -157,6 +171,7 @@ export function checkUrls(id: string): {
     sql: `/api/v1/checks/${enc}/sql`,
     source: `/api/v1/checks/${enc}/source`,
     definitions: `/api/v1/checks/${enc}/definitions`,
+    problems: URLS.problems,
   };
 }
 
@@ -215,6 +230,7 @@ export function stubCheckServer(id: string, server: CheckServer, base: OverviewR
     [urls.sql]: server.sql ?? defaultSql(id, server.check),
     [urls.source]: server.source ?? defaultSource(id, server.check),
     [urls.definitions]: server.definitions ?? defaultDefinitions(server.check),
+    [urls.problems]: server.problems ?? ok({ items: [], total: 0 }),
   };
   for (const [cursor, answer] of Object.entries(server.older ?? {})) answers[olderUrl(id, cursor)] = answer;
   const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {

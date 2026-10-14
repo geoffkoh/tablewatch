@@ -30,6 +30,8 @@ export type ErrorCode = Schemas["ErrorInfo"]["code"];
 
 /** A recorded outcome, as the API sends it. */
 export type Outcome = LatestResult["outcome"];
+/** Every value `GET /checks`'s `?outcome=` filter accepts, repeatable (spec 039 P-D3): a recorded outcome, or `not_run` for a check with no result. */
+export type OutcomeFilter = Outcome | "not_run";
 
 export type CheckDetail = Schemas["CheckDetail"];
 /** What `GET /checks/{id}` serves: a loaded check's detail, or a retired check's summary (spec 037). */
