@@ -25,6 +25,7 @@ import {
   commonFolder,
   explorerSearch,
   FACET_KEYS,
+  cutQuery,
   facetOptions,
   filterChecks,
   filterRetired,
@@ -192,7 +193,7 @@ export function Explorer({ path, search }: { path: string; search: string }): Re
                 autoComplete="off"
                 spellCheck={false}
                 onChange={(event) => {
-                  const q = event.target.value.slice(0, MAX_QUERY_LENGTH);
+                  const q = cutQuery(event.target.value);
                   setQuery((prev) => ({ ...prev, q }));
                 }}
               />

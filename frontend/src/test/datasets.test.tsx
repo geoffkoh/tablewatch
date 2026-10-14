@@ -1,7 +1,7 @@
 /**
  * The Datasets page, `/datasets` (spec 039, P-D6/P-D7, scenarios D1-D7).
  */
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CheckSummary } from "../api/types";
 import { App } from "../App";
@@ -146,6 +146,15 @@ describe("D5: search", () => {
     renderDatasets(baseFixture(), "?q=ORD");
     await waitLoaded();
     expect(datasetNames().sort()).toEqual(["sales.orders"]);
+  });
+
+  it("typed text is cut by code point, so an emoji is never split", async () => {
+    renderDatasets(baseFixture());
+    await waitLoaded();
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "\u{1F600}".repeat(250) } });
+    const box = screen.getByRole("searchbox") as HTMLInputElement;
+    expect(Array.from(box.value)).toHaveLength(200);
+    expect(box.value.endsWith("\u{1F600}")).toBe(true);
   });
 
   it("a hostile q creates no element", async () => {

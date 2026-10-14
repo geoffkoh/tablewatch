@@ -1622,12 +1622,37 @@ a {
     border-right: 1px solid var(--tw-border);
     overflow-y: auto;
     transform: translateX(-100%);
-    transition: transform 0.15s ease-out;
+    /* Hidden once off-screen, so the closed drawer is out of the Tab order and the accessibility tree. */
+    visibility: hidden;
+    transition:
+      transform 0.15s ease-out,
+      visibility 0s linear 0.15s;
     z-index: 20;
   }
 
   .app-nav--open {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.15s ease-out;
+  }
+
+  /* The rail is a wide-screen preference: the drawer always shows labels, since it has no Expand button. */
+  .app-shell--rail .app-nav {
+    width: 16rem;
+  }
+
+  .app-nav--rail .nav-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+  }
+
+  .app-nav--rail .app-nav__link:is(:hover, :focus-visible) .nav-tooltip {
+    display: none;
   }
 
   .nav-close {

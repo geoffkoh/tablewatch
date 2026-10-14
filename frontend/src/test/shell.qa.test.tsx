@@ -480,7 +480,7 @@ describe("N7: drawer edges", () => {
   // FINDING (non-blocking, a11y): Header.tsx renders "Menu" as a plain button
   // with no aria-expanded/aria-controls, so a screen reader is never told the
   // drawer opened or closed (the collapse button got both, P-D4).
-  it.fails("Menu exposes its state to assistive tech (aria-expanded / aria-controls)", async () => {
+  it("Menu exposes its state to assistive tech (aria-expanded / aria-controls)", async () => {
     await renderOverview(recorded);
     const menu = screen.getByRole("button", { name: "Menu" });
     expect(menu.getAttribute("aria-expanded")).toBe("false");
@@ -572,7 +572,7 @@ describe("N7/S2: the closed drawer and the rail on narrow screens (CSS)", () => 
   // three links and "Close navigation" stay in the Tab order and the
   // accessibility tree while invisible. Keyboard users tab into nothing
   // after "Menu". Needs `visibility: hidden` (or inert) until .app-nav--open.
-  it.fails("hides the closed drawer from focus and assistive tech", () => {
+  it("hides the closed drawer from focus and assistive tech", () => {
     const block = narrowBlock();
     const navRule = /\.app-nav\s*\{([^}]*)\}/.exec(block)?.[1] ?? "";
     const openRule = /\.app-nav--open\s*\{([^}]*)\}/.exec(block)?.[1] ?? "";
@@ -586,7 +586,7 @@ describe("N7/S2: the closed drawer and the rail on narrow screens (CSS)", () => 
   // stay visually hidden, while "Expand navigation" is display:none on narrow
   // screens: a user who collapsed on a wide window gets an icon-only drawer
   // they cannot expand.
-  it.fails("the narrow drawer overrides the rail (width and labels)", () => {
+  it("the narrow drawer overrides the rail (width and labels)", () => {
     expect(narrowBlock()).toMatch(/app-(shell|nav)--rail/);
   });
 });

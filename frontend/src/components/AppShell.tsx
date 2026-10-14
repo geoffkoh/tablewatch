@@ -104,6 +104,8 @@ export function AppShell({
         onMenu={() => {
           setDrawerOpen(true);
         }}
+        menuExpanded={drawerOpen}
+        menuControls={navId}
         ref={menuButtonRef}
       />
       <div className={`app-shell${collapsed ? " app-shell--rail" : ""}`}>

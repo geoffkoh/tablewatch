@@ -130,7 +130,7 @@ export function Datasets({ path, search }: { path: string; search: string }): Re
                 autoComplete="off"
                 spellCheck={false}
                 onChange={(event) => {
-                  setQ(event.target.value.slice(0, MAX_QUERY_LENGTH));
+                  setQ(cutQuery(event.target.value));
                 }}
               />
             </div>

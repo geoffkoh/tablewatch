@@ -19,6 +19,9 @@ interface HeaderProps {
    * keyboard regardless of layout.
    */
   onMenu?: () => void;
+  /** Whether the drawer "Menu" opens is open, and its element id (N7). */
+  menuExpanded?: boolean;
+  menuControls?: string;
 }
 
 /**
@@ -27,7 +30,7 @@ interface HeaderProps {
  * screens; `ref` is the button `AppShell` returns focus to when it closes.
  */
 export const Header = forwardRef<HTMLButtonElement, HeaderProps>(function Header(
-  { project, now, busy, onRefresh, projectIsHeading = true, onMenu },
+  { project, now, busy, onRefresh, projectIsHeading = true, onMenu, menuExpanded = false, menuControls },
   menuRef,
 ): ReactElement {
   return (
@@ -37,7 +40,14 @@ export const Header = forwardRef<HTMLButtonElement, HeaderProps>(function Header
       </a>
       <div className="app-header__inner">
         {onMenu !== undefined && (
-          <button type="button" ref={menuRef} className="button nav-menu" onClick={onMenu}>
+          <button
+            type="button"
+            ref={menuRef}
+            className="button nav-menu"
+            onClick={onMenu}
+            aria-expanded={menuExpanded}
+            aria-controls={menuControls}
+          >
             <MenuIcon /> Menu
           </button>
         )}
