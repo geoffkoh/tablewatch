@@ -22,7 +22,7 @@ Runs from cron on a server, and the exit code can be trusted.
 - Output as a console table, JSON, or JUnit XML; JSON logs
 - JSON Schema for editor completion
 
-## Phase 1b — Named checks: the foundation → next, before everything else
+## Phase 1b — Named checks: the foundation → built (I-46, iterations 32–38)
 
 Decided by the owner on 2026-10-04: this goes in **before any remaining
 work in Phases 2–5**. A check stops being one atomic expression whose

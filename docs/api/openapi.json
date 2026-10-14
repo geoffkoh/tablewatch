@@ -615,6 +615,102 @@
         "title": "Datasource",
         "type": "object"
       },
+      "Definition": {
+        "description": "One version of a check's definition (spec 038).",
+        "properties": {
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/DefinitionClause"
+            },
+            "title": "Clauses",
+            "type": "array"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "recorded_at",
+          "run_id",
+          "clauses"
+        ],
+        "title": "Definition",
+        "type": "object"
+      },
+      "DefinitionClause": {
+        "description": "One clause of a definition version, as it was written.",
+        "properties": {
+          "expression": {
+            "title": "Expression",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Options",
+            "type": "object"
+          },
+          "where": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Where"
+          }
+        },
+        "required": [
+          "key",
+          "expression",
+          "where",
+          "options"
+        ],
+        "title": "DefinitionClause",
+        "type": "object"
+      },
+      "DefinitionList": {
+        "description": "A check's definition versions, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Definition"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "DefinitionList",
+        "type": "object"
+      },
       "Diagnostic": {
         "properties": {
           "location": {
@@ -716,6 +812,17 @@
           "dataset": {
             "title": "Dataset",
             "type": "string"
+          },
+          "definition_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Version"
           },
           "display_value": {
             "title": "Display Value",
@@ -819,7 +926,8 @@
           "source",
           "metric",
           "dataset",
-          "unit"
+          "unit",
+          "definition_version"
         ],
         "title": "HistoryEntry",
         "type": "object"
@@ -852,6 +960,7 @@
         "title": "HistoryPage",
         "type": "object"
       },
+      "JsonValue": {},
       "LastEvaluated": {
         "description": "What the data last showed, when the latest result could not be evaluated.",
         "properties": {
@@ -2049,6 +2158,96 @@
           }
         },
         "summary": "Get Check"
+      }
+    },
+    "/api/v1/checks/{check_id}/definitions": {
+      "get": {
+        "description": "A check's definition versions, newest first: a retired check's too.",
+        "operationId": "get_check_definitions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "check_id",
+            "required": true,
+            "schema": {
+              "title": "Check Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefinitionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid parameter"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "forbidden host"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not found"
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "method not allowed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "store unavailable"
+          }
+        },
+        "summary": "Get Check Definitions"
       }
     },
     "/api/v1/checks/{check_id}/history": {

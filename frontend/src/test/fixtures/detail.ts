@@ -81,6 +81,8 @@ export function entry(check: CheckSummary, run: Run, fields: Partial<HistoryEntr
     display_value: "0",
     message: null,
     duration_ms: 3.2,
+    // Null for results recorded before definitions were kept (spec 038 S7).
+    definition_version: null,
     name: check.name,
     expression: check.expression,
     source: check.source,

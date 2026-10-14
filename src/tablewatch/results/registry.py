@@ -16,15 +16,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import insert as sa_insert
 from sqlalchemy import select, update
-from sqlalchemy.dialects import postgresql, sqlite
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from tablewatch.checks.model import Check
 from tablewatch.engine.runner import CheckResult
+from tablewatch.results.definitions import record_definitions
 from tablewatch.results.errors import fit_row
+from tablewatch.results.inserts import insert_unless_present
 from tablewatch.results.models import (
     ACTIVE,
     DISABLED,
@@ -62,30 +61,6 @@ def _state(check: Check) -> str:
     return ACTIVE if check.enabled else DISABLED
 
 
-def _insert(session: Session, values: dict[str, Any]) -> None:
-    """Add a registry row, or nothing when another writer added it first.
-
-    Two runs recording the same new check at once both try to add it; the
-    insert ignores the conflict and both read the one row, rather than one
-    run failing (spec 033 D4).
-    """
-    dialect = session.get_bind().dialect.name
-    if dialect == "postgresql":
-        session.execute(
-            postgresql.insert(CheckRow).values(values).on_conflict_do_nothing()
-        )
-    elif dialect == "sqlite":
-        session.execute(sqlite.insert(CheckRow).values(values).on_conflict_do_nothing())
-    else:
-        # A backend without ON CONFLICT: the losing insert fails in its own
-        # savepoint, and the winner's row is read after.
-        try:
-            with session.begin_nested():
-                session.execute(sa_insert(CheckRow).values(values))
-        except IntegrityError:
-            pass
-
-
 def _new_row(project: str, check: Check, state: str, now: datetime) -> dict[str, Any]:
     row = CheckRow(
         project=project,
@@ -114,7 +89,7 @@ def _register(session: Session, project: str, check: Check, now: datetime) -> in
     )
     found = session.execute(lookup).one_or_none()
     if found is None:
-        _insert(session, _new_row(project, check, ACTIVE, now))
+        insert_unless_present(session, CheckRow, _new_row(project, check, ACTIVE, now))
         found = session.execute(lookup).one()
     row_id, state = found
     if state != ACTIVE:
@@ -186,7 +161,9 @@ def sync(
     report = SyncReport()
     for check in checks:
         if check.id not in known:
-            _insert(session, _new_row(project, check, _state(check), now))
+            insert_unless_present(
+                session, CheckRow, _new_row(project, check, _state(check), now)
+            )
             report.changes.append(
                 Change(
                     "added", check.dataset.datasource, check.dataset.name, check.name
@@ -212,4 +189,11 @@ def sync(
             kind = "enabled" if wanted == ACTIVE else "disabled"
         report.changes.append(Change(kind, row.datasource, row.dataset, row.name))
     report.changes.sort(key=lambda c: (c.dataset, c.name, c.datasource))
+    ids = {
+        row.check_hash: row.id
+        for row in session.execute(
+            select(CheckRow.check_hash, CheckRow.id).where(CheckRow.project == project)
+        )
+    }
+    record_definitions(session, {ids[c.id]: c for c in checks}, None, now)
     return report

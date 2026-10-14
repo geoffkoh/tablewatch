@@ -139,6 +139,34 @@ class CheckRow(Base):
     state_since: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class CheckDefinitionRow(Base):
+    """One version of a check's definition: its clauses as written (spec 038).
+
+    A new version is recorded only when what the check measures or how it
+    judges changes (`fingerprint`); moving its file, reordering its clauses
+    or changing who owns it does not. Versions number from 1 per check.
+    """
+
+    __tablename__ = "tablewatch_check_definitions"
+    __table_args__ = (UniqueConstraint("check_id", "version"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    check_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "tablewatch_checks.id", name="fk_tablewatch_check_definitions_check_id"
+        )
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    # `{"clauses": [{"key", "expression", "where", "options"}, ...]}`, in
+    # file order.
+    definition: Mapped[dict[str, Any]] = mapped_column(JSON)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # The run that first carried it; NULL when a sync recorded it. No foreign
+    # key: a definition outlives a deleted run.
+    run_id: Mapped[str | None] = mapped_column(String(32))
+
+
 class CheckResultRow(Base):
     """A named check's result in one run: the worst of its clauses'."""
 
@@ -167,8 +195,18 @@ class CheckResultRow(Base):
     duration_ms: Mapped[float] = mapped_column(Float)
     # The unit `value` is in: its one clause's, NULL for several clauses.
     unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # The definition it ran under (spec 038); NULL for results recorded
+    # before definitions were kept.
+    definition_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "tablewatch_check_definitions.id",
+            name="fk_tablewatch_check_results_definition_id",
+        ),
+        nullable=True,
+    )
 
     run: Mapped[RunRow] = relationship(back_populates="results")
+    definition: Mapped[CheckDefinitionRow | None] = relationship()
     # Loaded with the row: `check.check_hash` is the check's public id.
     check: Mapped[CheckRow] = relationship(lazy="joined")
     clauses: Mapped[list[ClauseResultRow]] = relationship(

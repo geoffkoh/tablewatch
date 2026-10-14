@@ -40,6 +40,23 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- **Definition history.** The results store keeps each check's definition
+  versions (`tablewatch_check_definitions`, revision 0009): a new version
+  when a recorded run or `sync` finds a clause added, removed, or changed in
+  its expression, triggers, `where:` or options — never for moving or
+  reformatting the file, reordering clauses, or changing `owner`, `tags`,
+  `notify` or `enabled`. Each result records its version.
+  `GET /api/v1/checks/{id}/definitions` lists them (a retired check's
+  too), history items carry `definition_version`, and a check's page shows
+  what changed between versions and marks it on the chart. Nothing is
+  backfilled: earlier results have no version (spec 038).
+- **A schema managed outside tablewatch.** `tablewatch store sql [--from
+  REV]` prints the PostgreSQL that brings a store to this version's schema,
+  for Flyway, Liquibase or a DBA, with no project and no connection;
+  `results.migrate: never` stops `run`, `sync` and `serve` from upgrading
+  the store and names the upgrade to apply; `tablewatch store migrate`
+  upgrades on demand (spec 038).
+
 - **Retired checks in the API and web UI.** `GET /api/v1/checks?state=retired`
   (repeatable with `active` and `disabled`) lists checks gone from the files
   with what they last recorded and `last_known_location`; `GET

@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 from tablewatch.results.state import Entry, State, current_state
 
@@ -26,6 +26,10 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _BATCH = 1000
+
+# It fills the heads from history in Python, so it cannot be written as SQL
+# from a store that has results (`tablewatch store sql --from`, spec 038).
+READS_ROWS_IN_PYTHON = True
 
 
 def upgrade() -> None:
@@ -54,6 +58,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("check_id"),
     )
     assert heads is not None
+    if context.is_offline_mode():
+        return  # an empty database: no history to fill from
     results = sa.table(
         "tablewatch_check_results",
         sa.column("id", sa.Integer()),

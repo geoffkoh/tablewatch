@@ -38,6 +38,7 @@ def test_store_uses_its_own_version_table(store_url: str) -> None:
         VERSION_TABLE,
         "tablewatch_runs",
         "tablewatch_checks",
+        "tablewatch_check_definitions",
         "tablewatch_check_results",
         "tablewatch_clause_results",
         "tablewatch_dataset_runs",

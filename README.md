@@ -114,6 +114,8 @@ The full language — every metric, option and rule — is in
 | `tablewatch run` | Run checks and record the results. |
 | `tablewatch test-connection` | Connect to each datasource. |
 | `tablewatch sync` | Bring the store's list of checks in line with the files: new, disabled and retired checks ([check lifecycle](docs/check-language.md#turning-a-check-off-and-removing-it)). A recorded run does this itself. |
+| `tablewatch store sql [--from REV]` | Print the PostgreSQL that brings a results store to this version's schema, for Flyway, Liquibase or a DBA ([below](#a-shared-results-store)). Reads no project, connects to nothing. |
+| `tablewatch store migrate` | Bring the project's results store to this version's schema now. |
 | `tablewatch runs` | Show recent runs. |
 | `tablewatch history NAME` | Show one check's outcomes over time (its name, or an id prefix). |
 | `tablewatch report` | Write a recorded run as one static HTML page ([below](#a-report-to-send)). |
@@ -283,6 +285,41 @@ was. `tablewatch run` with the read-only role cannot record a run either,
 and says the same. When several hosts open a store that
 needs upgrading at once, one upgrades and the others wait for it (up to a
 minute: `another process is upgrading the store; try again shortly`).
+
+**A schema managed outside tablewatch.** Where every schema change goes
+through Flyway, Liquibase or a DBA, turn off upgrading on open:
+
+```yaml
+# tablewatch.yml
+results:
+  migrate: never      # default: auto
+```
+
+Every host then needs only the writer and reader grants: no process
+creates or alters a table. A store not at this version's schema stops
+`run` (exit 2, after the checks ran and were reported), a keyed `run` and
+`sync` (exit 2, before anything runs) and `serve` (it does not start), and
+says what to apply:
+
+```
+results store: its schema is at revision 0008, this tablewatch needs 0009 — apply `tablewatch store sql --from 0008` or run `tablewatch store migrate`
+```
+
+`tablewatch store sql` prints that upgrade as PostgreSQL, from an empty
+database (no `--from`) or from the revision the message names, including
+the version row tablewatch reads. It has no `BEGIN`/`COMMIT`: the tool
+that applies it owns the transaction. Save it as the tool's next
+migration, for example `V12__tablewatch_0009.sql` for Flyway:
+
+```bash
+tw store sql --from 0008 > db/migration/V12__tablewatch_0009.sql
+```
+
+A few early upgrades (into 0004 and 0008) rewrite existing results in
+Python and cannot be written as SQL: `store sql --from` before them exits
+3 and says so. Upgrade such a store once with `tablewatch store migrate`,
+run as a role that may change the schema, and use `store sql` from then
+on. `store migrate` upgrades whatever `results.migrate` says.
 
 **Upgrade every host together.** A store upgraded by a newer tablewatch
 cannot be read by an older one: it says `results store: it was upgraded by a
@@ -654,7 +691,8 @@ $ curl -s http://127.0.0.1:8765/api/v1/checks/b1ceb8262d8b5441/history \
 | `project` | Name, datasources (names and types only), counts, and any check-file diagnostics |
 | `checks` | Every check, each with its latest recorded result. Filter with `?outcome=`, which is repeatable and takes `pass`, `warn`, `fail`, `error`, `skipped` or `not_run` |
 | `checks/{id}` | One check, with its `rule` as loaded: `expect`, `warn` and `fail`, each with the condition's `text` and its numbers. Ids are exact: the full id from `tablewatch list` |
-| `checks/{id}/history` | That check's results, newest first, including results for checks since deleted. Each carries the `expression`, `metric`, `unit` and `dataset` it was recorded with |
+| `checks/{id}/history` | That check's results, newest first, including results for checks since deleted. Each carries the `expression`, `metric`, `unit` and `dataset` it was recorded with, and `definition_version`: the version of the check's definition it ran under (`null` for results recorded before tablewatch kept definitions) |
+| `checks/{id}/definitions` | That check's definition versions, newest first: `version`, `recorded_at`, `run_id` (the run that first carried it, `null` when `sync` recorded it) and `clauses`, each with its `key`, `expression` (triggers included), `where` and `options` as written. A retired check's too |
 | `checks/{id}/sql` | The SQL a run of that check's dataset sends and this check's value comes from, compiled from the check files as loaded: `dialect`, then `statements` in run order, each a `scan` (with `measures`, the columns this check `uses`, and `shared_by`, the number of *other* checks sharing it) or a `query`. `sql` is the statement as `tablewatch compile` prints it, without the closing `;`. `schema_lookup` is `true` for a `schema` check, which has no statements. `error` says why the dataset cannot be compiled, and `statements` is then empty. Ignore a statement whose `kind` you do not know: later versions add kinds. Never connects to a datasource and does not need the results store |
 | `checks/{id}/source` | That check's own lines in its check file, as loaded: `path`, relative to the project and under the checks directory; `start_line` and `end_line`, 1-based and inclusive; and `text`, those lines joined by `\n`. `start_line`, `end_line` and `text` are all `null` when the lines cannot be placed exactly, and `path` is still set. `filter` is the file's `filter:` or `null`: its `line`, its `text` as written (a `${env:NAME}` in it is never resolved), and `applies`, which is `false` for `sql_metric` and `schema` checks. `loaded_at` equals `project`'s. Never reads a file while answering |
 | `runs`, `runs/{id}` | Runs, newest first, with counts. One run's detail includes its results |

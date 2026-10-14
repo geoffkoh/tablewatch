@@ -605,7 +605,7 @@ def test_every_bounded_column_holds_its_full_width(
     result_values = {
         c.key: _filler(c)
         for c in CheckResultRow.__table__.columns
-        if c.key not in ("id", "run_id", "check_id")
+        if c.key not in ("id", "run_id", "check_id", "definition_id")
     }
     clause_values = {
         c.key: _filler(c)

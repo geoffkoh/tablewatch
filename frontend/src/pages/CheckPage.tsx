@@ -16,8 +16,9 @@
  * sections — its latest result and history still show, as for any check.
  */
 import { useEffect, useMemo, useRef, type ReactElement } from "react";
-import { getCheck, getCheckSource, getCheckSql, getHistory, getProject, isNotFound, listRuns } from "../api/api";
-import type { CheckDetailItem, CheckSource, CheckSql, HistoryPage, Project, RunPage } from "../api/types";
+import { getCheck, getCheckSource, getCheckSql, getDefinitions, getHistory, getProject, isNotFound, listRuns } from "../api/api";
+import type { CheckDetailItem, CheckSource, CheckSql, DefinitionList, HistoryPage, Project, RunPage } from "../api/types";
+import { DefinitionSection } from "../components/check/DefinitionSection";
 import { HistorySection } from "../components/check/HistorySection";
 import { Identity } from "../components/check/Identity";
 import { LatestSection } from "../components/check/LatestSection";
@@ -38,6 +39,7 @@ interface CheckSlots {
   runs: RunPage;
   sql: CheckSql;
   source: CheckSource;
+  definitions: DefinitionList;
 }
 
 /**
@@ -58,11 +60,12 @@ export function CheckPage({ id }: { id: string }): ReactElement {
       runs: () => listRuns(1),
       sql: () => getCheckSql(id),
       source: () => getCheckSource(id),
+      definitions: () => getDefinitions(id),
     }),
     [id],
   );
   const { slots, busy, now, generation, reload, capture } = useLoads(requests);
-  const { project, check, history, runs, sql, source } = slots;
+  const { project, check, history, runs, sql, source, definitions } = slots;
 
   const loadedProject = project.state === "ok" ? project.data : null;
   const loadedItem = check.state === "ok" ? check.data : null;
@@ -96,6 +99,12 @@ export function CheckPage({ id }: { id: string }): ReactElement {
   // nobody knows (P6), and for a retired check (S13: no SQL or source tabs).
   const showSql = check.state !== "loading" && !unknown && !(checkMissing && history.state === "loading") && retiredCheck === null;
   const showSource = showSql;
+  // The Definition section (spec 038 S8) comes from the results store, not a
+  // check file, so a retired check has one too — the one condition it drops
+  // from `showSql`. A 404 from /definitions means "no row at all" only when
+  // the check is unknown; it is never expected for a retired check.
+  const showDefinitions = check.state !== "loading" && !unknown && !(checkMissing && history.state === "loading");
+  const definitionsFailed = definitions.state === "failed" && !(checkMissing && isNotFound(definitions.failure));
 
   let status: string;
   if (busy) status = "Loading…";
@@ -104,7 +113,8 @@ export function CheckPage({ id }: { id: string }): ReactElement {
     (check.state === "failed" && !checkMissing) ||
     history.state === "failed" ||
     sqlFailed ||
-    sourceFailed
+    sourceFailed ||
+    definitionsFailed
   )
     status = "Could not load everything.";
   else status = "Up to date.";
@@ -196,6 +206,10 @@ export function CheckPage({ id }: { id: string }): ReactElement {
             now={now}
             onRetry={reload}
           />
+        )}
+
+        {showDefinitions && (
+          <DefinitionSection definitions={definitions} checkMissing={checkMissing} now={now} onRetry={reload} />
         )}
 
         {showSql && (

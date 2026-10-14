@@ -69,6 +69,10 @@ export interface RightLabel {
 }
 
 export interface Marker {
+  /** Unique across both kinds; the React key. */
+  key: string;
+  kind: "rule" | "definition";
+  /** 1-based within its kind, oldest first. */
   number: number;
   x: number;
   y0: number;
@@ -193,17 +197,30 @@ export function layoutChart({ entries, check, rule, streak }: ChartInput): Chart
       ? linear([tMin, tMax], [plotX0 + X_INSET, plotX1 - X_INSET])
       : () => (plotX0 + plotX1) / 2;
 
-  // ---- top rows: the streak, then rule-change labels ----
+  // ---- top rows: the streak, then rule-change and definition-change labels ----
   const changes = series.ruleChanges;
-  const markerLabels = changes.map((c) => ({
-    change: c,
-    text: changes.length === 1 ? "Rule changed" : `Rule change ${String(c.number)}`,
-    x: round(xOf(c.t)),
-  }));
+  const definitionChanges = series.definitionChanges;
+  const markerLabels = [
+    ...changes.map((c) => ({
+      kind: "rule" as const,
+      key: `rule-${String(c.number)}`,
+      number: c.number,
+      text: changes.length === 1 ? "Rule changed" : `Rule change ${String(c.number)}`,
+      x: round(xOf(c.t)),
+    })),
+    ...definitionChanges.map((c) => ({
+      kind: "definition" as const,
+      key: `definition-${String(c.number)}`,
+      number: c.number,
+      // The accessible label spec 038 S8 asks for: "definition v3".
+      text: `definition v${String(c.version)}`,
+      x: round(xOf(c.t)),
+    })),
+  ];
   const spans = markerLabels.map((m) => {
     const w = textWidth(m.text);
     const x0 = Math.min(Math.max(m.x - w / 2, 4), WIDTH - 4 - w);
-    return { id: String(m.change.number), x0, x1: x0 + w };
+    return { id: m.key, x0, x1: x0 + w };
   });
   const markerRows = assignRows(spans);
   const markerRowCount = markerLabels.length === 0 ? 0 : Math.max(...[...markerRows.values()]) + 1;
@@ -236,11 +253,13 @@ export function layoutChart({ entries, check, rule, streak }: ChartInput): Chart
   const lanesTop = plotY1 + 10;
   const lanesBottom = lanesTop + laneList.length * LANE_HEIGHT;
   const markers: Marker[] = markerLabels.map((m, i) => {
-    const row = markerRows.get(String(m.change.number)) ?? 0;
+    const row = markerRows.get(m.key) ?? 0;
     const span = spans[i] ?? { x0: m.x, x1: m.x };
     const labelY = markerTop + row * ROW_HEIGHT + ROW_HEIGHT / 2;
     return {
-      number: m.change.number,
+      key: m.key,
+      kind: m.kind,
+      number: m.number,
       x: m.x,
       y0: labelY + 6,
       y1: laneList.length > 0 ? lanesBottom : plotY1,

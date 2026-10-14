@@ -248,6 +248,7 @@ def _execute_keyed(
         now=now,
         notify=notify,
         sync_checks=_sync_checks(project),
+        managed=project.config.results.managed,
     ) as keyed:
         if keyed.completed is not None:
             # A replay still sends what an earlier attempt left (D3).
@@ -344,7 +345,12 @@ def read_baselines(
         # since 0002 holds the measured values (the store reads a pre-0004
         # one as it is, spec 033 D8); one from before change() has none.
         with open_store(
-            url, project.root, create=False, migrate=False, oldest=BASELINES_SINCE
+            url,
+            project.root,
+            create=False,
+            migrate=False,
+            oldest=BASELINES_SINCE,
+            managed=project.config.results.managed,
         ) as store:
             samples = store.baselines(
                 project.config.name,
@@ -386,6 +392,7 @@ def default_sinks(
             project.config.results.url,
             project.root,
             sync_checks=_sync_checks(project),
+            managed=project.config.results.managed,
         )
     ]
     if notify:

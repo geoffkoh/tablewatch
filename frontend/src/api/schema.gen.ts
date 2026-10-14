@@ -38,6 +38,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/checks/{check_id}/definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Check Definitions
+         * @description A check's definition versions, newest first: a retired check's too.
+         */
+        get: operations["get_check_definitions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/checks/{check_id}/history": {
         parameters: {
             query?: never;
@@ -361,6 +381,47 @@ export interface components {
             /** Type */
             type: string;
         };
+        /**
+         * Definition
+         * @description One version of a check's definition (spec 038).
+         */
+        Definition: {
+            /** Clauses */
+            clauses: components["schemas"]["DefinitionClause"][];
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Run Id */
+            run_id: string | null;
+            /** Version */
+            version: number;
+        };
+        /**
+         * DefinitionClause
+         * @description One clause of a definition version, as it was written.
+         */
+        DefinitionClause: {
+            /** Expression */
+            expression: string;
+            /** Key */
+            key: string;
+            /** Options */
+            options: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Where */
+            where: string | null;
+        };
+        /**
+         * DefinitionList
+         * @description A check's definition versions, newest first.
+         */
+        DefinitionList: {
+            /** Items */
+            items: components["schemas"]["Definition"][];
+        };
         /** Diagnostic */
         Diagnostic: {
             location: components["schemas"]["Location"] | null;
@@ -402,6 +463,8 @@ export interface components {
         HistoryEntry: {
             /** Dataset */
             dataset: string;
+            /** Definition Version */
+            definition_version: number | null;
             /** Display Value */
             display_value: string;
             /** Duration Ms */
@@ -442,6 +505,7 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        JsonValue: unknown;
         /**
          * LastEvaluated
          * @description What the data last showed, when the latest result could not be evaluated.
@@ -870,6 +934,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CheckDetail"] | components["schemas"]["RetiredCheckSummary"];
+                };
+            };
+            /** @description invalid parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description forbidden host */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_check_definitions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                check_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefinitionList"];
                 };
             };
             /** @description invalid parameter */
