@@ -313,7 +313,7 @@ class KeyedRun:
                 register_all(session, self.project, results, rows, finished)
                 attach_definitions(session, results, rows, self.run_id, finished)
                 session.add_all([*rows, record])
-                record_heads(session, rows, self.started_at)
+                record_heads(session, rows, self.project, self.started_at)
                 # A check the earlier attempt recorded but this one did not
                 # (disabled or deleted since) still has its older history.
                 for check_id in forgotten - {row.check_id for row in rows}:

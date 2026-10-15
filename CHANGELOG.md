@@ -40,6 +40,17 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- **Alerts page and `GET /api/v1/alerts`.** Every result that changes its
+  check's state — `failing`, `erroring`, `recovered`, the rule notifications
+  use — is recorded with it in `tablewatch_state_changes` (revision 0010,
+  filled from history when the store migrates), whether or not the check
+  has `notify:`. The web UI's Alerts section lists them newest first with a
+  filter by event, and for keyed runs what each notifier was told: sent,
+  pending, or given up on. Notifications now tell the recorded change
+  rather than re-reading history. `tablewatch store sql --from` 0008 or
+  0009 refuses (0010 fills a table in Python): upgrade such a store once
+  with `tablewatch store migrate` (spec 041).
+
 - **Settings page and `GET /api/v1/settings`.** `serve`'s web UI gains a
   read-only Settings section: the project, each datasource's type with its
   dataset and check counts, each notifier with the environment variable its

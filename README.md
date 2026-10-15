@@ -315,7 +315,7 @@ migration, for example `V12__tablewatch_0009.sql` for Flyway:
 tw store sql --from 0008 > db/migration/V12__tablewatch_0009.sql
 ```
 
-A few early upgrades (into 0004 and 0008) rewrite existing results in
+A few upgrades (into 0004, 0008 and 0010) rewrite existing results in
 Python and cannot be written as SQL: `store sql --from` before them exits
 3 and says so. Upgrade such a store once with `tablewatch store migrate`,
 run as a role that may change the schema, and use `store sql` from then

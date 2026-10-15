@@ -21,9 +21,17 @@ import { navProblemsCount } from "../lib/navProblems";
 import { readNavCollapsed, writeNavCollapsed } from "../lib/navPreference";
 import type { Load } from "../lib/useLoads";
 import { Header } from "./Header";
-import { ChecksIcon, CloseIcon, CollapseIcon, DashboardIcon, DatasetsIcon, SettingsIcon } from "./NavIcons";
+import {
+  AlertsIcon,
+  ChecksIcon,
+  CloseIcon,
+  CollapseIcon,
+  DashboardIcon,
+  DatasetsIcon,
+  SettingsIcon,
+} from "./NavIcons";
 
-export type Section = "dashboard" | "checks" | "datasets" | "settings";
+export type Section = "dashboard" | "checks" | "datasets" | "alerts" | "settings";
 
 interface SectionDef {
   key: Section;
@@ -32,11 +40,12 @@ interface SectionDef {
   Icon: () => ReactElement;
 }
 
-/** Dashboard, Checks, Datasets, Settings, in that order (P-D1, N1; spec 040 S-D6). Runs and Alerts are not built yet. */
+/** Dashboard, Checks, Datasets, Alerts, Settings, in that order (P-D1, N1; spec 040 S-D6, spec 041 P5). Runs is not built yet. */
 const SECTIONS: readonly SectionDef[] = [
   { key: "dashboard", label: "Dashboard", href: "/", Icon: DashboardIcon },
   { key: "checks", label: "Checks", href: "/checks", Icon: ChecksIcon },
   { key: "datasets", label: "Datasets", href: "/datasets", Icon: DatasetsIcon },
+  { key: "alerts", label: "Alerts", href: "/alerts", Icon: AlertsIcon },
   { key: "settings", label: "Settings", href: "/settings", Icon: SettingsIcon },
 ];
 

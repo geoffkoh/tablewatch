@@ -33,7 +33,7 @@ from tablewatch.notify.base import (
 from tablewatch.results import outbox
 from tablewatch.results.outbox import Pending
 from tablewatch.results.state import EventName, alerts
-from tablewatch.results.store import PageKey, ResultStore, StoreError, open_store
+from tablewatch.results.store import ResultStore, StoreError, open_store
 
 log = logging.getLogger(__name__)
 
@@ -70,15 +70,11 @@ def _notify(project: Project, run: RunResult) -> None:
         migrate=False,
         managed=project.config.results.managed,
     ) as store:
-        previous = store.previous_results(
-            run.project,
-            [r.check.id for r in results],
-            PageKey(run.started_at, run.id),
-        )
+        recorded_changes = store.changes_in_run(run.project, run.id)
     events: dict[str, list[Event]] = {}
     for result in results:  # the run's order, which is the console's
-        history = previous.get(result.check.id, [])
-        for name, change in alerts(str(result.outcome), result.check.notify, history):
+        recorded = recorded_changes.get(result.check.id)
+        for name, change in alerts(recorded, result.check.notify):
             events.setdefault(name, []).append(
                 Event(change.event, change.previous_outcome, NotifiedResult.of(result))
             )

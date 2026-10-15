@@ -153,41 +153,76 @@ class Transition:
     previous_outcome: str | None
 
 
-def transition(outcome: str, previous: Sequence[Entry]) -> Transition | None:
-    """The event, if any, when a check records `outcome` after `previous`.
+@dataclass(frozen=True)
+class AlertBasis:
+    """What `transition` compares a new result against: the newest `fail`
+    or `pass` (`alert`), and the newest result that was not `skipped`
+    (`unskipped`); None when there was none. Kept on each check's head, so
+    a result's state change is known as it is saved (spec 041)."""
 
-    `previous` is the check's earlier history, newest first, without this
-    result. A `fail` alerts unless the data was already failing; a `pass`
-    after a `fail` is a recovery; `warn` and `error` in between change
-    neither, so a flaky database never re-alerts a known failure. An `error`
-    alerts unless the check was already erroring (a `skipped` run does not
-    end that streak). `warn` and `skipped` never alert.
+    alert: str | None = None
+    unskipped: str | None = None
+
+
+def fold(basis: AlertBasis, outcome: str) -> AlertBasis:
+    """The basis after a check records `outcome`."""
+    outcome = recorded(outcome)
+    return AlertBasis(
+        alert=outcome if outcome in _ALERT_STATES else basis.alert,
+        unskipped=outcome if outcome != Outcome.SKIPPED else basis.unskipped,
+    )
+
+
+def basis_of(previous: Sequence[Entry]) -> AlertBasis:
+    """The basis of a history given newest first."""
+    basis = AlertBasis()
+    for entry in reversed(previous):
+        basis = fold(basis, entry.outcome)
+    return basis
+
+
+def replay(outcomes: Sequence[str]) -> tuple[list[Transition | None], AlertBasis]:
+    """Each result's state change over a history given oldest first, and
+    the basis after the last."""
+    basis = AlertBasis()
+    changes: list[Transition | None] = []
+    for outcome in outcomes:
+        changes.append(transition(outcome, basis))
+        basis = fold(basis, outcome)
+    return changes, basis
+
+
+def transition(outcome: str, basis: AlertBasis) -> Transition | None:
+    """The event, if any, when a check records `outcome` after `basis`.
+
+    A `fail` alerts unless the data was already failing; a `pass` after a
+    `fail` is a recovery; `warn` and `error` in between change neither, so
+    a flaky database never re-alerts a known failure. An `error` alerts
+    unless the check was already erroring (a `skipped` run does not end
+    that streak). `warn` and `skipped` never alert.
     """
     outcome = recorded(outcome)
-    earlier = [recorded(e.outcome) for e in previous]
     if outcome in _ALERT_STATES:
-        before = next((o for o in earlier if o in _ALERT_STATES), None)
+        before = basis.alert
         if outcome == Outcome.FAIL and before != Outcome.FAIL:
             return Transition("failing", before)
         if outcome == Outcome.PASS and before == Outcome.FAIL:
             return Transition("recovered", before)
         return None
-    if outcome == Outcome.ERROR:
-        before = next((o for o in earlier if o != Outcome.SKIPPED), None)
-        if before != Outcome.ERROR:
-            return Transition("erroring", before)
+    if outcome == Outcome.ERROR and basis.unskipped != Outcome.ERROR:
+        return Transition("erroring", basis.unskipped)
     return None
 
 
 def alerts(
-    outcome: str, notify: Sequence[str], previous: Sequence[Entry]
+    change: Transition | None, notify: Sequence[str]
 ) -> list[tuple[str, Transition]]:
-    """Each notifier one check's result should tell, with what changed.
+    """Each notifier one check's result should tell, with what changed:
+    its recorded state change (spec 041 D3).
 
     The rule both delivery paths share: an unkeyed run sends these at its
     end; a keyed run writes them to the outbox with its dataset's results.
     """
-    change = transition(outcome, previous)
     if change is None:
         return []
     return [(name, change) for name in notify]

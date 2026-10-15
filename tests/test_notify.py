@@ -27,8 +27,8 @@ import tablewatch as tw
 from tablewatch.config import load_project
 from tablewatch.notify.base import NotifyError
 from tablewatch.notify.http import check_url, post_json
-from tablewatch.results.state import Entry, Transition, transition
-from tablewatch.results.store import PageKey, ResultStore
+from tablewatch.results.state import Entry, Transition, basis_of, transition
+from tablewatch.results.store import ResultStore
 from tests.conftest import invoke
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
@@ -234,14 +234,14 @@ def history(*outcomes: str) -> list[Entry]:
 def test_the_rule(
     earlier: tuple[str, ...], now: str, expected: Transition | None
 ) -> None:
-    assert transition(now, history(*earlier)) == expected
+    assert transition(now, basis_of(history(*earlier))) == expected
 
 
 def test_flaps_alert_every_time() -> None:  # N33
     seen: list[str] = []
     outcomes: list[str] = []
     for now in ("fail", "pass", "fail", "pass"):
-        change = transition(now, history(*outcomes))
+        change = transition(now, basis_of(history(*outcomes)))
         seen.append(change.event if change else "-")
         outcomes.append(now)
     assert seen == ["failing", "recovered", "failing", "recovered"]
@@ -657,28 +657,15 @@ def test_a_renamed_check_alerts_as_new(project: Path, hook: Hook) -> None:  # D3
     assert hook.events[-1]["previous_outcome"] is None
 
 
-def test_previous_results_is_project_scoped(project: Path, hook: Hook) -> None:  # D4
+def test_recorded_changes_are_project_scoped(project: Path, hook: Hook) -> None:  # D4
     set_rows(project, "b", "c")
     first = run(project)
     url = load_project(project).config.results.url
     check = next(r.check.id for r in first.results if r.check.name == "has_a")
     with ResultStore.open(url, project) as store:
-        assert (
-            store.previous_results(
-                "other-project", [check], PageKey(T0 + timedelta(days=9999), "z")
-            )
-            == {}
-        )
-        found = store.previous_results(
-            "notify-test", [check], PageKey(first.started_at, first.id)
-        )
-        assert found == {}  # the run itself is excluded
-        later = store.previous_results(
-            "notify-test",
-            [check],
-            PageKey(first.started_at + timedelta(seconds=1), first.id),
-        )
-        assert [e.outcome for e in later[check]] == ["fail"]
+        assert store.changes_in_run("other-project", first.id) == {}
+        found = store.changes_in_run("notify-test", first.id)
+    assert found[check] == Transition("failing", None)
 
 
 def test_the_retail_example_alerts_once(tmp_path: Path, hook: Hook) -> None:  # N22

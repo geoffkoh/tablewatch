@@ -27,6 +27,7 @@ from tablewatch.engine.compiled import CompiledDataset, QueryUse, ScanUse
 from tablewatch.jsonvalues import JsonFloat, Timestamp
 from tablewatch.metrics.registry import get_metric
 from tablewatch.paths import scrub_paths
+from tablewatch.results.alerts import Alert as StoredAlert
 from tablewatch.results.models import (
     CHECK_METRIC,
     CheckDefinitionRow,
@@ -632,6 +633,76 @@ class HistoryEntry(_Model):
 
 class HistoryPage(_Model):
     items: list[HistoryEntry]
+    next_cursor: str | None
+
+
+EventName = Literal["failing", "erroring", "recovered"]
+
+
+class AlertCheck(_Model):
+    """The check as the registry has it: a retired one's alerts outlive it."""
+
+    id: str
+    name: str
+    dataset: str
+    datasource: str
+    state: Literal["active", "disabled", "retired"]
+
+
+class AlertDelivery(_Model):
+    # The name the outbox stored, never looked up in the configuration.
+    notifier: str
+    status: Literal["sent", "pending", "abandoned"]
+    attempts: int
+    sent_at: Timestamp | None
+
+
+class Alert(_Model):
+    """A result that changed its check's state (spec 041)."""
+
+    check: AlertCheck
+    run_id: str
+    started_at: Timestamp
+    event: EventName
+    outcome: Outcome
+    previous_outcome: Outcome | None
+    # Null when the run had no run key: its deliveries are not recorded.
+    deliveries: list[AlertDelivery] | None
+
+    @classmethod
+    def of(cls, alert: StoredAlert) -> Alert:
+        check = alert.check
+        return cls(
+            check=AlertCheck(
+                id=check.check_hash,
+                name=check.name,
+                dataset=check.dataset,
+                datasource=check.datasource,
+                state=cast(Literal["active", "disabled", "retired"], check.state),
+            ),
+            run_id=alert.key.run_id,
+            started_at=alert.key.started_at,
+            event=cast(EventName, alert.event),
+            outcome=_outcome(alert.outcome),
+            previous_outcome=_outcome(alert.previous_outcome)
+            if alert.previous_outcome is not None
+            else None,
+            deliveries=None
+            if alert.deliveries is None
+            else [
+                AlertDelivery(
+                    notifier=d.notifier,
+                    status=cast(Literal["sent", "pending", "abandoned"], d.status),
+                    attempts=d.attempts,
+                    sent_at=d.sent_at,
+                )
+                for d in alert.deliveries
+            ],
+        )
+
+
+class AlertPage(_Model):
+    items: list[Alert]
     next_cursor: str | None
 
 

@@ -281,6 +281,50 @@ class CheckHeadRow(Base):
         DateTime(timezone=True)
     )
     evaluated_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # What the next result's state change is judged against (spec 041,
+    # `state.AlertBasis`): the newest `fail`/`pass`, the newest non-`skipped`.
+    alert_outcome: Mapped[str | None] = mapped_column(String(16))
+    unskipped_outcome: Mapped[str | None] = mapped_column(String(16))
+
+
+class StateChangeRow(Base):
+    """A result that changed its check's state: `failing`, `erroring` or
+    `recovered` (`state.transition`), kept as results are saved (spec 041).
+
+    A cache of history like the heads: `rebuild_heads` rebuilds it. The
+    run's project and start are copied in so the project's alerts page
+    through one index, newest first.
+    """
+
+    __tablename__ = "tablewatch_state_changes"
+    __table_args__ = (
+        Index(
+            "ix_tablewatch_state_changes_page",
+            "project",
+            "started_at",
+            "run_id",
+            "result_id",
+        ),
+    )
+
+    result_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "tablewatch_check_results.id",
+            name="fk_tablewatch_state_changes_result_id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+        autoincrement=False,
+    )
+    check_id: Mapped[int] = mapped_column(
+        ForeignKey("tablewatch_checks.id", name="fk_tablewatch_state_changes_check_id"),
+        index=True,
+    )
+    project: Mapped[str] = mapped_column(String(MAX_PROJECT_NAME))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    run_id: Mapped[str] = mapped_column(String(32))
+    event: Mapped[str] = mapped_column(String(16))
+    previous_outcome: Mapped[str | None] = mapped_column(String(16))
 
 
 class DatasetRunRow(Base):

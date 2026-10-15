@@ -543,7 +543,7 @@ def test_a_0005_era_store_migrates_and_a_keyed_run_alerts(
     _rows(root, "a", "orders", 0)
     assert tw.run(root, run_key=KEY).exit_code() == 1
     assert _events(webhook) == [("orders", "failing")]
-    assert _q(root, "SELECT version_num FROM tablewatch_alembic_version") == [("0009",)]
+    assert _q(root, "SELECT version_num FROM tablewatch_alembic_version") == [("0010",)]
 
 
 # --- Postgres ---------------------------------------------------------------------

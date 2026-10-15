@@ -202,7 +202,7 @@ def test_recording_on_a_0003_store_reads_its_baseline_then_migrates(
     _alembic(f"sqlite:///{db}", "downgrade", "0003")
     code, out, err = invoke(workspace.root, "run", "--output", "json")
     assert code == 0 and '"skipped"' not in out, (out, err)
-    assert _revision(db) == "0009"
+    assert _revision(db) == "0010"
     assert _q(db, "SELECT count(*) FROM tablewatch_clause_results") == [(2,)]
     assert _q(db, "SELECT count(*) FROM tablewatch_checks") == [(1,)]
 

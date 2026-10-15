@@ -70,12 +70,12 @@ function sevenChecks(): OverviewResponses {
 }
 
 describe("N1: the nav on every page", () => {
-  it("lists Dashboard, Checks, Datasets, Settings in order, with the current page's link marked", async () => {
+  it("lists Dashboard, Checks, Datasets, Alerts, Settings in order, with the current page's link marked", async () => {
     stubServer(recorded);
     render(<App path="/" />);
     await waitLoaded();
     const hrefs = navLinks().map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/", "/checks", "/datasets", "/settings"]);
+    expect(hrefs).toEqual(["/", "/checks", "/datasets", "/alerts", "/settings"]);
     const current = nav().querySelectorAll('a[aria-current="page"]');
     expect(current).toHaveLength(1);
     expect(current[0]?.getAttribute("href")).toBe("/");
@@ -115,7 +115,7 @@ describe("N1: the nav on every page", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<App path="/nope" />);
     const hrefs = navLinks().map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/", "/checks", "/datasets", "/settings"]);
+    expect(hrefs).toEqual(["/", "/checks", "/datasets", "/alerts", "/settings"]);
     expect(nav().querySelectorAll('a[aria-current="page"]')).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -187,7 +187,7 @@ describe("N4: collapsing the nav on a wide screen", () => {
     fireEvent.click(collapse);
     expect(screen.getByRole("button", { name: "Expand navigation" })).toBeTruthy();
     expect(window.localStorage.getItem("tablewatch.nav")).toBe("rail");
-    for (const name of ["Dashboard", "Checks", "Datasets", "Settings"]) {
+    for (const name of ["Dashboard", "Checks", "Datasets", "Alerts", "Settings"]) {
       expect(screen.getByRole("link", { name: new RegExp(`^${name}`) })).toBeTruthy();
     }
     // "Reload": the DOM is torn down and a fresh mount reads the stored preference.

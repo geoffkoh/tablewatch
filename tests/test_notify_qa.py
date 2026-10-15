@@ -25,7 +25,8 @@ from tablewatch.config import load_project
 from tablewatch.engine.runner import CheckResult, ClauseResult, RunResult
 from tablewatch.notify.base import NotifyError
 from tablewatch.notify.http import post_json
-from tablewatch.results.store import PageKey, ResultStore
+from tablewatch.results.state import Transition
+from tablewatch.results.store import ResultStore
 from tests.conftest import invoke
 from tests.test_notify import (
     ORDERS,
@@ -112,7 +113,7 @@ def _fail_history(hook: Hook, mp: pytest.MonkeyPatch) -> None:
     def boom(self: ResultStore, *args: object, **kwargs: object) -> None:
         raise RuntimeError(f"history read failed for {hook.url}")
 
-    mp.setattr(ResultStore, "previous_results", boom)
+    mp.setattr(ResultStore, "changes_in_run", boom)
 
 
 FAILURES: dict[str, tuple[Callable[[Hook, pytest.MonkeyPatch], None], str]] = {
@@ -622,19 +623,21 @@ def _seed(
         store.save(run)
 
 
-def test_previous_results_orders_by_time_then_id(project: Path) -> None:  # D4, PageKey
+def test_a_late_run_is_judged_at_its_place_in_history(project: Path) -> None:
+    # D4, PageKey: same moment orders by run id; spec 041 D3 replays history.
     t = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     _seed(project, {"has_a": "pass"}, t - timedelta(hours=1), "1" * 32)
     _seed(project, {"has_a": "fail"}, t, "2" * 32)  # same moment, lower id: before
     _seed(project, {"has_a": "error"}, t, "8" * 32)  # same moment, higher id: after
     _seed(project, {"has_a": "warn"}, t + timedelta(microseconds=1), "0" * 32)
+    _seed(project, {"has_a": "pass"}, t, "5" * 32)  # saved last, sits between
     loaded = load_project(project)
     check = next(c.id for c in loaded.checks if c.name == "has_a")
     with ResultStore.open(loaded.config.results.url, project) as store:
-        found = store.previous_results(
-            loaded.config.name, [check], PageKey(t, "5" * 32)
-        )
-    assert [e.outcome for e in found[check]] == ["fail"]  # stops at the first fail
+        found = store.changes_in_run(loaded.config.name, "5" * 32)
+        after = store.changes_in_run(loaded.config.name, "8" * 32)
+    assert found == {check: Transition("recovered", "fail")}
+    assert after == {check: Transition("erroring", "pass")}
 
 
 def test_a_later_concurrent_run_is_not_this_runs_history(
@@ -785,20 +788,6 @@ def test_the_docs_describe_notifications() -> None:  # N26
     ):
         assert word in section, word
     assert "## Notifications" in README.read_text(encoding="utf-8")
-
-
-def test_previous_results_reads_past_the_first_chunk(project: Path) -> None:  # D4
-    t = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
-    _seed(project, {"has_a": "pass"}, t - timedelta(hours=2), uuid.uuid4().hex)
-    _seed(project, {"has_a": "error"}, t - timedelta(hours=1), uuid.uuid4().hex)
-    loaded = load_project(project)
-    check = next(c.id for c in loaded.checks if c.name == "has_a")
-    wanted = [f"missing-{i}" for i in range(1100)]
-    wanted.insert(1050, check)
-    with ResultStore.open(loaded.config.results.url, project) as store:
-        found = store.previous_results(loaded.config.name, wanted, PageKey(t, "f" * 32))
-    assert list(found) == [check]
-    assert [e.outcome for e in found[check]] == ["error", "pass"]
 
 
 def test_a_pasted_url_in_notify_is_not_echoed(project: Path) -> None:  # D8
