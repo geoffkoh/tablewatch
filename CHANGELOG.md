@@ -40,6 +40,14 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- **Dashboard panels and `GET /api/v1/check-changes`.** The Dashboard gains
+  four panels above the check table: problems per run over the last 30
+  runs, the newest state changes, datasets not scanned within a day of the
+  latest run, and recent changes to checks (added, definition changed,
+  disabled, retired, enabled again) from the registry, served by the new
+  endpoint. Each panel loads on its own; one that fails says so and never
+  hides the others (spec 042).
+
 - **Alerts page and `GET /api/v1/alerts`.** Every result that changes its
   check's state — `failing`, `erroring`, `recovered`, the rule notifications
   use — is recorded with it in `tablewatch_state_changes` (revision 0010,

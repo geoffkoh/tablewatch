@@ -10,6 +10,37 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 42 — App shell, part 4: the Dashboard's panels (I-51 part 4), 2026-10-16
+
+- **Spec:** [042-dashboard-panels](specs/042-dashboard-panels.md). **Branch:** `iter/042`.
+  Full track (a new endpoint); spec by the tech lead (owner-fixed item), no REFINE (K-D1–K-D5
+  decided in the spec). No items added (freeze). **I-51 is done.**
+- **Shipped:** `GET /api/v1/check-changes` (`results/changes.py`: three `limit`-deep queries over
+  the registry and definition history, merged); `CheckRef` names the check summary shared with
+  `/alerts`; `known_state` one rule for a lifecycle state from a newer tablewatch. Dashboard panels
+  (ui-engineer): Problems per run, Changed recently, Not scanned recently, Check changes — each its
+  own `useLoads` slot.
+  Suite: **3,263 passed, 96 skipped (Postgres), 16 xfailed**; vitest 1,155.
+- **Reviewer findings and resolution:**
+  - *architect — approve, no blockers.* Renamed `AlertCheck` → `CheckRef`; one unknown-state rule;
+    `ChangeKind` shared; story order a module constant; docstring now says "at most 3 × limit rows
+    reach Python". Kept: no index for the three ORDER BYs (registry-sized; a revision if it grows).
+  - *qa-engineer — pass-with-followups, no blockers.* Fixed: ties at the cut-off were arbitrary (a
+    sync registers every check at one instant), so `limit=5` was not a prefix of `limit=50` — every
+    query now breaks ties by registry id; the trend's `<svg role="img">` hid every bar's label from
+    screen readers — the svg is a group and each bar an image. Kept: a panel's Retry reloads the
+    whole page (spec allows it).
+  - *data-steward — accept; 9/9.* Fixed: `/check-changes` declared its own 1–50 limit while the
+    error message said 1–200 — it now uses the shared limit; an invalid `event` names the valid
+    ones. Noted: the 24-hour rule flags weekly-cadence datasets daily until per-dataset cadence
+    exists (non-goal).
+  - The ui-engineer could not load the dataviz skill in its session; it reused the validated chart
+    tokens (§5) and recorded the gap in `UI_SPECIFICATION.md` §11.
+- **Lesson:** a merge of limited queries needs the same total order in SQL and in Python, or the
+  cut-off picks arbitrarily among ties.
+- **Backlog:** I-51 done. Next: iteration 43 = I-47 (runs open datasources read-only), then I-48,
+  I-50.
+
 ## Iteration 41 — App shell, part 3: Alerts (I-51 part 3), 2026-10-15
 
 - **Spec:** [041-alerts-page](specs/041-alerts-page.md). **Branch:** `iter/041`.
