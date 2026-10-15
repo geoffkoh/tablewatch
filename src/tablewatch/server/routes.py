@@ -329,9 +329,7 @@ def list_alerts(
 
 
 @router.get("/check-changes", response_model=schemas.CheckChangeList)
-def list_check_changes(
-    context: Context, limit: Annotated[int, Query(ge=1, le=50)] = 10
-) -> schemas.CheckChangeList:
+def list_check_changes(context: Context, limit: Limit = 10) -> schemas.CheckChangeList:
     """Recent changes to the project's checks, newest first (spec 042)."""
     return schemas.CheckChangeList(
         items=[

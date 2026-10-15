@@ -70,13 +70,21 @@ def test_the_limit(recorded: Recorded) -> None:  # K10
     assert len(_changes(recorded.root)) == 10
     assert len(_changes(recorded.root, "?limit=3")) == 3
     with served(recorded.root) as client:
-        for bad in ("0", "51", "x"):
+        for bad in ("0", "201", "x"):
             assert_error(
                 client.get(f"/api/v1/check-changes?limit={bad}"),
                 400,
                 "invalid_parameter",
             )
+        body = client.get("/api/v1/check-changes?limit=201").json()
+        assert (
+            body["error"]["message"] == "invalid limit — a whole number from 1 to 200"
+        )
         assert_error(client.post("/api/v1/check-changes"), 405, "method_not_allowed")
+        event = client.get("/api/v1/alerts?event=warn").json()
+        assert event["error"]["message"] == (
+            "invalid event — one of failing, erroring, recovered"
+        )
 
 
 def test_another_project_is_never_listed(recorded: Recorded) -> None:  # K9

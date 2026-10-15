@@ -31,7 +31,7 @@ questions above the check table.
   at all this week shows nothing stale (the Latest run panel already says how old that is).
   Disabled-only datasets are left out. None → "Every dataset was scanned within a day of the
   latest run."
-- K-D4. **Check changes.** `GET /api/v1/check-changes?limit=` (1–50, default 10) →
+- K-D4. **Check changes.** `GET /api/v1/check-changes?limit=` (1–200 like every `limit`, default 10) →
   `{items: [{check: AlertCheck, kind, at, version}]}` newest first, from the registry and
   definition history of the served project:
   `added` (`registered_at`), `redefined` (a definition version ≥ 2: its `recorded_at`, `version`),
@@ -59,7 +59,7 @@ questions above the check table.
 | K7 | must | registry: one check added, one redefined to v2, one disabled, one retired | `/check-changes` lists all four, newest first, kinds as K-D4; `version: 2` on the redefined |
 | K8 | must | a check disabled then enabled again | kind `enabled` at its `state_since` |
 | K9 | must | another project in the same store | its checks never listed |
-| K10 | must | `limit=0` / `limit=51` / `POST` | 400 / 400 / 405 envelopes |
+| K10 | must | `limit=0` / `limit=201` / `POST` | 400 / 400 / 405 envelopes |
 | K11 | must | `/alerts` fails, others load | only that panel says "Could not load recent changes." with Retry |
 | K12 | must | markup in a check or dataset name | text only |
 | K13 | should | narrow screen | panels in one column, above the check table |
