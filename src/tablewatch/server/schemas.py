@@ -28,11 +28,15 @@ from tablewatch.jsonvalues import JsonFloat, Timestamp
 from tablewatch.metrics.registry import get_metric
 from tablewatch.paths import scrub_paths
 from tablewatch.results.alerts import Alert as StoredAlert
+from tablewatch.results.changes import ChangeKind
+from tablewatch.results.changes import CheckChange as StoredCheckChange
 from tablewatch.results.models import (
     CHECK_METRIC,
     CheckDefinitionRow,
     CheckResultRow,
+    CheckRow,
     RunRow,
+    known_state,
 )
 from tablewatch.results.state import Evaluated
 from tablewatch.results.store import Latest, Retired, SchemaState
@@ -639,14 +643,26 @@ class HistoryPage(_Model):
 EventName = Literal["failing", "erroring", "recovered"]
 
 
-class AlertCheck(_Model):
-    """The check as the registry has it: a retired one's alerts outlive it."""
+class CheckRef(_Model):
+    """A check as the registry has it, for alerts and check changes: a
+    retired one's outlive it."""
 
     id: str
     name: str
     dataset: str
     datasource: str
     state: Literal["active", "disabled", "retired"]
+
+    @classmethod
+    def of(cls, check: CheckRow) -> CheckRef:
+        state = known_state(check.state)
+        return cls(
+            id=check.check_hash,
+            name=check.name,
+            dataset=check.dataset,
+            datasource=check.datasource,
+            state=cast(Literal["active", "disabled", "retired"], state),
+        )
 
 
 class AlertDelivery(_Model):
@@ -660,7 +676,7 @@ class AlertDelivery(_Model):
 class Alert(_Model):
     """A result that changed its check's state (spec 041)."""
 
-    check: AlertCheck
+    check: CheckRef
     run_id: str
     started_at: Timestamp
     event: EventName
@@ -671,15 +687,8 @@ class Alert(_Model):
 
     @classmethod
     def of(cls, alert: StoredAlert) -> Alert:
-        check = alert.check
         return cls(
-            check=AlertCheck(
-                id=check.check_hash,
-                name=check.name,
-                dataset=check.dataset,
-                datasource=check.datasource,
-                state=cast(Literal["active", "disabled", "retired"], check.state),
-            ),
+            check=CheckRef.of(alert.check),
             run_id=alert.key.run_id,
             started_at=alert.key.started_at,
             event=cast(EventName, alert.event),
@@ -699,6 +708,28 @@ class Alert(_Model):
                 for d in alert.deliveries
             ],
         )
+
+
+class CheckChange(_Model):
+    """A recent change to a check, from the registry (spec 042)."""
+
+    check: CheckRef
+    kind: ChangeKind
+    at: Timestamp
+    version: int | None  # the new definition version, for `redefined`
+
+    @classmethod
+    def of(cls, change: StoredCheckChange) -> CheckChange:
+        return cls(
+            check=CheckRef.of(change.check),
+            kind=change.kind,
+            at=change.at,
+            version=change.version,
+        )
+
+
+class CheckChangeList(_Model):
+    items: list[CheckChange]
 
 
 class AlertPage(_Model):

@@ -451,12 +451,14 @@ describe("O9: API failures are shown, not blank", () => {
 });
 
 describe("O10: refresh", () => {
-  it("fetches the four endpoints again, and re-renders", async () => {
+  const PANEL_SLOTS = [URLS.trend, URLS.changed, URLS.checkChanges];
+
+  it("fetches the seven endpoints again, and re-renders", async () => {
     const first = stubServer(recorded);
     render(<App path="/" />);
     await screen.findByRole("table");
     expect(first.mock.calls.map((c) => String(c[0])).sort()).toEqual(
-      [URLS.checks, URLS.project, URLS.runs, URLS.problems].sort(),
+      [URLS.checks, URLS.project, URLS.runs, URLS.problems, ...PANEL_SLOTS].sort(),
     );
     const second = stubServer(beforeF);
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
@@ -464,7 +466,7 @@ describe("O10: refresh", () => {
       expect(text(tile("error"))).toContain("5 errors");
     });
     expect(second.mock.calls.map((c) => String(c[0])).sort()).toEqual(
-      [URLS.checks, URLS.project, URLS.runs, URLS.problems].sort(),
+      [URLS.checks, URLS.project, URLS.runs, URLS.problems, ...PANEL_SLOTS].sort(),
     );
   });
 
@@ -478,7 +480,7 @@ describe("O10: refresh", () => {
       await vi.advanceTimersByTimeAsync(10);
     });
     const calls = fetchMock.mock.calls.length;
-    expect(calls).toBe(4);
+    expect(calls).toBe(7);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
     });

@@ -8,6 +8,7 @@
 import type {
   AlertEvent,
   AlertPage,
+  CheckChangeList,
   CheckDetailItem,
   CheckList,
   CheckSource,
@@ -197,4 +198,13 @@ export function listAlerts(limit: number, event?: AlertEvent, cursor: string | n
   params.push(`limit=${encodeURIComponent(String(limit))}`);
   if (cursor !== null) params.push(`cursor=${encodeURIComponent(cursor)}`);
   return get<AlertPage>(`/alerts?${params.join("&")}`);
+}
+
+/**
+ * `GET /api/v1/check-changes?limit=N`: recent changes to the project's
+ * checks, newest first (spec 042 K-D4) — added, redefined, disabled,
+ * retired or enabled again — from the registry and definition history.
+ */
+export function listCheckChanges(limit: number): Promise<CheckChangeList> {
+  return get<CheckChangeList>(`/check-changes?limit=${encodeURIComponent(String(limit))}`);
 }

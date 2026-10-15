@@ -25,6 +25,7 @@ from tablewatch.config.loader import Project as LoadedProject
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.jsonvalues import utc
 from tablewatch.results.alerts import AlertKey, alerts_page
+from tablewatch.results.changes import check_changes
 from tablewatch.results.store import (
     PageKey,
     ResultStore,
@@ -324,6 +325,17 @@ def list_alerts(
     return schemas.AlertPage(
         items=[schemas.Alert.of(alert) for alert in page],
         next_cursor=_encode_alert_cursor(page[-1].key) if more else None,
+    )
+
+
+@router.get("/check-changes", response_model=schemas.CheckChangeList)
+def list_check_changes(context: Context, limit: Limit = 10) -> schemas.CheckChangeList:
+    """Recent changes to the project's checks, newest first (spec 042)."""
+    return schemas.CheckChangeList(
+        items=[
+            schemas.CheckChange.of(change)
+            for change in check_changes(context.store, context.name, limit)
+        ]
     )
 
 

@@ -18,6 +18,12 @@ export interface Server {
    * over-count in tests that do not care about the badge's exact number.
    */
   problems?: Answer;
+  /** The Dashboard's "Problems per run" slot, `/runs?limit=30` (spec 042 K-D1). Defaults to `fixture.runs`. */
+  trend?: Answer;
+  /** The Dashboard's "Changed recently" slot, `/alerts?limit=5` (spec 042 K-D2). Defaults to none recorded. */
+  changed?: Answer;
+  /** The Dashboard's "Check changes" slot, `/check-changes?limit=5` (spec 042 K-D4). Defaults to none recorded. */
+  checkChanges?: Answer;
 }
 
 /** The URLs the overview is expected to request, and nothing else. */
@@ -30,6 +36,12 @@ export const URLS = {
   settings: "/api/v1/settings",
   /** The Alerts page's default request, no filter (spec 041). */
   alerts: "/api/v1/alerts?limit=50",
+  /** The Dashboard's "Problems per run" slot (spec 042 K-D1). */
+  trend: "/api/v1/runs?limit=30",
+  /** The Dashboard's "Changed recently" slot (spec 042 K-D2). */
+  changed: "/api/v1/alerts?limit=5",
+  /** The Dashboard's "Check changes" slot (spec 042 K-D4). */
+  checkChanges: "/api/v1/check-changes?limit=5",
 } as const;
 
 /**
@@ -56,6 +68,9 @@ export function stubServer(fixture: OverviewResponses, overrides: Server = {}): 
     [URLS.project]: overrides.project ?? ok(fixture.project),
     [URLS.checks]: overrides.checks ?? ok(fixture.checks),
     [URLS.runs]: overrides.runs ?? ok(fixture.runs),
+    [URLS.trend]: overrides.trend ?? ok(fixture.runs),
+    [URLS.changed]: overrides.changed ?? ok({ items: [], next_cursor: null }),
+    [URLS.checkChanges]: overrides.checkChanges ?? ok({ items: [] }),
   };
   if (overrides.problems !== undefined) answers[URLS.problems] = overrides.problems;
   const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {

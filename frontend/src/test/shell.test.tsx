@@ -160,6 +160,8 @@ describe("N3: the badge's request fails or is slow", () => {
     const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (url === URLS.problems) return slow;
+      if (url === URLS.changed) return Promise.resolve(new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 }));
+      if (url === URLS.checkChanges) return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
       const body =
         url === URLS.project ? recorded.project : url.split("?")[0] === URLS.checks ? recorded.checks : recorded.runs;
       return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));

@@ -112,6 +112,12 @@ def _now() -> datetime:
 ACTIVE, DISABLED, RETIRED = "active", "disabled", "retired"
 
 
+def known_state(state: str) -> str:
+    """A lifecycle state as this version understands it: one a newer
+    tablewatch wrote reads as `retired` — the check is not running here."""
+    return state if state in (ACTIVE, DISABLED) else RETIRED
+
+
 class CheckRow(Base):
     """The registry: one row per named check ever recorded in a project.
 
