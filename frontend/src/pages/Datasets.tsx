@@ -17,14 +17,14 @@ import { Ago } from "../components/Time";
 import {
   buildDatasets,
   datasetCountsText,
+  datasetHref,
   filterDatasets,
   hasProblems,
   sortDatasets,
   type DatasetRow,
 } from "../lib/datasets";
-import { cutQuery, EMPTY_QUERY, explorerSearch, isRetired, MAX_QUERY_LENGTH } from "../lib/explorer";
+import { cutQuery, isRetired, MAX_QUERY_LENGTH } from "../lib/explorer";
 import { fetchNavProblems, NAV_BACKGROUND } from "../lib/navProblems";
-import { EXPLORER_HREF } from "../lib/route";
 import { useLoads, type Requests } from "../lib/useLoads";
 
 interface DatasetsSlots {
@@ -44,11 +44,6 @@ const REQUESTS: Requests<DatasetsSlots> = {
 
 function plural(n: number, word: string): string {
   return `${String(n)} ${word}${n === 1 ? "" : "s"}`;
-}
-
-/** The explorer link a Datasets row's name sets (P-D7): both `datasource` and `dataset`. */
-function datasetHref(datasource: string, dataset: string): string {
-  return `${EXPLORER_HREF}${explorerSearch({ ...EMPTY_QUERY, datasource: [datasource], dataset: [dataset] })}`;
 }
 
 export function Datasets({ path, search }: { path: string; search: string }): ReactElement {

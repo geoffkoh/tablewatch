@@ -2,9 +2,14 @@
  * The Datasets page's pure parts (spec 039, P-D6): one row per
  * (datasource, dataset) built in the browser from the loaded checks (active
  * and disabled), its worst status, counts, last scanned time, owners and
- * tags; searched and sorted problems first.
+ * tags; searched and sorted problems first. `groupByDataset` and
+ * `newestStarted` are shared with the Dashboard's "Not scanned recently"
+ * panel (spec 042 K-D3), which groups the same way but over enabled checks
+ * only.
  */
 import type { CheckSummary } from "../api/types";
+import { EMPTY_QUERY, explorerSearch } from "./explorer";
+import { EXPLORER_HREF } from "./route";
 import { parseTimestamp } from "./time";
 import { countStatuses, STATUS_ORDER, statusOf, type Status, type StatusCounts } from "./status";
 
@@ -48,7 +53,20 @@ function worstStatus(enabled: readonly CheckSummary[]): Status | null {
   return null;
 }
 
-function newestStarted(checks: readonly CheckSummary[]): string | null {
+/** One group per (datasource, dataset) pair among the given checks, in first-seen order. */
+export function groupByDataset(checks: readonly CheckSummary[]): Map<string, CheckSummary[]> {
+  const groups = new Map<string, CheckSummary[]>();
+  for (const check of checks) {
+    const key = groupKey(check);
+    const list = groups.get(key);
+    if (list === undefined) groups.set(key, [check]);
+    else list.push(check);
+  }
+  return groups;
+}
+
+/** The newest `latest.started_at` among the given checks; null when none has ever run. */
+export function newestStarted(checks: readonly CheckSummary[]): string | null {
   let latest: string | null = null;
   let latestMs = -Infinity;
   for (const check of checks) {
@@ -63,13 +81,7 @@ function newestStarted(checks: readonly CheckSummary[]): string | null {
 
 /** One row per (datasource, dataset) among the loaded checks (D2: the same dataset name on two datasources is two rows). */
 export function buildDatasets(checks: readonly CheckSummary[]): DatasetRow[] {
-  const groups = new Map<string, CheckSummary[]>();
-  for (const check of checks) {
-    const key = groupKey(check);
-    const list = groups.get(key);
-    if (list === undefined) groups.set(key, [check]);
-    else list.push(check);
-  }
+  const groups = groupByDataset(checks);
   const rows: DatasetRow[] = [];
   for (const list of groups.values()) {
     const first = list[0];
@@ -134,4 +146,13 @@ export function datasetCountsText(counts: StatusCounts): string {
   const total = `${String(counts.total)} ${counts.total === 1 ? "check" : "checks"}`;
   const parts = STATUS_ORDER.filter((s) => counts[s] > 0).map((s) => SUMMARY_WORDS[s](counts[s]));
   return parts.length === 0 ? total : `${total} (${parts.join(", ")})`;
+}
+
+/**
+ * A dataset's link into the explorer, filtered to it (P-D7, spec 039; reused
+ * by the Dashboard's "Not scanned recently" panel, K-D3): both `datasource`
+ * and `dataset`.
+ */
+export function datasetHref(datasource: string, dataset: string): string {
+  return `${EXPLORER_HREF}${explorerSearch({ ...EMPTY_QUERY, datasource: [datasource], dataset: [dataset] })}`;
 }

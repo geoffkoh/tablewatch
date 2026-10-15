@@ -261,7 +261,10 @@ frontend/src/
 ## 4. The overview page (`/`)
 
 It reads `GET /api/v1/project`, `GET /api/v1/checks` and
-`GET /api/v1/runs?limit=1` in parallel (spec 003, D3). Top to bottom:
+`GET /api/v1/runs?limit=1` in parallel (spec 003, D3), plus, for the
+Dashboard panels (§4.4a, spec 042): `GET /api/v1/runs?limit=30`,
+`GET /api/v1/alerts?limit=5` and `GET /api/v1/check-changes?limit=5`, each
+its own slot. Top to bottom:
 
 ### 4.1 Header (`<header>`)
 
@@ -364,6 +367,54 @@ inconsistent data never shows a negative number.
 
 With no runs: "No runs are recorded for this project yet. Run
 `tablewatch run` to record the first results."
+
+### 4.4a Dashboard panels (spec 042, K-D1–K-D5)
+
+Four panels answer "is it getting better or worse, what changed overnight,
+which tables stopped being scanned, and which checks changed" — above the
+check table, below the Summary/Latest run grid. Each has its own
+`useLoads` slot (K-D5), except "Not scanned recently", which has no request
+of its own: it is derived in the browser from the checks the page already
+loaded (the `results` slot). A slot's own failure shows one line, "Could not
+load *panel*.", with its own **Retry**, and never hides the other panels or
+the check table (`PanelError`; the existing O9 rule still keeps checks and
+the latest run as one slot). Layout: a two-column grid
+(`.dashboard-panels`), one column under 60rem (K13).
+
+**Problems per run** (K-D1, `TrendPanel`). The last 30 runs from
+`GET /runs?limit=30`, oldest left (the API sends newest first; the page
+reverses it), one bar per run of its `fail + error` count, the bar coloured
+by the run's own outcome (the chart's mark tokens, `--tw-*-mark` /
+`--tw-skipped-fg` — never a new colour, §5 Chart tokens). Each bar has no
+link (Runs is I-15) but an accessible name and native tooltip: "Run of 14
+Oct 02:00: 3 failing, 1 in error, 40 passing" (`trendRunLabel`,
+`runCountsText`; non-zero counts only, problems first). Fewer than 2 runs:
+"Not enough runs to show a trend yet." (also with no runs at all, K6).
+
+**Changed recently** (K-D2, `ChangedPanel`). The 5 newest state changes from
+`GET /alerts?limit=5`, worded exactly as the Alerts page (§4E,
+`lib/alerts.ts`): the event ("Started failing"), the check (linked,
+`checkHref`), "was *previous*" when there was one, and `Ago`. "All alerts"
+links to `/alerts`. None recorded: "No state changes recorded yet."
+
+**Not scanned recently** (K-D3, `StalePanel`, `lib/stale.ts`). Datasets
+grouped like the Datasets page (`lib/datasets.ts`'s `groupByDataset`) whose
+newest `latest.started_at` over their **enabled** checks is more than 24
+hours before the newest run's `started_at`, oldest first: "*dataset* ·
+*datasource* — last scanned *Ago*", linking to the explorer filtered to it
+(`datasetHref`, shared with the Datasets page). A dataset with enabled
+checks that never ran reads "never scanned" instead of the `Ago`. A
+disabled-only dataset is left out. Measured against the newest run, not the
+clock: with no run at all nothing is flagged (K6) — a project that has not
+run at all this week shows nothing stale, because the Latest run panel
+already says how old that is. None stale: "Every dataset was scanned within
+a day of the latest run."
+
+**Check changes** (K-D4, `ChangesPanel`). The 5 newest from
+`GET /check-changes?limit=5` (the endpoint takes 1–50, default 10), newest
+first: "Added", "Definition changed (version *n*)", "Disabled", "Retired" or
+"Enabled again" (`checkChangeText`), the check's name linked to its page,
+and `Ago`. None recorded: "No changes to checks recorded yet."
 
 ### 4.5 Checks, problems first (O1, O2, O4, O5)
 
@@ -1757,6 +1808,10 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | `test/datasets.test.tsx` | spec 039 D1–D7: one row per dataset, problems first, with a disabled-only row; the same dataset on two datasources as two rows with the right links; following a Datasets link into the explorer (the chip, its removal); a never-run dataset; search, including a hostile query; empty and failed loads; a hostile dataset name or owner as text |
 | `test/alerts.test.tsx` | spec 041 A8–A15: the page's own requests and title; nav order and current page (A14); `LoadError` and the empty state (A13); deliveries wording, `null`/`[]`/sent/pending/abandoned including both abandonment reasons (A8, A8a), a removed notifier's name unchanged (A15); a retired check's alert (A10); event and "was &lt;previous&gt;" wording, including a null previous outcome; the event filter reloading `/alerts` with `?event=` kept, "Load more" appending a page with the cursor out of the URL, and a hostile check name rendering as text only (A12) |
 | `test/alertsLib.test.ts` | `lib/alerts.ts`'s pure parts: `parseAlertsFilter`/`alertsSearch` round-tripping (and an unknown value or literal `all` falling back), `alertsEventParam`, `alertEventText`/`alertEventStatus` for every event, `previousText` for every outcome and `null`, `deliveryText`/`deliveriesText` for every delivery status including the singular/plural attempt count and both abandonment wordings |
+| `test/dashboard.test.tsx` | spec 042 K1–K6, K11–K13 on the Dashboard: the trend's bars, heights and labels; "Not enough runs"; Changed recently's wording and "All alerts" link; Not scanned recently's 24h rule and "never scanned"; no runs at all; one panel's own failure with Retry never hiding the others or the check table; a hostile check/dataset name as text only; the panels' narrow-screen CSS |
+| `test/trend.test.ts` | `lib/trend.ts`'s pure parts: reversing to oldest-left, `fail + error` heights, colouring by the run's own outcome, `runCountsText`'s non-zero-only wording, `trendRunLabel`, `hasTrend`, proportional layout |
+| `test/stale.test.ts` | `lib/stale.ts`'s pure parts: the 24h rule, "never scanned", a disabled-only dataset left out, grouping by (datasource, dataset) over enabled checks only, oldest-first sort, no newest run flags nothing |
+| `test/checkChanges.test.ts` | `lib/checkChanges.ts`'s wording for every `ChangeKind`, including the redefined version number |
 | `test/lib.test.ts` | age boundaries and rounding, DST, absolute format, selection wording, status order and counts |
 | `test/api.test.ts` | the client: URLs, init, envelope errors, non-JSON, network failure |
 
@@ -1813,6 +1868,11 @@ each a different check, covering a sent delivery, an unkeyed (`null`)
 delivery and an empty (`[]`) one; tests override its fields per scenario
 rather than capturing real bodies, since nothing here is particular to one
 metric.
+`test/fixtures/dashboard.ts` (spec 042) has small builders for the
+Dashboard panels — `makeCheck`, `makeRun`, `makeCheckRef`, `makeCheckChange`
+— and `DASH_PROJECT`, a minimal project; every field defaults to something
+valid and can be overridden per scenario, since the panels' rules are not
+particular to the retail fixtures.
 
 ## 11. Known limits and follow-ups
 
@@ -1859,3 +1919,8 @@ metric.
 - The chart was checked visually by rasterising its SVG, with the shipped
   stylesheet, in both schemes (macOS Quick Look / WebKit). A real-browser
   pass, with a screen reader, is for VERIFY.
+- **The trend bars (spec 042 K-D1).** Built against the same `--tw-*-mark`
+  tokens §5 already validated with the dataviz skill (`validate_palette.js`)
+  rather than a fresh run — a bar is a solid fill of an already-validated
+  colour, not a new shape needing its own contrast/CVD check. A real-browser
+  pass (tooltip and keyboard focus per bar) is for VERIFY.

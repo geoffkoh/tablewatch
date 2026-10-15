@@ -78,8 +78,14 @@ export type SettingsChecks = Schemas["SettingsChecks"];
 /** `GET /alerts`'s shape (spec 041): a result that changed its check's state, newest first. */
 export type Alert = Schemas["Alert"];
 export type AlertPage = Schemas["AlertPage"];
-/** The check as the registry has it: a retired one's alerts outlive it. */
+/** The check as the registry has it, shared by alerts and check changes: a retired one's outlive it. */
 export type CheckRef = Schemas["CheckRef"];
 export type AlertDelivery = Schemas["AlertDelivery"];
 /** `failing`, `erroring` or `recovered` — `results.state.transition`'s events (P1). */
 export type AlertEvent = Alert["event"];
+
+/** `GET /check-changes`'s shape (spec 042): a recent change to a check, newest first. */
+export type CheckChange = Schemas["CheckChange"];
+export type CheckChangeList = Schemas["CheckChangeList"];
+/** `added`, `redefined`, `disabled`, `retired` or `enabled` (K-D4). */
+export type ChangeKind = CheckChange["kind"];
