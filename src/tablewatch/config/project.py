@@ -45,6 +45,9 @@ class _Strict(BaseModel):
 class _DatasourceBase(_Strict):
     # How to read timestamps that carry no zone (see metrics/builtin/freshness.py).
     timezone: str = "UTC"
+    # Runs open the datasource so a check's SQL cannot write (spec 043);
+    # `false` opens it as configured. A probe is read-only regardless.
+    read_only: bool = True
 
 
 class PostgresDatasource(_DatasourceBase):
@@ -61,7 +64,6 @@ class PostgresDatasource(_DatasourceBase):
 class DuckDBDatasource(_DatasourceBase):
     type: Literal["duckdb"]
     path: str = ":memory:"
-    read_only: bool = True
 
 
 class SQLiteDatasource(_DatasourceBase):

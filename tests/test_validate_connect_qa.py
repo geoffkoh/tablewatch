@@ -450,7 +450,7 @@ def test_every_duckdb_statement_is_a_zero_row_probe(tmp_path: Path) -> None:  # 
     statements: list[str] = []
 
     def opener(name: str) -> Any:
-        engine = open_engine(project, name, read_only=True)
+        engine = open_engine(project, name, access="probe")
         if not isinstance(engine, str):
             event.listen(
                 engine,

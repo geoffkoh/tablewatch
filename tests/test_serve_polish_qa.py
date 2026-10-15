@@ -28,7 +28,16 @@ from tests.test_server import FAKE_BUNDLE, served, serving
 # --- the scrub rule against text a driver or a user actually writes ------------------
 
 
+def _invalid_duckdb(root: Path, path: str) -> None:
+    """A file DuckDB refuses with its path in the message: since spec 043 a
+    run never reaches DuckDB for a file that does not exist."""
+    target = Path(path) if Path(path).is_absolute() else root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"not a duckdb database" * 64)
+
+
 def _point_lake_at(root: Path, path: str) -> None:
+    _invalid_duckdb(root, path)
     config = root / "tablewatch.yml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
@@ -195,6 +204,8 @@ def test_every_body_names_no_directory(retail: Path, tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+    _invalid_duckdb(retail, "missing.duckdb")
+    _invalid_duckdb(retail, str(outside))
     for name in ("far", "home"):
         (retail / "checks" / f"{name}.yml").write_text(
             f"datasource: {name}\ndataset: t\nchecks:\n  c1: row_count > 0\n",
@@ -224,7 +235,9 @@ def test_every_body_names_no_directory(retail: Path, tmp_path: Path) -> None:
     # the walk saw each case: in-root, outside, `~`, and both diagnostics
     assert '\\"missing.duckdb\\"' in text
     assert f"{OUTSIDE}/x.duckdb" in text
-    assert f"{OUTSIDE}/y.duckdb" in text
+    # A `~` path that does not exist is never opened (spec 043 R-D4): its
+    # checks say so without naming any path.
+    assert "database file not found" in text
     assert f"{OUTSIDE}/x.csv" in text
     assert "unexpected character" in text
 

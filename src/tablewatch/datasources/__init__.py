@@ -4,13 +4,16 @@
 anywhere. `create_engine_for` resolves `${env:}` references and is only
 called when something is actually about to connect.
 
-`read_only=True` (used by `validate --connect`, spec 028 D3) opens every
-datasource so that nothing can be written or created: SQLite through a
-`file:…?mode=ro` URI, DuckDB with `read_only`, Postgres with
-`default_transaction_read_only` and bounded lock and statement timeouts;
-the files datasource is read-only by construction (spec 023). A
-`sqlalchemy` URL is passed through as written — best effort: read-only
-there is the database user's grants. `open_engine` turns every failure
+`access` says how a datasource is opened. `"read"` (runs, spec 043) and
+`"probe"` (`validate --connect`, spec 028 D3) open it so that nothing can
+be written or created: SQLite through a `file:…?mode=ro` URI with
+`query_only` and no ATTACH, DuckDB with `read_only` and external access
+off, Postgres with `default_transaction_read_only`; a probe also bounds
+Postgres's connect, lock and statement time, which a run must not (a scan
+can rightly take minutes). The files datasource is read-only by
+construction (spec 023). A `sqlalchemy` URL is passed through as written —
+best effort: read-only there is the database user's grants. `"write"` opens
+a datasource as configured, for one that sets `read_only: false`. `open_engine` turns every failure
 into a reason that is safe to show.
 """
 
@@ -19,7 +22,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import URL, Engine, create_engine, event, make_url
@@ -42,6 +45,8 @@ if TYPE_CHECKING:
     from tablewatch.config.loader import Project
 
 log = logging.getLogger(__name__)
+
+Access = Literal["write", "read", "probe"]
 
 DatasourceConfig = (
     PostgresDatasource
@@ -69,12 +74,14 @@ FILE_NOT_FOUND = "database file not found"
 # databases, so only these fixed words are shown; the text is logged at
 # INFO for `-v` (spec 028 D3).
 CONNECTION_FAILED = "connection failed — run with -v for details"
-# Read-only sessions on Postgres: a probe must never wait behind a lock or
-# run long on a production warehouse (spec 028 D3, security R2).
+# Read-only sessions on Postgres. A probe must never wait behind a lock or
+# run long on a production warehouse (spec 028 D3, security R2); a run only
+# refuses writes (spec 043 R-D3).
 PG_LOCK_TIMEOUT = "10s"
 PG_STATEMENT_TIMEOUT = "30s"
+PG_READ_ONLY = "-c default_transaction_read_only=on"
 PG_READ_ONLY_OPTIONS = (
-    "-c default_transaction_read_only=on "
+    f"{PG_READ_ONLY} "
     f"-c lock_timeout={PG_LOCK_TIMEOUT} "
     f"-c statement_timeout={PG_STATEMENT_TIMEOUT}"
 )
@@ -101,6 +108,12 @@ def datasource_problem(name: str, reason: str | Exception) -> str:
 
 class DatasourceError(Exception):
     """A datasource cannot be used: missing driver, bad URL, unset variable."""
+
+
+def run_access(config: DatasourceConfig) -> Access:
+    """How a run opens a datasource: read-only unless it says `read_only:
+    false` (spec 043 R-D2)."""
+    return "read" if config.read_only else "write"
 
 
 def timezone_of(config: DatasourceConfig) -> ZoneInfo:
@@ -131,17 +144,19 @@ def create_engine_for(
     project_root: Path,
     name: str = "",
     *,
-    read_only: bool = False,
+    access: Access = "write",
 ) -> Engine:
     """An engine for a datasource; `${env:}` references are resolved only here.
 
     `name` is the datasource's name in `tablewatch.yml`; the files engine
-    puts it in its "no file matches" message. With `read_only`, the engine
-    cannot write, and a SQLite or DuckDB file that does not exist raises
+    puts it in its "no file matches" message. With `read` or `probe`
+    access the engine cannot write, and a SQLite or DuckDB file that does
+    not exist raises
     `DatasourceError(FILE_NOT_FOUND)` before anything is opened, so nothing
     (not even a directory) is created. `:memory:` databases are opened as
     usual: they leave nothing behind, and DuckDB refuses a read-only one.
     """
+    read_only = access != "write"
     connect_args: dict[str, Any] = {}
     match config:
         case FilesDatasource():
@@ -160,9 +175,11 @@ def create_engine_for(
             if read_only:
                 # Appended to any libpq `options` the user set; later `-c`
                 # settings win, so these cannot be overridden by the config.
+                ours = PG_READ_ONLY_OPTIONS if access == "probe" else PG_READ_ONLY
                 query["options"] = " ".join(
-                    filter(None, [query.get("options", ""), PG_READ_ONLY_OPTIONS])
+                    filter(None, [query.get("options", ""), ours])
                 )
+            if access == "probe":
                 # statement_timeout covers statements only: a host that drops
                 # packets would otherwise hang the connect itself.
                 query.setdefault("connect_timeout", "10")
@@ -242,8 +259,21 @@ def _duckdb_read_only(dbapi_connection: Any, _record: Any) -> None:
     DuckDB refuses a database whose name holds a `?` (it probes a WAL path
     built from the name). Locked, so no statement can turn it back on.
     """
-    dbapi_connection.execute("SET enable_external_access = false")
-    dbapi_connection.execute("SET lock_configuration = true")
+    # The settings belong to the database instance, which DuckDB shares
+    # between connections to one file in a process: a later connection
+    # finds them already set and locked.
+    # Two first connections can race to set them; whichever loses checks
+    # that the winner left them as wanted.
+    try:
+        dbapi_connection.execute("SET enable_external_access = false")
+        dbapi_connection.execute("SET lock_configuration = true")
+    except Exception:
+        settings = dbapi_connection.execute(
+            "SELECT current_setting('enable_external_access'), "
+            "current_setting('lock_configuration')"
+        ).fetchone()
+        if settings != (False, True):
+            raise
 
 
 def _sqlite_read_only(dbapi_connection: Any, _record: Any) -> None:
@@ -262,7 +292,7 @@ def _sqlite_read_only(dbapi_connection: Any, _record: Any) -> None:
 
 
 def open_engine(
-    project: Project, name: str, *, read_only: bool = False
+    project: Project, name: str, *, access: Access = "write"
 ) -> Engine | str:
     """An engine for datasource `name`, or a reason that is safe to show.
 
@@ -274,7 +304,7 @@ def open_engine(
     """
     config = project.config.datasources[name]
     try:
-        return create_engine_for(config, project.root, name, read_only=read_only)
+        return create_engine_for(config, project.root, name, access=access)
     except (DatasourceError, MissingEnvironmentVariableError) as exc:
         return str(exc)
     except SQLAlchemyError as exc:

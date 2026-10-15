@@ -68,7 +68,7 @@ def probe_project(
     max_workers: int = 4,
 ) -> ConnectResult:
     """Check every loaded dataset and column against its database."""
-    opener = engine_opener or (lambda name: open_engine(project, name, read_only=True))
+    opener = engine_opener or (lambda name: open_engine(project, name, access="probe"))
     by_source: dict[str, list[Dataset]] = {}
     for dataset in project.datasets:
         if dataset.enabled_checks and dataset.datasource in project.config.datasources:

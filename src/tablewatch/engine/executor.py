@@ -42,7 +42,7 @@ def execute_plan(plan: DatasetPlan, engine: Engine) -> Measured:
                 _schema(plan, conn, measured)
     except SQLAlchemyError as exc:
         # Could not even connect: every measure shares the failure.
-        message = error_message(exc)
+        message = measure_error(exc)
         for key in (
             *plan.aggregates,
             *plan.queries,
@@ -68,7 +68,7 @@ def _run_scan(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
         log.info(
             "batched scan of %s failed (%s); retrying each measure alone",
             plan.dataset.name,
-            error_message(exc),
+            measure_error(exc),
         )
         for key in plan.aggregates:
             _scalar(conn, key, plan.single(key), measured)
@@ -92,7 +92,7 @@ def _schema(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
         try:
             rows = conn.execute(plan.dataset.source.schema_statement()).all()
         except SQLAlchemyError as exc:  # the files engine's fixed text
-            measured.errors[SCHEMA_KEY] = error_message(exc)
+            measured.errors[SCHEMA_KEY] = measure_error(exc)
             return
         measured.values[SCHEMA_KEY] = [(str(n), str(t)) for n, t in rows]
         return
@@ -113,7 +113,7 @@ def _schema(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
         conn.rollback()
         columns = _information_schema_columns(conn, ref.table, ref.schema)
         if columns is None:
-            measured.errors[SCHEMA_KEY] = error_message(exc)
+            measured.errors[SCHEMA_KEY] = measure_error(exc)
             return
     if not columns:
         measured.errors[SCHEMA_KEY] = f"table {ref} not found"
@@ -165,8 +165,34 @@ CONVERSION_MESSAGE = (
 )
 
 
+READ_ONLY_REFUSED = (
+    "the datasource is opened read-only and this check's SQL tried to write — "
+    "set `read_only: false` on the datasource if that is intended"
+)
+# How each engine refuses a write on a read-only connection (spec 043 R-D5):
+# SQLite's `mode=ro`/`query_only` and its zero attach slots, DuckDB's
+# read-only database and disabled file system, Postgres's read-only
+# transaction (SQLSTATE 25006).
+_READ_ONLY_SIGNS = (
+    "attempt to write a readonly database",
+    "too many attached databases - max 0",
+    "which is attached in read-only mode",
+    "file system operations are disabled by configuration",
+)
+_PG_READ_ONLY_TRANSACTION = "25006"
+
+
 def measure_error(exc: BaseException) -> str:
-    """`error_message`, unless the database's text would quote a row value."""
+    """`error_message`, unless the database's text would quote a row value,
+    or is a read-only datasource refusing a write (fixed words, R-D5)."""
+    original = getattr(exc, "orig", None)
+    if getattr(original, "sqlstate", None) == _PG_READ_ONLY_TRANSACTION:
+        return READ_ONLY_REFUSED
+    if any(
+        sign in str(original if original is not None else exc)
+        for sign in _READ_ONLY_SIGNS
+    ):
+        return READ_ONLY_REFUSED
     text = error_message(exc)
     if any(marker in text.lower() for marker in _CONVERSION_MARKERS):
         return CONVERSION_MESSAGE

@@ -8,6 +8,16 @@ All notable changes to tablewatch. The format follows
 
 ### Changed — breaking
 
+- **Runs open datasources read-only.** `run`, `tw.run()` and
+  `test-connection` open SQLite read-only (no ATTACH), DuckDB read-only
+  with external file access off, and Postgres in read-only transactions,
+  so a check's SQL cannot write (spec 043). A write attempt is an `error`
+  that says so; a SQLite or DuckDB file that does not exist is an `error`
+  ("database file not found") instead of a new empty database. A DuckDB
+  `query:` that reads files (`read_parquet`, `read_csv`) needs
+  `read_only: false` on its datasource, now accepted on every datasource
+  type. The database role remains the guarantee.
+
 - **The Postgres writer role needs `UPDATE` and `DELETE`.** Each check's
   current state is now kept in `tablewatch_check_heads` (revision 0008) and
   updated as results are saved, so `GET /api/v1/checks` reads one row per

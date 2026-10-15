@@ -158,6 +158,11 @@ def _served_text(root: Path) -> str:
 
 
 def _point_lake_at(root: Path, path: str) -> None:
+    # A file DuckDB refuses with its path in the message: since spec 043 a
+    # run never reaches DuckDB for a file that does not exist.
+    target = Path(path) if Path(path).is_absolute() else root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"not a duckdb database" * 64)
     config = root / "tablewatch.yml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(

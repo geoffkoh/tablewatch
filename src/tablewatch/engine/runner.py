@@ -35,6 +35,7 @@ from tablewatch.datasources import (
     DatasourceError,
     create_engine_for,
     datasource_problem,
+    run_access,
     timezone_of,
 )
 from tablewatch.engine.baselines import Baselines, Sample, choose
@@ -255,6 +256,12 @@ catches and logs its own errors.
 """
 
 
+def _open(project: Project, name: str) -> Engine:
+    """A run's engine: read-only unless the datasource opts out (spec 043)."""
+    config = project.config.datasources[name]
+    return create_engine_for(config, project.root, name, access=run_access(config))
+
+
 def run_checks(
     project: Project,
     checks: Iterable[Check],
@@ -288,11 +295,7 @@ def run_checks(
         fail_on=fail_on,
     )
     order = {check.id: index for index, check in enumerate(checks)}
-    factory = engine_factory or (
-        lambda name: create_engine_for(
-            project.config.datasources[name], project.root, name
-        )
-    )
+    factory = engine_factory or (lambda name: _open(project, name))
 
     by_source: dict[str, dict[Dataset, list[Check]]] = {}
     for check in checks:
