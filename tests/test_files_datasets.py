@@ -440,7 +440,7 @@ def test_d6_root_through_a_symlink_out_of_the_project(tmp_path: Path) -> None:
     (root / "escape").symlink_to(outside, target_is_directory=True)
     config = FilesDatasource(type="files", root="escape")
     with pytest.raises(DatasourceError, match="inside the project"):
-        create_engine_for(config, root, "drop")
+        create_engine_for(config, root, "drop", access="write")
 
 
 def test_d4_old_duckdb_is_refused() -> None:
@@ -458,7 +458,9 @@ def test_dialect_and_timezone_need_nothing() -> None:
 
 
 def test_d4_sandbox_settings_read_back(landing: Path) -> None:
-    engine = create_engine_for(FilesDatasource(type="files", root="landing"), landing)
+    engine = create_engine_for(
+        FilesDatasource(type="files", root="landing"), landing, access="write"
+    )
     try:
         with engine.connect() as conn:
             row = conn.execute(
@@ -536,7 +538,9 @@ def test_s4_nothing_but_one_select(landing: Path, query: str) -> None:
 
 
 def test_s4_the_lock_holds_even_inside_a_select(landing: Path) -> None:
-    engine = create_engine_for(FilesDatasource(type="files", root="landing"), landing)
+    engine = create_engine_for(
+        FilesDatasource(type="files", root="landing"), landing, access="write"
+    )
     try:
         with engine.connect() as conn, pytest.raises(Exception) as caught:
             conn.execute(text("SET threads = 1"))

@@ -92,7 +92,9 @@ def test_a_directory_is_not_a_database_file(tmp_path: Path) -> None:
 def test_without_read_only_behaviour_is_unchanged(tmp_path: Path) -> None:
     # `run` and `test-connection` still create an empty SQLite file (out of
     # scope for spec 028, listed in its non-goals).
-    engine = create_engine_for(SQLiteDatasource(type="sqlite", path="new.db"), tmp_path)
+    engine = create_engine_for(
+        SQLiteDatasource(type="sqlite", path="new.db"), tmp_path, access="write"
+    )
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
     engine.dispose()
@@ -283,7 +285,7 @@ def test_open_engine_never_echoes_an_unexpected_exception(
 
     monkeypatch.setattr("tablewatch.datasources.create_engine_for", boom)
     project = _project(tmp_path, shop={"type": "sqlite", "path": "x.db"})
-    reason = open_engine(project, "shop")
+    reason = open_engine(project, "shop", access="write")
     assert reason == "internal error creating the engine (RuntimeError)"
 
 

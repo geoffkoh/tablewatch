@@ -52,7 +52,7 @@ def _reason(url: str, *, run: bool) -> str:
     config = URLDatasource(type="sqlalchemy", url=url)
     with pytest.raises(DatasourceError) as caught:
         if run:
-            create_engine_for(config, Path())
+            create_engine_for(config, Path(), access="write")
         else:
             dialect_for(config)
     return str(caught.value)
@@ -232,12 +232,12 @@ def test_a_port_holding_a_secret_is_never_quoted(
 def test_the_backstop_records_the_type_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:  # R2
-    from tablewatch.engine import runner
+    from tablewatch import datasources
 
     def broken(*_: object, **__: object) -> object:
         raise RuntimeError("postgresql://admin:Pa55w0rd@db.prod/x")
 
-    monkeypatch.setattr(runner, "create_engine_for", broken)
+    monkeypatch.setattr(datasources, "create_engine_for", broken)
     root = _project(tmp_path, "sqlite:///x.db")
     caplog.set_level(logging.DEBUG)
     [result] = tw.run(root, record=False).results

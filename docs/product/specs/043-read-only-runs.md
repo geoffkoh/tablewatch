@@ -45,7 +45,7 @@ written; runs should too.
 - R-D6. `create_engine_for(read_only=…)` becomes `access: Literal["write", "read", "probe"]`
   (`read` = R-D3; `probe` = spec 028's, with timeouts). The runner's default factory and
   `test-connection` pass `"read"` unless `read_only: false` → `"write"`.
-- R-D7. Docs: README "Datasources" gains the `read_only` row and a "Read-only runs" paragraph
+- R-D7. Docs: README gains a "Runs are read-only" section
   (what each engine guarantees, the opt-out, that the role remains the guarantee); CHANGELOG under
   "Changed — breaking" (DuckDB `query:` reading external files now needs `read_only: false`).
 

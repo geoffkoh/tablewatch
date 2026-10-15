@@ -13,7 +13,7 @@ from sqlalchemy import text
 import tablewatch as tw
 from tablewatch.config.project import PostgresDatasource
 from tablewatch.datasources import create_engine_for
-from tablewatch.engine.executor import READ_ONLY_REFUSED, measure_error
+from tablewatch.engine.executor import FILES_REFUSED, READ_ONLY_REFUSED, measure_error
 from tests.conftest import Workspace, invoke
 from tests.postgres import PgSchema
 
@@ -80,7 +80,7 @@ def test_duckdb_external_files_need_the_opt_out(workspace: Workspace) -> None:  
     con.close()
     query = f"SELECT count(*) FROM read_parquet('{workspace.root / 'x.parquet'}')"
     _checks(workspace, "duck", query)
-    assert _outcomes(workspace)["q0"] == ("error", READ_ONLY_REFUSED)
+    assert _outcomes(workspace)["q0"] == ("error", FILES_REFUSED)
     workspace.write(
         "tablewatch.yml",
         "name: test\ndatasources:\n"
@@ -143,22 +143,22 @@ def test_test_connection_creates_nothing(workspace: Workspace) -> None:  # R9
 
 
 @pytest.mark.parametrize(
-    ("datasource", "query"),
+    ("datasource", "query", "said"),
     [
-        ("lite", "ATTACH '{x}' AS other"),
-        ("lite", "VACUUM INTO '{x}'"),
-        ("duck", "COPY t TO '{x}'"),
-        ("duck", "ATTACH '{x}' AS other"),
+        ("lite", "ATTACH '{x}' AS other", READ_ONLY_REFUSED),
+        ("lite", "VACUUM INTO '{x}'", READ_ONLY_REFUSED),
+        ("duck", "COPY t TO '{x}'", FILES_REFUSED),
+        ("duck", "ATTACH '{x}' AS other", FILES_REFUSED),
     ],
 )
 def test_no_other_file_is_written(
-    workspace: Workspace, datasource: str, query: str
+    workspace: Workspace, datasource: str, query: str, said: str
 ) -> None:  # R11
     target = workspace.root / "other.db"
     _checks(workspace, datasource, query.format(x=target))
     outcome, message = _outcomes(workspace)["q0"]
     assert outcome == "error"
-    assert message == READ_ONLY_REFUSED
+    assert message == said
     assert not target.exists()
 
 
@@ -198,6 +198,14 @@ def test_postgres_runs_are_read_only_without_timeouts(
                 assert conn.execute(text("SHOW statement_timeout")).scalar() == "0"
                 with pytest.raises(Exception) as caught:
                     conn.execute(text(f'DELETE FROM "{pg_schema.name}".t'))
-            assert measure_error(caught.value) == READ_ONLY_REFUSED
+            with engine.connect() as conn:
+                assert measure_error(caught.value, conn) == READ_ONLY_REFUSED
+                # A check that ends its transaction and lifts the default
+                # leaves no writable connection for the next dataset.
+                conn.exec_driver_sql(
+                    "COMMIT; SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE"
+                )
+            with engine.connect() as conn:
+                assert conn.execute(text("SHOW transaction_read_only")).scalar() == "on"
         finally:
             engine.dispose()

@@ -10,7 +10,7 @@ import duckdb
 import pytest
 
 import tablewatch as tw
-from tablewatch.engine.executor import READ_ONLY_REFUSED
+from tablewatch.engine.executor import FILES_REFUSED, READ_ONLY_REFUSED
 from tests.conftest import Workspace, invoke
 from tests.test_read_only_runs import _checks, _outcomes, _rows
 
@@ -99,7 +99,7 @@ def test_duckdb_configuration_stays_locked(workspace: Workspace, first: str) -> 
     _checks(workspace, "duck", first, f"COPY t TO '{target}'")
     found = _outcomes(workspace)
     assert found["q0"][0] == "error"
-    assert found["q1"] == ("error", READ_ONLY_REFUSED)
+    assert found["q1"] == ("error", FILES_REFUSED)
     assert not target.exists()
 
 
@@ -145,11 +145,6 @@ def test_duckdb_in_memory_copy_to_is_refused(workspace: Workspace) -> None:
     assert not target.exists()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="spec 043 R11: a `:memory:` SQLite datasource gets no read-only "
-    "listener, so ATTACH creates a file in a default run",
-)
 def test_sqlite_in_memory_attach_is_refused(workspace: Workspace) -> None:
     _yml(workspace, "mem: {type: sqlite, path: ':memory:'}")
     target = workspace.root / "leak.db"
@@ -340,11 +335,6 @@ def test_an_unrelated_error_is_not_called_a_write(workspace: Workspace) -> None:
     assert message != READ_ONLY_REFUSED
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-D5 false positive: a read_only: false datasource whose file the OS "
-    "will not let us write is told to 'set read_only: false'",
-)
 def test_the_opt_out_is_not_told_to_opt_out(workspace: Workspace) -> None:
     path = workspace.root / "data.sqlite"
     _yml(workspace, "lite: {type: sqlite, path: data.sqlite, read_only: false}")
@@ -358,11 +348,6 @@ def test_the_opt_out_is_not_told_to_opt_out(workspace: Workspace) -> None:
     assert message != READ_ONLY_REFUSED
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-D5 false positive: a read error whose text quotes data holding a "
-    "sign phrase is reported as a write attempt",
-)
 def test_a_value_quoting_the_sign_is_not_a_write(workspace: Workspace) -> None:
     _checks(
         workspace,

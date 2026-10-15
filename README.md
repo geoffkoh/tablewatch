@@ -159,9 +159,14 @@ DuckDB read-only with access to other files turned off, Postgres in
 read-only transactions (with no time limits: a scan may take as long as it
 needs). A check whose `query:` tries to write is an `error` saying so, and
 a SQLite or DuckDB file that does not exist is reported, never created.
-`type: sqlalchemy` datasources are opened as their URL says; there, as
-everywhere, **the database role's grants are the real guarantee** — this
-is a second line.
+`type: sqlalchemy` datasources are opened as their URL says. On Postgres a
+`query:` holding several statements can still end its transaction and
+lift the read-only default for itself (each pooled connection is set back
+before it is used again). There, as everywhere, **the database role's
+grants are the real guarantee** — this is a second line. `read_only` does
+nothing more on `type: files`, which is read-only by construction, and on
+`type: sqlalchemy` only keeps a missing SQLite or DuckDB file from being
+created.
 
 A datasource that must be opened as configured — DuckDB reading Parquet
 files from a `query:`, say — sets `read_only: false`:

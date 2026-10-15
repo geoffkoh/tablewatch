@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -110,10 +111,55 @@ class DatasourceError(Exception):
     """A datasource cannot be used: missing driver, bad URL, unset variable."""
 
 
+READ_ONLY_OPTION = "tablewatch_read_only"
+# How each engine refuses a write on a read-only connection (spec 043 R-D5):
+# SQLite's `mode=ro`/`query_only` and its zero attach slots, DuckDB's
+# read-only database and disabled file system, and Postgres's read-only
+# transaction (SQLSTATE 25006).
+# Each is (how the message starts, a phrase it holds), so a value quoted in
+# another error ("Conversion Error: … 'attempt to write …'") never matches.
+_READ_ONLY_SIGNS = (
+    ("attempt to write a readonly database", ""),
+    ("too many attached databases - max 0", ""),
+    ("Invalid Input Error: Cannot execute statement of type", "read-only mode"),
+)
+_FILES_OFF = ("Permission Error:", "disabled by configuration")
+_PG_READ_ONLY_TRANSACTION = "25006"
+
+
 def run_access(config: DatasourceConfig) -> Access:
     """How a run opens a datasource: read-only unless it says `read_only:
     false` (spec 043 R-D2)."""
     return "read" if config.read_only else "write"
+
+
+def open_for_run(project: Project, name: str) -> Engine:
+    """The engine a run (or `test-connection`) uses for datasource `name`."""
+    config = project.config.datasources[name]
+    return create_engine_for(config, project.root, name, access=run_access(config))
+
+
+def refusal(exc: BaseException, options: Mapping[str, Any]) -> str | None:
+    """What a read-only connection refused, `"write"` or `"files"` (another
+    file read or written with external access off), or None.
+
+    Only for a connection whose execution `options` say it was opened
+    read-only, so a file read-only on disk under `read_only: false` is not
+    blamed on tablewatch.
+    """
+    if not options.get(READ_ONLY_OPTION):
+        return None
+    original = getattr(exc, "orig", None)
+    if getattr(original, "sqlstate", None) == _PG_READ_ONLY_TRANSACTION:
+        return "write"
+    text = str(original if original is not None else exc).strip()
+    if any(
+        text.startswith(start) and phrase in text for start, phrase in _READ_ONLY_SIGNS
+    ):
+        return "write"
+    if text.startswith(_FILES_OFF[0]) and _FILES_OFF[1] in text:
+        return "files"
+    return None
 
 
 def timezone_of(config: DatasourceConfig) -> ZoneInfo:
@@ -144,7 +190,7 @@ def create_engine_for(
     project_root: Path,
     name: str = "",
     *,
-    access: Access = "write",
+    access: Access,
 ) -> Engine:
     """An engine for a datasource; `${env:}` references are resolved only here.
 
@@ -199,9 +245,8 @@ def create_engine_for(
             path = _local_path(resolve_env(config.path), project_root)
             if read_only and path != ":memory:":
                 _require_file(path)
-                connect_args["read_only"] = True
-            else:
-                connect_args["read_only"] = config.read_only
+            # `write` means write: a run gets it only for `read_only: false`.
+            connect_args["read_only"] = read_only and path != ":memory:"
             # URL.create: a `?` or `#` in the path is part of the file name,
             # not a query or fragment.
             url = URL.create("duckdb", database=path)
@@ -236,19 +281,45 @@ def create_engine_for(
                 if database and database != ":memory:" and "mode=" not in database:
                     _require_file(_local_path(database, project_root))
     try:
-        engine = create_engine(url, connect_args=connect_args)
+        engine = create_engine(
+            url,
+            connect_args=connect_args,
+            # What `refused_write` reads: only an engine opened read-only
+            # turns a database's refusal into "this check tried to write".
+            execution_options={READ_ONLY_OPTION: read_only},
+        )
     except ImportError as exc:
         raise _import_failure(dialect, exc) from None
     except (ArgumentError, NoSuchModuleError, ValueError, TypeError):
         # The scheme was fine; the rest of the url (user, password, host,
         # port, database, query) was not. Its text is never echoed.
         raise DatasourceError(UNREADABLE_URL) from None
-    if read_only and engine.url.database != ":memory:":
+    if read_only:
+        # In memory too: an in-memory database can still ATTACH, COPY or
+        # read files (spec 043 VERIFY).
         if isinstance(config, SQLiteDatasource):
             event.listen(engine, "connect", _sqlite_read_only)
         elif isinstance(config, DuckDBDatasource):
             event.listen(engine, "connect", _duckdb_read_only)
+        elif isinstance(config, PostgresDatasource):
+            event.listen(engine, "checkout", _postgres_read_only)
     return engine
+
+
+def _postgres_read_only(dbapi_connection: Any, _record: Any, _proxy: Any) -> None:
+    """Put a pooled connection back to read-only as it is handed out.
+
+    A check's SQL that ends its transaction and changes the session's
+    default (`COMMIT; SET SESSION CHARACTERISTICS …`) would otherwise leave
+    the pooled connection writable for every later dataset. One statement
+    per query is I-48's; the role remains the guarantee.
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
+    finally:
+        cursor.close()
+    dbapi_connection.commit()
 
 
 def _duckdb_read_only(dbapi_connection: Any, _record: Any) -> None:
@@ -291,9 +362,7 @@ def _sqlite_read_only(dbapi_connection: Any, _record: Any) -> None:
     cursor.close()
 
 
-def open_engine(
-    project: Project, name: str, *, access: Access = "write"
-) -> Engine | str:
+def open_engine(project: Project, name: str, *, access: Access) -> Engine | str:
     """An engine for datasource `name`, or a reason that is safe to show.
 
     The reason is a `DatasourceError`'s fixed text, `environment variable X
