@@ -10,6 +10,37 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 41 — App shell, part 3: Alerts (I-51 part 3), 2026-10-15
+
+- **Spec:** [041-alerts-page](specs/041-alerts-page.md). **Branch:** `iter/041`.
+  Full track (stored data, revision 0010; a new endpoint); spec by the tech lead (owner-fixed
+  item). No items added (freeze). Part 4 (Dashboard panels) remains.
+- **REFINE.** Architect → D1 (a `tablewatch_state_changes` table, a cache like the heads, keyed
+  by result, denormalised project/start for one paging index), D2 (0010 backfills in Python,
+  heads' basis columns included — else the first `fail` after upgrading re-alerts), D3 (one fold
+  in `state.py`; both notification paths read the recorded change instead of `previous_results`,
+  now removed). Data-steward → D4 (alert = `transition`; a first `pass` is no event), D5 (delivery
+  wording, notifier names as stored).
+- **Shipped:** state changes recorded by `record_heads` (O(1) on the advance path; recompute
+  rewrites the check's), `rebuild_heads` refills them; `GET /api/v1/alerts?event=&limit=&cursor=`
+  (`results/alerts.py`); `/alerts` page with filter and Load more (ui-engineer).
+  Suite: **3,247 passed, 86 skipped (Postgres), 16 xfailed**; vitest 1,098.
+- **Reviewer findings and resolution:**
+  - *architect* reviewed in REFINE only (build followed D1–D6; no re-check).
+  - *qa-engineer — pass-with-followups, no blockers; notification parity against a copy of the old
+    rule in every resume/retry/out-of-order case; backfill equals live recording.* Fixed: an
+    event from a newer tablewatch made the page a 500 (now left out); deliveries matched on
+    (run, check) so a resumed run's `failing` claimed the earlier attempt's sent `erroring` (now
+    matched on the event too, D5 amended); "after 1 attempts". Kept: a row abandoned because a
+    later alert superseded it reads "(no attempts sent)" — the outbox does not store why.
+  - *data-steward — accept; 7/7 must scenarios* (A11 by real downgrade/upgrade); A8a checked on
+    the read side only (not reachable through the CLI).
+- **Not added (backlog freeze):** the outbox's abandon reason (superseded vs expired) for the page.
+- **Lesson:** two routes to one rule drift; recording the rule's answer once and reading it back
+  made notifications and the page agree by construction.
+- **Backlog:** I-51 part 3 done. Next: iteration 42 = I-51 part 4 (Dashboard panels), then I-47,
+  I-48, I-50.
+
 ## Iteration 40 — App shell, part 2: the Settings page (I-51 part 2), 2026-10-15
 
 - **Spec:** [040-settings-page](specs/040-settings-page.md). **Branch:** `iter/040`.
