@@ -55,6 +55,21 @@ export function DatasetsIcon(): ReactElement {
   );
 }
 
+export function SettingsIcon(): ReactElement {
+  return (
+    <Icon className="nav-icon--settings">
+      <>
+        <circle cx="10" cy="10" r="3.25" />
+        <path
+          d="M10 2.5v2.3M10 15.2v2.3M17.5 10h-2.3M4.8 10H2.5M15.1 4.9l-1.6 1.6M6.5 13.5l-1.6 1.6M15.1 15.1l-1.6-1.6M6.5 6.5L4.9 4.9"
+          fill="none"
+          className="nav-icon__stroke"
+        />
+      </>
+    </Icon>
+  );
+}
+
 export function MenuIcon(): ReactElement {
   return (
     <Icon className="nav-icon--menu">

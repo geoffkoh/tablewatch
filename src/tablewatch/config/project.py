@@ -128,6 +128,13 @@ class _URLNotifier(_Strict):
             )
         return value
 
+    @property
+    def variable(self) -> str:
+        """The NAME of the `${env:NAME}` the URL comes from."""
+        match = ENV_REFERENCE.fullmatch(self.url)
+        assert match is not None  # `_env_only` accepts nothing else
+        return match.group(1)
+
 
 class WebhookNotifier(_URLNotifier):
     """POSTs each run's state changes as JSON (`tablewatch.notify.payload`)."""

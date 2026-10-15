@@ -15,6 +15,7 @@ the UI does it: wording, layout, colour, and the rules behind them.
 | I-04 (part 2) | `specs/016-explorer-tag-owner-datasource.md` | The explorer's Tag, Owner and Datasource filters (`FacetFilter`), OR within a filter and AND across, counts per value, kept in the URL; search over tags, owner and datasource |
 | I-46 part 4 | `specs/037-check-state-table.md` | Retired checks in the web UI (S12, S13): the explorer's "Show retired" toggle (off by default, kept in the URL) adds a flat retired list below the tree; a retired check's own page gets a `RetiredIdentity` header ("Retired" badge, "Retired since …", its last known file) in place of `Identity`, with no SQL or source sections |
 | I-51 part 1 | `specs/039-app-shell-datasets.md` | The app shell (`components/AppShell.tsx`): every page wrapped in a top bar and a `<nav aria-label="Sections">` (Dashboard, Checks, Datasets), collapsible to an icon rail or opened as a drawer on narrow screens; the Checks link's "N failing or in error" badge; the one web-storage exception (`lib/navPreference.ts`); the Datasets page (`/datasets`, §4C); the explorer's `?dataset=` chip (§4B.3) |
+| I-51 part 2 | `specs/040-settings-page.md` | The Settings page (`/settings`, §4D): read-only project configuration — store, datasources, notifiers, results-store schema, check counts — never a credential or the store URL (S-D2); the nav's fourth section with a gear icon (`SettingsIcon`); `getSettings` in `api.ts` |
 
 ## 1. Who it is for
 
@@ -98,16 +99,18 @@ It has no inline script or style and no absolute URL.
 ```
 frontend/src/
   main.tsx                 mounts <App path={location.pathname} search={location.search}>
-  App.tsx                  parseRoute(path) -> Overview | Explorer | CheckPage | Datasets | NotFound
+  App.tsx                  parseRoute(path) -> Overview | Explorer | CheckPage | Datasets |
+                           Settings | NotFound
   api/schema.gen.ts        GENERATED from docs/api/openapi.json; never edit
   api/types.ts             aliases into schema.gen.ts (Project, CheckSummary, CheckDetail,
                            RetiredCheckSummary, RecordedClause, CheckListItem, CheckState,
                            CheckDetailItem, Rule, Condition, HistoryEntry, HistoryPage, Run,
-                           Unit, OutcomeFilter, ...)
+                           Unit, OutcomeFilter, Settings, SettingsProject, SettingsDatasource,
+                           SettingsNotifier, SettingsResults, SettingsChecks, ...)
   api/api.ts               the ONE client: getProject, listChecks (optional `states` and
                            `outcomes` arrays, spec 039 P-D3), listRuns, getCheck (CheckDetail
-                           | RetiredCheckSummary), getHistory, getCheckSql, getCheckSource;
-                           failureOf, isNotFound
+                           | RetiredCheckSummary), getHistory, getCheckSql, getCheckSource,
+                           getSettings (spec 040 S-D1); failureOf, isNotFound
   lib/route.ts             parseRoute(path), checkHref(id), EXPLORER_HREF, the id pattern
   lib/explorer.ts          the explorer's query (parse, to URL, including `retired` and
                            `dataset`, spec 039 P-D7), search, the status, tag, owner and
@@ -129,8 +132,8 @@ frontend/src/
   lib/selection.ts         how a run's selection reads
   lib/chart/               the chart's pure functions: scale, ticks, format, domain,
                            bands, series, labels, layout, legend, summary
-  components/              AppShell (spec 039: the top bar, the nav, `<main>`), NavIcons
-                           (the nav's inline SVG icons), Header, ProjectProblems, Summary,
+  components/              AppShell (spec 039/spec 040: the top bar, the nav, `<main>`), NavIcons
+                           (the nav's inline SVG icons, including SettingsIcon), Header, ProjectProblems, Summary,
                            LatestRun, CheckTable, LatestResult (Result, When,
                            LastEvaluatedNote), HistoryTable, StatusIcon/StatusBadge, shapes
                            (status shapes), Time (Ago, Since), LoadError (useId heading id;
@@ -150,6 +153,7 @@ frontend/src/
   pages/Explorer.tsx       the check explorer: loads, filters in memory, keeps the URL
   pages/CheckPage.tsx      a check's page: decides which sections show from what loaded
   pages/Datasets.tsx       the Datasets page (spec 039 §4C)
+  pages/Settings.tsx       the Settings page (spec 040 §4D)
   pages/NotFound.tsx       "Page not found"
   styles/tokens.css        colour tokens, light and dark (status and chart)
   styles/app.css           layout, components, the chart and the app shell
@@ -177,8 +181,9 @@ frontend/src/
 - **The app shell** (spec 039, P-D2). `components/AppShell.tsx` wraps every
   page, including Not found: the top bar (`Header`: brand, project,
   Refresh, and "Menu" on narrow screens), a `<nav aria-label="Sections">`
-  of plain `<a href>` links (Dashboard, Checks, Datasets — P-D1; a later
-  section arrives only once it is built, never as a dead link), and
+  of plain `<a href>` links (Dashboard, Checks, Datasets, Settings —
+  P-D1, spec 040 S-D6; a later section arrives only once it is built,
+  never as a dead link), and
   `<main id="main">` holding the page's own content. The current page's
   link carries `aria-current="page"` (a check's own page marks Checks; Not
   found marks none). On wide screens (> 60rem) the nav is a left column,
@@ -213,6 +218,7 @@ frontend/src/
   | `/checks`, `/checks/` | the check explorer (§4B); `?q=`, `?status=`, `?tag=`, `?owner=`, `?datasource=`, `?dataset=` (spec 039 P-D7, §4B.3) and `?retired=1` (spec 037 S12, §4B.6) are read by the page |
   | `/checks/<id>`, `/checks/<id>/` | the check page, when `<id>` is one non-empty segment that decodes (once, inside try/catch) to a string matching `^[A-Za-z0-9][A-Za-z0-9_.:-]*$` of at most 64 characters (the loader's `ID_PATTERN` and the store's column width) |
   | `/datasets`, `/datasets/` | the Datasets page (§4C, spec 039 P-D6); `?q=` is read by the page |
+  | `/settings`, `/settings/` | the Settings page (§4D, spec 040 S-D6); read-only, no query |
   | anything else | "Page not found", and **no request is made**: `/checks//`, `/checks/a/b`, `/checks/..`, `/checks/%2e%2e`, `/checks/a%2Fb`, `/checks/a%3Fb`, a malformed `%`, 65 characters |
 
   `checkHref(id)` is `/checks/` + `encodeURIComponent(id)`. Every API path
@@ -222,7 +228,8 @@ frontend/src/
   `results`, `problems`; the explorer: `project`, `checks`, `problems`; the
   check page: `project`, `check`, `history`, `runs`, `sql`, `source`,
   `definitions`, `problems`; the Datasets page: `project`, `checks`,
-  `problems`). `problems` feeds only the shell's Checks badge (P-D3) on
+  `problems`; the Settings page: `project`, `settings`, `problems`).
+  `problems` feeds only the shell's Checks badge (P-D3) on
   every page that has one; Not found has no slots at all (it makes no
   request). Each
   slot is `loading`, `ok` or `failed`. `reload` starts every slot again and
@@ -1298,6 +1305,69 @@ other page (§4.6); no summary line, search box or table underneath.
 needs per-clause values, not a dataset-level rollup); a Datasource filter of
 its own (the Dataset chip plus the explorer's existing Datasource facet
 cover it).
+
+## 4D. The Settings page (`/settings`)
+
+Spec 040, S-D6/S-D7. "Which store is this server reading, is it migrated,
+which notifiers are set up, and which environment variables do they need?"
+for Alex (platform owner), read-only. It reads `GET /api/v1/project` (for
+the shell's header and the page title, as every other page) and
+`GET /api/v1/settings` through the shared hook, as two slots, plus the
+shell's `problems` slot (§3). The document title is "Settings — *project*".
+The page's own `<h1>Settings</h1>`.
+
+No form control and no button but **Refresh** (S-D7). A failing
+`GET /api/v1/settings` or `GET /api/v1/project` shows the shared `LoadError`
+with **Try again**, as every other page (§4.6); the nav still renders,
+because `AppShell` wraps the failure the same way it wraps everything else.
+
+Five sections, each a `<section>` with its own `<h2>`:
+
+**Project** (a two-column definition list): Name (`project.name`); Check
+files (`project.checks_path`, in a `<code>`; **"Outside the project"** when
+it is `null` — the checks directory resolved outside the project root, so
+the server withholds it, spec 040 review); tablewatch (`project.version`);
+Loaded (`project.loaded_at`, as an age with the full time on hover/focus,
+`Ago`).
+
+**Datasources** (a table: Name, Type, Datasets, Checks, one row per
+`datasources[]`, in configuration order): "No datasources." when the list
+is empty.
+
+**Notifiers** (a table: Name, Type, URL from, one row per `notifiers[]`,
+in configuration order): the URL column reads `${env:<url_variable>}` in a
+`<code>` — the **name** of the environment variable the notifier's `url:`
+resolves from, never whether it is set (S-D2: nothing is resolved before
+use) and never a resolved value. "No notifiers configured." when the list
+is empty.
+
+**Results store** (a two-column definition list): Database (`results.dialect`,
+the store engine's dialect name, e.g. `sqlite`); Schema, in words from
+`results.schema` — `current` "Up to date (*revision*)"; `older` "Older
+than this tablewatch (*revision*; this version is at *head*)"; `newer`
+"Newer than this tablewatch (*revision*)"; `empty` "Nothing recorded yet";
+`unavailable` "Could not be read" (the store could not be opened — this is
+the page Alex reaches *for* that answer, so it still renders everything
+else); Migrations, from `results.migrate` — `auto` "Applied by tablewatch
+when a run opens the store"; `never` "Managed outside tablewatch
+(`tablewatch store sql`)"; Registry sync, from `results.sync` — `on_run`
+"On every recorded run"; `manual` "Only by `tablewatch sync`".
+
+**Checks** (a two-column definition list): Active, Disabled
+(`checks.active`, `checks.disabled`); Retired (`checks.retired`) — **"—"**
+when it is `null` (S-D3/S-D4: the retired count is read only when
+`results.schema` is `current`; an older or newer store's registry may not
+match this version's, and an empty or unavailable store has no registry to
+read at all).
+
+**Nav.** The fourth section, after Datasets, with a gear icon
+(`SettingsIcon` in `components/NavIcons.tsx`, under the chart's own icon
+rules — §3). `/settings` marks it `aria-current="page"`.
+
+**Non-goals** (spec 040). Editing anything; whether an environment variable
+is set (only its *name*); datasource connection details (host, database,
+user); a "test connection" button; Alerts, Dashboard panels, Runs (later
+parts); a nav count beside Settings.
 
 ## 5. Status: label, icon, colour
 

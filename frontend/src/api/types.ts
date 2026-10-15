@@ -66,3 +66,11 @@ export type Statement = CheckSql["statements"][number];
 export type CheckSource = Schemas["CheckSource"];
 /** The check file's dataset `filter:`; `applies` is false for metrics it never scopes. */
 export type FileFilter = Schemas["FileFilter"];
+
+/** `GET /settings`'s shape (spec 040): the project as loaded, read-only and without credentials. */
+export type Settings = Schemas["Settings"];
+export type SettingsProject = Schemas["SettingsProject"];
+export type SettingsDatasource = Schemas["SettingsDatasource"];
+export type SettingsNotifier = Schemas["SettingsNotifier"];
+export type SettingsResults = Schemas["SettingsResults"];
+export type SettingsChecks = Schemas["SettingsChecks"];

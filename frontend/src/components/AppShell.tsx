@@ -2,7 +2,7 @@
  * The shell every page renders inside (spec 039, P-D2): the top bar
  * (`Header`, unchanged: brand, project, Refresh, and now "Menu" on narrow
  * screens), a `<nav aria-label="Sections">` of the sections built so far
- * (Dashboard, Checks, Datasets — P-D1), and `<main id="main">` holding the
+ * (Dashboard, Checks, Datasets, Settings — P-D1, spec 040 S-D6), and `<main id="main">` holding the
  * page's own content. Not found uses it too, with no current section and no
  * problems count (it makes no request, W3).
  *
@@ -21,9 +21,9 @@ import { navProblemsCount } from "../lib/navProblems";
 import { readNavCollapsed, writeNavCollapsed } from "../lib/navPreference";
 import type { Load } from "../lib/useLoads";
 import { Header } from "./Header";
-import { ChecksIcon, CloseIcon, CollapseIcon, DashboardIcon, DatasetsIcon } from "./NavIcons";
+import { ChecksIcon, CloseIcon, CollapseIcon, DashboardIcon, DatasetsIcon, SettingsIcon } from "./NavIcons";
 
-export type Section = "dashboard" | "checks" | "datasets";
+export type Section = "dashboard" | "checks" | "datasets" | "settings";
 
 interface SectionDef {
   key: Section;
@@ -32,11 +32,12 @@ interface SectionDef {
   Icon: () => ReactElement;
 }
 
-/** Dashboard, Checks, Datasets, in that order (P-D1, N1). Runs, Alerts and Settings are not built yet. */
+/** Dashboard, Checks, Datasets, Settings, in that order (P-D1, N1; spec 040 S-D6). Runs and Alerts are not built yet. */
 const SECTIONS: readonly SectionDef[] = [
   { key: "dashboard", label: "Dashboard", href: "/", Icon: DashboardIcon },
   { key: "checks", label: "Checks", href: "/checks", Icon: ChecksIcon },
   { key: "datasets", label: "Datasets", href: "/datasets", Icon: DatasetsIcon },
+  { key: "settings", label: "Settings", href: "/settings", Icon: SettingsIcon },
 ];
 
 export function AppShell({

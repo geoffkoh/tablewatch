@@ -1915,6 +1915,228 @@
         ],
         "title": "ScanStatement",
         "type": "object"
+      },
+      "Settings": {
+        "description": "The served project's configuration, read-only and without credentials.",
+        "properties": {
+          "checks": {
+            "$ref": "#/components/schemas/SettingsChecks"
+          },
+          "datasources": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsDatasource"
+            },
+            "title": "Datasources",
+            "type": "array"
+          },
+          "notifiers": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsNotifier"
+            },
+            "title": "Notifiers",
+            "type": "array"
+          },
+          "project": {
+            "$ref": "#/components/schemas/SettingsProject"
+          },
+          "results": {
+            "$ref": "#/components/schemas/SettingsResults"
+          }
+        },
+        "required": [
+          "project",
+          "datasources",
+          "notifiers",
+          "results",
+          "checks"
+        ],
+        "title": "Settings",
+        "type": "object"
+      },
+      "SettingsChecks": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "integer"
+          },
+          "disabled": {
+            "title": "Disabled",
+            "type": "integer"
+          },
+          "retired": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired"
+          }
+        },
+        "required": [
+          "active",
+          "disabled",
+          "retired"
+        ],
+        "title": "SettingsChecks",
+        "type": "object"
+      },
+      "SettingsDatasource": {
+        "properties": {
+          "checks": {
+            "title": "Checks",
+            "type": "integer"
+          },
+          "datasets": {
+            "title": "Datasets",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "datasets",
+          "checks"
+        ],
+        "title": "SettingsDatasource",
+        "type": "object"
+      },
+      "SettingsNotifier": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "url_variable": {
+            "title": "Url Variable",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "url_variable"
+        ],
+        "title": "SettingsNotifier",
+        "type": "object"
+      },
+      "SettingsProject": {
+        "properties": {
+          "checks_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checks Path"
+          },
+          "loaded_at": {
+            "format": "date-time",
+            "title": "Loaded At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "loaded_at",
+          "checks_path"
+        ],
+        "title": "SettingsProject",
+        "type": "object"
+      },
+      "SettingsResults": {
+        "description": "The results store, never its URL: it may hold a password, and a\nSQLite path names the server's file system (spec 040 S-D2).",
+        "properties": {
+          "dialect": {
+            "title": "Dialect",
+            "type": "string"
+          },
+          "head": {
+            "title": "Head",
+            "type": "string"
+          },
+          "migrate": {
+            "enum": [
+              "auto",
+              "never"
+            ],
+            "title": "Migrate",
+            "type": "string"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "enum": [
+                  "current",
+                  "empty",
+                  "older",
+                  "newer"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "unavailable",
+                "type": "string"
+              }
+            ],
+            "title": "Schema"
+          },
+          "sync": {
+            "enum": [
+              "on_run",
+              "manual"
+            ],
+            "title": "Sync",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dialect",
+          "schema",
+          "revision",
+          "head",
+          "migrate",
+          "sync"
+        ],
+        "title": "SettingsResults",
+        "type": "object"
       }
     }
   },
@@ -2820,6 +3042,85 @@
           }
         },
         "summary": "Get Run"
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "description": "The configuration as loaded at startup, and the store's schema.\n\nAnswers even when the store cannot be read: that is when someone looks.",
+        "operationId": "get_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid parameter"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "forbidden host"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not found"
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "method not allowed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "store unavailable"
+          }
+        },
+        "summary": "Get Settings"
       }
     }
   }

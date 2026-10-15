@@ -9,6 +9,7 @@ server. Opening one only to read never changes it: a newer laptop running
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 import time
@@ -313,8 +314,7 @@ def schema_sql(since: str | None = None) -> str:
 
     config = _alembic_config()
     scripts = ScriptDirectory.from_config(config)
-    known = [revision.revision for revision in scripts.walk_revisions()]
-    known.reverse()
+    known = known_revisions()
     head = known[-1]
     if since is not None:
         if since not in known:
@@ -396,18 +396,42 @@ def reading(engine: Engine) -> Iterator[None]:
         raise StoreError(f"results store: {reason}") from exc
 
 
+SchemaState = Literal["current", "empty", "older", "newer"]
+
+
+def known_revisions() -> list[str]:
+    """This version's schema revisions, oldest first; reads no store."""
+    from alembic.script import ScriptDirectory
+
+    scripts = ScriptDirectory.from_config(_alembic_config())
+    known = [revision.revision for revision in scripts.walk_revisions()]
+    known.reverse()  # walk_revisions starts at head
+    return known
+
+
+def schema_of(current: str | None, known: Sequence[str]) -> SchemaState:
+    """A store's schema against this version's, from `ResultStore.revisions()`."""
+    if current == known[-1]:
+        return "current"
+    if current is None:
+        return "empty"
+    return "older" if current in known else "newer"
+
+
 class ResultStore:
     """Run history in a SQL database, migrated to the current schema on open."""
 
     def __init__(self, engine: Engine, *, migrate: bool = True) -> None:
         self.engine = engine
-        if not migrate:
-            return
-        try:
-            self._migrate()
-        except BaseException:
-            engine.dispose()  # `with` never gets the chance to close it
-            raise
+        # Opening may create a SQLite store's file; once open, it must stay.
+        self._opened = False
+        if migrate:
+            try:
+                self._migrate()
+            except BaseException:
+                engine.dispose()  # `with` never gets the chance to close it
+                raise
+        self._opened = True
 
     @classmethod
     def open(
@@ -416,33 +440,46 @@ class ResultStore:
         engine = create_engine(resolve_store_url(url, project_root, create=create))
         return cls(engine, migrate=migrate)
 
-    def schema(self) -> Literal["current", "empty", "older", "newer"]:
+    def schema(self) -> SchemaState:
         """This store's schema against this version's, without migrating it.
 
         `empty` has no tablewatch tables yet; `newer` is a revision this
         version does not know: a newer tablewatch upgraded it. Raises
         `StoreError` when the store cannot be read.
         """
-        current, known = self._revisions()
-        if current == known[-1]:
-            return "current"
-        if current is None:
-            return "empty"
-        return "older" if current in known else "newer"
+        return schema_of(*self.revisions())
 
-    def _revisions(self) -> tuple[str | None, list[str]]:
-        """The store's revision, and this version's, oldest first."""
+    def revisions(self) -> tuple[str | None, list[str]]:
+        """The store's Alembic revision (None when empty), and this version's,
+        oldest first. Raises `StoreError` when the store cannot be read."""
         from alembic.runtime.migration import MigrationContext
-        from alembic.script import ScriptDirectory
 
-        scripts = ScriptDirectory.from_config(_alembic_config())
-        known = [revision.revision for revision in scripts.walk_revisions()]
-        known.reverse()  # walk_revisions starts at head
-        with reading(self.engine), self.engine.connect() as connection:
-            context = MigrationContext.configure(
-                connection, opts={"version_table": VERSION_TABLE}
-            )
-            return context.get_current_revision(), known
+        known = known_revisions()
+        self._require_file()
+        try:
+            with reading(self.engine), self.engine.connect() as connection:
+                context = MigrationContext.configure(
+                    connection, opts={"version_table": VERSION_TABLE}
+                )
+                return context.get_current_revision(), known
+        except AlembicCommandError as exc:  # e.g. a version table with two rows
+            raise StoreError("results store: its schema version is unreadable") from exc
+
+    def _require_file(self) -> None:
+        """A SQLite store's file must still be there and readable.
+
+        A pooled connection keeps reading a file deleted or made unreadable
+        since it opened, and a new one would create an empty file: neither
+        is the store anyone recorded to (spec 040 S4).
+        """
+        url = self.engine.url
+        if not self._opened or url.get_backend_name() != "sqlite":
+            return
+        if url.database in (None, "", ":memory:"):
+            return
+        path = Path(url.database)
+        if not path.is_file() or not os.access(path, os.R_OK):
+            raise StoreError("results store: its file is gone or cannot be read")
 
     def require_current(
         self, oldest: str | None = None, *, managed: bool = False
@@ -458,7 +495,7 @@ class ResultStore:
         if schema == "empty":
             raise NoStoreError("results store: no store has been recorded yet")
         if schema == "older":
-            current, known = self._revisions()
+            current, known = self.revisions()
             if oldest is not None and known.index(str(current)) >= known.index(oldest):
                 return
             raise OlderStoreError(f"results store: {self._older(managed)}")
@@ -479,12 +516,12 @@ class ResultStore:
     def _older(self, managed: bool) -> str:
         if not managed:
             return OLDER
-        current, known = self._revisions()
+        current, known = self.revisions()
         return MANAGED_OLDER.format(current=current, head=known[-1])
 
     def older_than(self, revision: str) -> bool:
         """Whether this store's schema predates `revision`, without migrating."""
-        current, known = self._revisions()
+        current, known = self.revisions()
         return current in known and known.index(current) < known.index(revision)
 
     def close(self) -> None:

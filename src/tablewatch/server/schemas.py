@@ -34,7 +34,7 @@ from tablewatch.results.models import (
     RunRow,
 )
 from tablewatch.results.state import Evaluated
-from tablewatch.results.store import Latest, Retired
+from tablewatch.results.store import Latest, Retired, SchemaState
 from tablewatch.selection import Selection
 
 Outcome = Literal["pass", "warn", "fail", "error", "skipped"]
@@ -116,6 +116,61 @@ class Project(_Model):
     datasources: list[Datasource]
     counts: ProjectCounts
     diagnostics: list[Diagnostic]
+
+
+StoreState = SchemaState | Literal["unavailable"]
+
+
+class SettingsProject(_Model):
+    name: str
+    version: str
+    loaded_at: Timestamp
+    # Null when it points outside the project: no server path on the wire.
+    checks_path: str | None
+
+
+class SettingsDatasource(_Model):
+    name: str
+    type: str
+    datasets: int
+    checks: int
+
+
+class SettingsNotifier(_Model):
+    name: str
+    type: str
+    # The NAME of the `${env:NAME}` the URL comes from; never its value.
+    url_variable: str
+
+
+class SettingsResults(_Model):
+    """The results store, never its URL: it may hold a password, and a
+    SQLite path names the server's file system (spec 040 S-D2)."""
+
+    dialect: str
+    # `schema` would shadow a BaseModel method: the wire name is an alias.
+    schema_: StoreState = Field(alias="schema")
+    revision: str | None
+    head: str
+    migrate: Literal["auto", "never"]
+    sync: Literal["on_run", "manual"]
+
+
+class SettingsChecks(_Model):
+    active: int
+    disabled: int
+    # Null unless the store is readable at this version's schema.
+    retired: int | None
+
+
+class Settings(_Model):
+    """The served project's configuration, read-only and without credentials."""
+
+    project: SettingsProject
+    datasources: list[SettingsDatasource]
+    notifiers: list[SettingsNotifier]
+    results: SettingsResults
+    checks: SettingsChecks
 
 
 class LastEvaluated(_Model):
