@@ -5,7 +5,7 @@
         "description": "A result that changed its check's state (spec 041).",
         "properties": {
           "check": {
-            "$ref": "#/components/schemas/AlertCheck"
+            "$ref": "#/components/schemas/CheckRef"
           },
           "deliveries": {
             "anyOf": [
@@ -79,45 +79,6 @@
           "deliveries"
         ],
         "title": "Alert",
-        "type": "object"
-      },
-      "AlertCheck": {
-        "description": "The check as the registry has it: a retired one's alerts outlive it.",
-        "properties": {
-          "dataset": {
-            "title": "Dataset",
-            "type": "string"
-          },
-          "datasource": {
-            "title": "Datasource",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "state": {
-            "enum": [
-              "active",
-              "disabled",
-              "retired"
-            ],
-            "title": "State",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "dataset",
-          "datasource",
-          "state"
-        ],
-        "title": "AlertCheck",
         "type": "object"
       },
       "AlertDelivery": {
@@ -232,7 +193,7 @@
             "type": "string"
           },
           "check": {
-            "$ref": "#/components/schemas/AlertCheck"
+            "$ref": "#/components/schemas/CheckRef"
           },
           "kind": {
             "enum": [
@@ -450,6 +411,45 @@
           "total"
         ],
         "title": "CheckList",
+        "type": "object"
+      },
+      "CheckRef": {
+        "description": "A check as the registry has it, for alerts and check changes: a\nretired one's outlive it.",
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "datasource": {
+            "title": "Datasource",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "disabled",
+              "retired"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "dataset",
+          "datasource",
+          "state"
+        ],
+        "title": "CheckRef",
         "type": "object"
       },
       "CheckSource": {

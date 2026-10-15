@@ -79,7 +79,7 @@ export type SettingsChecks = Schemas["SettingsChecks"];
 export type Alert = Schemas["Alert"];
 export type AlertPage = Schemas["AlertPage"];
 /** The check as the registry has it: a retired one's alerts outlive it. */
-export type AlertCheck = Schemas["AlertCheck"];
+export type CheckRef = Schemas["CheckRef"];
 export type AlertDelivery = Schemas["AlertDelivery"];
 /** `failing`, `erroring` or `recovered` — `results.state.transition`'s events (P1). */
 export type AlertEvent = Alert["event"];

@@ -231,7 +231,7 @@ export interface components {
          * @description A result that changed its check's state (spec 041).
          */
         Alert: {
-            check: components["schemas"]["AlertCheck"];
+            check: components["schemas"]["CheckRef"];
             /** Deliveries */
             deliveries: components["schemas"]["AlertDelivery"][] | null;
             /**
@@ -253,25 +253,6 @@ export interface components {
              * Format: date-time
              */
             started_at: string;
-        };
-        /**
-         * AlertCheck
-         * @description The check as the registry has it: a retired one's alerts outlive it.
-         */
-        AlertCheck: {
-            /** Dataset */
-            dataset: string;
-            /** Datasource */
-            datasource: string;
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "active" | "disabled" | "retired";
         };
         /** AlertDelivery */
         AlertDelivery: {
@@ -320,7 +301,7 @@ export interface components {
              * Format: date-time
              */
             at: string;
-            check: components["schemas"]["AlertCheck"];
+            check: components["schemas"]["CheckRef"];
             /**
              * Kind
              * @enum {string}
@@ -383,6 +364,26 @@ export interface components {
             items: (components["schemas"]["CheckSummary"] | components["schemas"]["RetiredCheckSummary"])[];
             /** Total */
             total: number;
+        };
+        /**
+         * CheckRef
+         * @description A check as the registry has it, for alerts and check changes: a
+         *     retired one's outlive it.
+         */
+        CheckRef: {
+            /** Dataset */
+            dataset: string;
+            /** Datasource */
+            datasource: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "disabled" | "retired";
         };
         /**
          * CheckSource

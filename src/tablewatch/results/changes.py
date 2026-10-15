@@ -12,14 +12,31 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from tablewatch.jsonvalues import utc
-from tablewatch.results.models import ACTIVE, CheckDefinitionRow, CheckRow
+from tablewatch.results.models import (
+    ACTIVE,
+    DISABLED,
+    RETIRED,
+    CheckDefinitionRow,
+    CheckRow,
+    known_state,
+)
 from tablewatch.results.store import ResultStore, reading
 
 ChangeKind = Literal["added", "redefined", "disabled", "retired", "enabled"]
+_KINDS: dict[str, ChangeKind] = {DISABLED: "disabled", RETIRED: "retired"}
+# Newest first; at one moment, the later step of a story first (a check
+# added disabled by a sync reads "Disabled", then "Added").
+_STORY: dict[ChangeKind, int] = {
+    "added": 0,
+    "redefined": 1,
+    "enabled": 2,
+    "disabled": 3,
+    "retired": 4,
+}
 
 
 @dataclass(frozen=True)
@@ -33,8 +50,8 @@ class CheckChange:
 def check_changes(store: ResultStore, project: str, limit: int) -> list[CheckChange]:
     """`project`'s `limit` newest check changes, newest first.
 
-    Each source is read only `limit` deep, then merged: never the whole
-    registry.
+    Each source is read only `limit` deep, then merged: at most three
+    times `limit` rows reach Python.
     """
     ours = CheckRow.project == project
     added = (
@@ -51,10 +68,7 @@ def check_changes(store: ResultStore, project: str, limit: int) -> list[CheckCha
             ours,
             or_(
                 CheckRow.state != ACTIVE,
-                and_(
-                    CheckRow.state == ACTIVE,
-                    CheckRow.state_since > CheckRow.registered_at,
-                ),
+                CheckRow.state_since > CheckRow.registered_at,
             ),
         )
         .order_by(CheckRow.state_since.desc())
@@ -74,20 +88,10 @@ def check_changes(store: ResultStore, project: str, limit: int) -> list[CheckCha
             for check in session.scalars(added)
         )
         for check in session.scalars(lifecycle):
-            kind: ChangeKind = (
-                "enabled" if check.state == ACTIVE else _kind(check.state)
-            )
+            state = known_state(check.state)
+            kind: ChangeKind = "enabled" if state == ACTIVE else _KINDS[state]
             found.append(CheckChange(check, kind, utc(check.state_since), None))
         for version, recorded_at, check in session.execute(redefined):
             found.append(CheckChange(check, "redefined", utc(recorded_at), version))
-    # Newest first; at one moment, the later step of a story first (a check
-    # added disabled by a sync reads "Disabled", then "Added").
-    order = {"added": 0, "redefined": 1, "enabled": 2, "disabled": 3, "retired": 4}
-    found.sort(key=lambda c: (c.at, order[c.kind], c.check.id), reverse=True)
+    found.sort(key=lambda c: (c.at, _STORY[c.kind], c.check.id), reverse=True)
     return found[:limit]
-
-
-def _kind(state: str) -> ChangeKind:
-    # A state this version does not know is reported as the nearest it does:
-    # the check is not running.
-    return "retired" if state == "retired" else "disabled"
