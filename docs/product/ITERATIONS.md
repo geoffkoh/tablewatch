@@ -10,6 +10,41 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 40 — App shell, part 2: the Settings page (I-51 part 2), 2026-10-15
+
+- **Spec:** [040-settings-page](specs/040-settings-page.md). **Branch:** `iter/040`.
+  Full track (a new wire endpoint exposing configuration); spec written by the tech lead
+  (owner-fixed item), no REFINE — the tech lead decided S-D1–S-D7. No items added (freeze).
+  I-51 split again: part 3 = Alerts, part 4 = the Dashboard's panels.
+- **Shipped:** `GET /api/v1/settings` (project, datasources with counts, notifiers with
+  `url_variable`, store dialect / schema state / revision / head / `migrate` / `sync`, checks by
+  lifecycle) answering 200 with `schema: unavailable` when the store cannot be read; `/settings`
+  page and nav entry (ui-engineer). `ResultStore.revisions()` public, `known_revisions()` and
+  `schema_of()` module functions, `_URLNotifier.variable`.
+  Suite: **3,209 passed, 86 skipped (Postgres), 16 xfailed**; vitest 1,051.
+- **Reviewer findings and resolution:**
+  - *security-reviewer — approve, no blockers.* An absolute or `..` `checks_path` named a server
+    path: now null on the wire ("Outside the project"). An unreadable store is now logged.
+  - *architect — approve, no blockers.* Narrowed the `try` so `unavailable` never carries a
+    revision; the env-variable name moved onto the notifier config; `known_revisions` a module
+    function reused by `schema_sql`; `StoreState = SchemaState | "unavailable"`. Kept: the retired
+    count loads rows (fine at today's scale; a `COUNT` if part 4's Dashboard shows it).
+  - *qa-engineer — fail → fixed (767b798); 41 Python + frontend tests, 4 xfails now pass.* A
+    SQLite store deleted or chmod'ed while serving still read `current` through the pooled
+    connection, and a reconnect re-created it empty: `revisions()` now requires an opened store's
+    file to exist and be readable. A two-row version table raised Alembic's `CommandError` (500):
+    now a `StoreError`. "Loaded" uses `Ago`, the shared time component with the absolute time on
+    hover — as specified.
+  - *data-steward — accept; 6/6 must scenarios* on a scratch project from the acceptance kit and
+    the live server; wording matches S-D6.
+- **Not added (backlog freeze):** `serve` refuses to start on a store a newer tablewatch has
+  migrated (exit 3, spec 002), so Settings shows `newer` only when that happens while serving
+  (data-steward).
+- **Lesson:** a pooled SQLite connection outlives its file; "can the store be read" has to look
+  at the file, not only ask the connection.
+- **Backlog:** I-51 part 2 done. Next: iteration 41 = I-51 part 3 (Alerts), then part 4
+  (Dashboard panels), I-47, I-48, I-50.
+
 ## Iteration 39 — App shell and side navigation, part 1: Dashboard, Checks, Datasets (I-51 part 1), 2026-10-14
 
 - **Spec:** [039-app-shell-datasets](specs/039-app-shell-datasets.md). **Branch:** `iter/039`.

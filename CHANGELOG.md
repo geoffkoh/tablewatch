@@ -40,6 +40,16 @@ All notable changes to tablewatch. The format follows
 
 ### Added
 
+- **Settings page and `GET /api/v1/settings`.** `serve`'s web UI gains a
+  read-only Settings section: the project, each datasource's type with its
+  dataset and check counts, each notifier with the environment variable its
+  URL comes from, the results store's database, schema state (up to date,
+  older, newer, nothing recorded, or could not be read — the page still
+  loads when the store is down), `migrate` and `sync`, and checks by
+  lifecycle. No credential, store URL, connection detail or server path is
+  ever sent; `checks_path` is null when it points outside the project
+  (spec 040).
+
 - **The web UI has a side navigation** (spec 039, I-51 part 1): Dashboard
   (the overview), Checks and Datasets on every page, with the number of
   checks failing or in error beside Checks. It collapses to an icon rail on
