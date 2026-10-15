@@ -27,6 +27,7 @@ from tablewatch.config.project import (
 from tablewatch.datasources import (
     CONNECTION_FAILED,
     FILE_NOT_FOUND,
+    Access,
     DatasourceError,
     connection_problem,
     create_engine_for,
@@ -71,13 +72,13 @@ def test_a_missing_file_is_refused_and_not_created(
     tmp_path: Path, config: SQLiteDatasource | DuckDBDatasource
 ) -> None:
     with pytest.raises(DatasourceError, match=f"^{FILE_NOT_FOUND}$"):
-        create_engine_for(config, tmp_path, "shop", read_only=True)
+        create_engine_for(config, tmp_path, "shop", access="probe")
     assert list(tmp_path.iterdir()) == []  # neither the file nor `sub/`
 
 
 def test_open_engine_gives_the_missing_file_reason(tmp_path: Path) -> None:
     project = _project(tmp_path, shop={"type": "sqlite", "path": "nothere.db"})
-    assert open_engine(project, "shop", read_only=True) == FILE_NOT_FOUND
+    assert open_engine(project, "shop", access="probe") == FILE_NOT_FOUND
     assert not (tmp_path / "nothere.db").exists()
 
 
@@ -85,13 +86,15 @@ def test_a_directory_is_not_a_database_file(tmp_path: Path) -> None:
     (tmp_path / "dir.db").mkdir()
     config = SQLiteDatasource(type="sqlite", path="dir.db")
     with pytest.raises(DatasourceError, match=FILE_NOT_FOUND):
-        create_engine_for(config, tmp_path, read_only=True)
+        create_engine_for(config, tmp_path, access="probe")
 
 
 def test_without_read_only_behaviour_is_unchanged(tmp_path: Path) -> None:
     # `run` and `test-connection` still create an empty SQLite file (out of
     # scope for spec 028, listed in its non-goals).
-    engine = create_engine_for(SQLiteDatasource(type="sqlite", path="new.db"), tmp_path)
+    engine = create_engine_for(
+        SQLiteDatasource(type="sqlite", path="new.db"), tmp_path, access="write"
+    )
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
     engine.dispose()
@@ -107,7 +110,7 @@ def test_sqlite_read_only_reads_and_refuses_writes(
 ) -> None:
     _sqlite_file(tmp_path / filename)
     config = SQLiteDatasource(type="sqlite", path=filename)
-    engine = create_engine_for(config, tmp_path, read_only=True)
+    engine = create_engine_for(config, tmp_path, access="probe")
     try:
         with engine.connect() as conn:
             assert conn.execute(text("SELECT count(*) FROM t")).scalar() == 1
@@ -132,7 +135,7 @@ def test_sqlite_read_only_creates_no_other_file(tmp_path: Path, statement: str) 
     # creates a writable new file (measured on SQLite 3.4x).
     _sqlite_file(tmp_path / "shop.db")
     engine = create_engine_for(
-        SQLiteDatasource(type="sqlite", path="shop.db"), tmp_path, read_only=True
+        SQLiteDatasource(type="sqlite", path="shop.db"), tmp_path, access="probe"
     )
     try:
         with engine.connect() as conn, pytest.raises(SQLAlchemyError):
@@ -151,7 +154,7 @@ def test_duckdb_read_only_creates_no_other_file(tmp_path: Path, statement: str) 
     # DuckDB's `read_only` binds the database file only; COPY TO still writes.
     _duckdb_file(tmp_path / "shop.duckdb")
     engine = create_engine_for(
-        DuckDBDatasource(type="duckdb", path="shop.duckdb"), tmp_path, read_only=True
+        DuckDBDatasource(type="duckdb", path="shop.duckdb"), tmp_path, access="probe"
     )
     try:
         with engine.connect() as conn, pytest.raises(SQLAlchemyError):
@@ -167,7 +170,7 @@ def test_duckdb_read_only_reads_and_refuses_writes(
 ) -> None:
     _duckdb_file(tmp_path / filename)
     config = DuckDBDatasource(type="duckdb", path=filename)
-    engine = create_engine_for(config, tmp_path, read_only=True)
+    engine = create_engine_for(config, tmp_path, access="probe")
     try:
         with engine.connect() as conn:
             assert conn.execute(text("SELECT count(*) FROM t")).scalar() == 1
@@ -181,7 +184,7 @@ def test_duckdb_read_only_reads_and_refuses_writes(
 def test_duckdb_read_only_overrides_a_writable_config(tmp_path: Path) -> None:
     _duckdb_file(tmp_path / "w.duckdb")
     config = DuckDBDatasource(type="duckdb", path="w.duckdb", read_only=False)
-    engine = create_engine_for(config, tmp_path, read_only=True)
+    engine = create_engine_for(config, tmp_path, access="probe")
     try:
         with engine.connect() as conn, pytest.raises(SQLAlchemyError):
             conn.execute(text("INSERT INTO t VALUES (2)"))
@@ -193,7 +196,7 @@ def test_in_memory_sqlite_still_opens(tmp_path: Path) -> None:
     # Nothing to find and nothing left behind, so `:memory:` opens as usual.
     # (DuckDB `:memory:` keeps its config's read_only, as `run` does.)
     config = SQLiteDatasource(type="sqlite", path=":memory:")
-    engine = create_engine_for(config, tmp_path, read_only=True)
+    engine = create_engine_for(config, tmp_path, access="probe")
     with engine.connect() as conn:
         assert conn.execute(text("SELECT 1")).scalar() == 1
     engine.dispose()
@@ -213,17 +216,17 @@ PG = PostgresDatasource(
 
 
 def _pg_connect_kwargs(
-    config: PostgresDatasource, *, read_only: bool
+    config: PostgresDatasource, *, access: Access
 ) -> dict[str, object]:
     pytest.importorskip("psycopg")
-    engine = create_engine_for(config, Path(), "pg", read_only=read_only)
+    engine = create_engine_for(config, Path(), "pg", access=access)
     _, kwargs = engine.dialect.create_connect_args(engine.url)
     return dict(kwargs)
 
 
 def test_postgres_read_only_session(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TW_RO_PASSWORD", "s3cret")
-    kwargs = _pg_connect_kwargs(PG, read_only=True)
+    kwargs = _pg_connect_kwargs(PG, access="probe")
     options = str(kwargs["options"])
     assert "-c default_transaction_read_only=on" in options
     assert "-c lock_timeout=10s" in options
@@ -238,7 +241,7 @@ def test_postgres_read_only_keeps_user_options_and_comes_last(
     config = PG.model_copy(
         update={"options": {"options": "-c default_transaction_read_only=off"}}
     )
-    options = str(_pg_connect_kwargs(config, read_only=True)["options"])
+    options = str(_pg_connect_kwargs(config, access="probe")["options"])
     # libpq applies `-c` settings in order: ours, last, win.
     assert options.index("read_only=off") < options.index("read_only=on")
 
@@ -247,7 +250,7 @@ def test_postgres_default_has_no_session_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("TW_RO_PASSWORD", "s3cret")
-    assert "options" not in _pg_connect_kwargs(PG, read_only=False)
+    assert "options" not in _pg_connect_kwargs(PG, access="write")
 
 
 # -- open_engine and connection_problem: reasons safe to show ----------------
@@ -259,7 +262,7 @@ def test_open_engine_names_an_unset_variable(
     monkeypatch.delenv("TW_RO_PASSWORD", raising=False)
     project = _project(tmp_path, down=PG.model_dump())
     assert (
-        open_engine(project, "down", read_only=True)
+        open_engine(project, "down", access="probe")
         == "environment variable TW_RO_PASSWORD is not set"
     )
 
@@ -267,7 +270,7 @@ def test_open_engine_names_an_unset_variable(
 def test_open_engine_returns_an_engine(tmp_path: Path) -> None:
     _sqlite_file(tmp_path / "shop.db")
     project = _project(tmp_path, shop={"type": "sqlite", "path": "shop.db"})
-    engine = open_engine(project, "shop", read_only=True)
+    engine = open_engine(project, "shop", access="probe")
     assert not isinstance(engine, str)
     with engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM t")).scalar() == 1
@@ -282,7 +285,7 @@ def test_open_engine_never_echoes_an_unexpected_exception(
 
     monkeypatch.setattr("tablewatch.datasources.create_engine_for", boom)
     project = _project(tmp_path, shop={"type": "sqlite", "path": "x.db"})
-    reason = open_engine(project, "shop")
+    reason = open_engine(project, "shop", access="write")
     assert reason == "internal error creating the engine (RuntimeError)"
 
 
@@ -324,7 +327,7 @@ def test_local_failures_give_the_drivers_first_line(
 def test_a_corrupt_sqlite_file_reads_as_its_first_line(tmp_path: Path) -> None:
     (tmp_path / "bad.db").write_bytes(b"not a database at all, not even close" * 4)
     config = SQLiteDatasource(type="sqlite", path="bad.db")
-    engine = create_engine_for(config, tmp_path, read_only=True)
+    engine = create_engine_for(config, tmp_path, access="probe")
     with pytest.raises(SQLAlchemyError) as caught, engine.connect() as conn:
         conn.execute(text("SELECT * FROM sqlite_master"))
     engine.dispose()

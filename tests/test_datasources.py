@@ -66,7 +66,7 @@ def test_postgres_engine_resolves_env_without_connecting(
         "TW_PASSWORD": "s3cret",
     }.items():
         monkeypatch.setenv(name, value)
-    engine = create_engine_for(PG, tmp_path)
+    engine = create_engine_for(PG, tmp_path, access="write")
     url = engine.url
     assert (url.host, url.port, url.username, url.database) == (
         "db.internal",
@@ -87,7 +87,7 @@ def test_unset_variable_is_named(
         monkeypatch.setenv(name, "5432" if name == "TW_PORT" else "x")
     monkeypatch.delenv("TW_HOST", raising=False)
     with pytest.raises(MissingEnvironmentVariableError, match="TW_HOST is not set"):
-        create_engine_for(PG, tmp_path)
+        create_engine_for(PG, tmp_path, access="write")
 
 
 def test_resolve_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -98,7 +98,7 @@ def test_resolve_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_local_paths_resolve_against_the_project(tmp_path: Path) -> None:
     engine = create_engine_for(
-        SQLiteDatasource(type="sqlite", path="data/a.db"), tmp_path
+        SQLiteDatasource(type="sqlite", path="data/a.db"), tmp_path, access="write"
     )
     assert engine.url.database == str(tmp_path / "data" / "a.db")
     engine.dispose()

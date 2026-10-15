@@ -205,7 +205,7 @@ def test_every_statement_is_a_zero_row_probe(p: Path) -> None:  # S10
     from tablewatch.datasources import open_engine
 
     def opener(name: str) -> Any:
-        engine = open_engine(project, name, read_only=True)
+        engine = open_engine(project, name, access="probe")
         if not isinstance(engine, str):
             event.listen(
                 engine,

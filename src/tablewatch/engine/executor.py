@@ -17,6 +17,7 @@ from sqlalchemy import Connection, Engine, column, inspect, select, table
 from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
 
 from tablewatch.checks.sources import FileSource
+from tablewatch.datasources import refusal
 from tablewatch.engine.planner import SCHEMA_KEY, DatasetPlan
 
 log = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ def execute_plan(plan: DatasetPlan, engine: Engine) -> Measured:
                 _schema(plan, conn, measured)
     except SQLAlchemyError as exc:
         # Could not even connect: every measure shares the failure.
-        message = error_message(exc)
+        message = measure_error(exc, engine)
         for key in (
             *plan.aggregates,
             *plan.queries,
@@ -68,7 +69,7 @@ def _run_scan(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
         log.info(
             "batched scan of %s failed (%s); retrying each measure alone",
             plan.dataset.name,
-            error_message(exc),
+            measure_error(exc, conn),
         )
         for key in plan.aggregates:
             _scalar(conn, key, plan.single(key), measured)
@@ -84,7 +85,7 @@ def _scalar(conn: Connection, key: str, statement: Any, measured: Measured) -> N
     except Exception as exc:  # SQL errors, and values the driver cannot fetch
         # Postgres refuses further statements in a failed transaction.
         conn.rollback()
-        measured.errors[key] = measure_error(exc)
+        measured.errors[key] = measure_error(exc, conn)
 
 
 def _schema(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
@@ -92,7 +93,7 @@ def _schema(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
         try:
             rows = conn.execute(plan.dataset.source.schema_statement()).all()
         except SQLAlchemyError as exc:  # the files engine's fixed text
-            measured.errors[SCHEMA_KEY] = error_message(exc)
+            measured.errors[SCHEMA_KEY] = measure_error(exc, conn)
             return
         measured.values[SCHEMA_KEY] = [(str(n), str(t)) for n, t in rows]
         return
@@ -113,7 +114,7 @@ def _schema(plan: DatasetPlan, conn: Connection, measured: Measured) -> None:
         conn.rollback()
         columns = _information_schema_columns(conn, ref.table, ref.schema)
         if columns is None:
-            measured.errors[SCHEMA_KEY] = error_message(exc)
+            measured.errors[SCHEMA_KEY] = measure_error(exc, conn)
             return
     if not columns:
         measured.errors[SCHEMA_KEY] = f"table {ref} not found"
@@ -165,8 +166,24 @@ CONVERSION_MESSAGE = (
 )
 
 
-def measure_error(exc: BaseException) -> str:
-    """`error_message`, unless the database's text would quote a row value."""
+READ_ONLY_REFUSED = (
+    "the datasource is opened read-only and this check's SQL tried to write — "
+    "set `read_only: false` on the datasource if that is intended"
+)
+FILES_REFUSED = (
+    "the datasource is opened read-only, so this check's SQL cannot read or "
+    "write other files — set `read_only: false` on the datasource to allow it"
+)
+
+
+def measure_error(exc: BaseException, conn: Connection | Engine | None = None) -> str:
+    """`error_message`, unless the database's text would quote a row value,
+    or is a read-only connection refusing a write (fixed words, R-D5)."""
+    refused = refusal(exc, conn.get_execution_options()) if conn is not None else None
+    if refused == "write":
+        return READ_ONLY_REFUSED
+    if refused == "files":
+        return FILES_REFUSED
     text = error_message(exc)
     if any(marker in text.lower() for marker in _CONVERSION_MARKERS):
         return CONVERSION_MESSAGE

@@ -33,8 +33,8 @@ from tablewatch.config.loader import Project
 from tablewatch.config.project import MissingEnvironmentVariableError
 from tablewatch.datasources import (
     DatasourceError,
-    create_engine_for,
     datasource_problem,
+    open_for_run,
     timezone_of,
 )
 from tablewatch.engine.baselines import Baselines, Sample, choose
@@ -288,11 +288,7 @@ def run_checks(
         fail_on=fail_on,
     )
     order = {check.id: index for index, check in enumerate(checks)}
-    factory = engine_factory or (
-        lambda name: create_engine_for(
-            project.config.datasources[name], project.root, name
-        )
-    )
+    factory = engine_factory or (lambda name: open_for_run(project, name))
 
     by_source: dict[str, dict[Dataset, list[Check]]] = {}
     for check in checks:

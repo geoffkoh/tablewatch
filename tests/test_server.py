@@ -608,7 +608,8 @@ def test_a_check_that_errored_last_time_shows_error(recorded: Recorded) -> None:
         assert latest["value"] is None
         assert latest["display_value"] == ""
         assert latest["message"].startswith(
-            "missing_percent(email): IO Error: Cannot open database"
+            "missing_percent(email): datasource 'lake' in tablewatch.yml: "
+            "database file not found"
         )
         assert get(client, "/api/v1/checks?outcome=fail")["total"] == 2
         assert get(client, "/api/v1/checks?outcome=error")["total"] == 4

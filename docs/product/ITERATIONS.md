@@ -10,6 +10,39 @@ Older entries (iterations 1–28) are in
 [`archive/iterations-01-28.md`](archive/iterations-01-28.md); planners
 read only the latest entry here.
 
+## Iteration 43 — Runs open datasources read-only by default (I-47), 2026-10-16
+
+- **Spec:** [043-read-only-runs](specs/043-read-only-runs.md). **Branch:** `iter/043`.
+  Full track (how user SQL executes; a config option on every datasource; breaking for DuckDB
+  queries that read files); spec by the tech lead (owner-fixed item), no REFINE. No items added.
+- **Shipped:** `run`, `tw.run()` and `test-connection` open datasources through
+  `create_engine_for(access="read")` (`datasources.open_for_run`) unless `read_only: false`, now on
+  every datasource type; SQLite `mode=ro` + `query_only` + no ATTACH, DuckDB read-only with external
+  access off and configuration locked (a shared instance's second connection is tolerated), Postgres
+  `default_transaction_read_only` with no timeouts (the probe keeps them), re-asserted on each pool
+  checkout. A write is an `error` "…tried to write — set `read_only: false`…"; a file access on
+  DuckDB "…cannot read or write other files…"; a missing SQLite/DuckDB file is never created.
+  Suite: **3,312 passed, 97 skipped (Postgres), 16 xfailed**.
+- **Reviewer findings and resolution:**
+  - *security-reviewer — approve, no blockers.* Fixed: `:memory:` databases skipped the hardening
+    (`COPY … TO` wrote a file); a Postgres `query:` with `COMMIT; SET SESSION CHARACTERISTICS … READ
+    WRITE` left the pooled connection writable for later datasets — now reset on checkout. Kept and
+    documented: such a query can still write within itself (one statement per query is I-48's).
+  - *architect — approve, no blockers.* Fixed: refusal matching moved to `datasources.refusal`
+    and applied only to engines opened read-only; `access` required; `write` means write for DuckDB;
+    one `open_for_run`; README says what `read_only` does on `files` and `sqlalchemy`.
+  - *qa-engineer — fail → fixed; 37 tests, 4 xfails now pass.* SQLite `:memory:` ATTACH created a
+    file (blocking, fixed as above); the read-only message on a file read-only on disk under
+    `read_only: false`; a quoted value containing a sign phrase read as a write (now matched on the
+    message's start).
+  - *data-steward — accept; 6/6.* Fixed: a blocked `read_parquet` said "tried to write" (now its own
+    words). Noted: runs never commit, so a statement allowed by `read_only: false` is rolled back.
+  - The first VERIFY round was cut short by a usage limit and re-run from the start.
+- **Lesson:** a hardening listener that skips one mode (`:memory:`) is a hole in exactly that mode;
+  apply it everywhere the access applies and exempt nothing silently.
+- **Backlog:** I-47 done. Next: iteration 44 = I-48 (validate rejects write SQL — sqlglot, security
+  review), then I-50.
+
 ## Iteration 42 — App shell, part 4: the Dashboard's panels (I-51 part 4), 2026-10-16
 
 - **Spec:** [042-dashboard-panels](specs/042-dashboard-panels.md). **Branch:** `iter/042`.

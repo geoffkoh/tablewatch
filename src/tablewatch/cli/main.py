@@ -58,7 +58,7 @@ from tablewatch.checks.model import Check, Dataset
 from tablewatch.config import Project, find_project, load_project
 from tablewatch.config.jsonschema import check_file_schema, project_schema
 from tablewatch.config.project import PROJECT_FILE, MissingEnvironmentVariableError
-from tablewatch.datasources import DatasourceError, create_engine_for
+from tablewatch.datasources import DatasourceError, open_for_run
 from tablewatch.diagnostics import Diagnostic, ProjectError, Severity, error
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.engine.executor import error_message
@@ -768,7 +768,7 @@ def test_connection(ctx: click.Context, names: tuple[str, ...]) -> None:
     failed = 0
     for name in names or tuple(configured):
         try:
-            engine = create_engine_for(configured[name], project.root, name)
+            engine = open_for_run(project, name)
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             engine.dispose()
