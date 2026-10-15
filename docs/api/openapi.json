@@ -1,6 +1,194 @@
 {
   "components": {
     "schemas": {
+      "Alert": {
+        "description": "A result that changed its check's state (spec 041).",
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/AlertCheck"
+          },
+          "deliveries": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AlertDelivery"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deliveries"
+          },
+          "event": {
+            "enum": [
+              "failing",
+              "erroring",
+              "recovered"
+            ],
+            "title": "Event",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "pass",
+              "warn",
+              "fail",
+              "error",
+              "skipped"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "previous_outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pass",
+                  "warn",
+                  "fail",
+                  "error",
+                  "skipped"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Outcome"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check",
+          "run_id",
+          "started_at",
+          "event",
+          "outcome",
+          "previous_outcome",
+          "deliveries"
+        ],
+        "title": "Alert",
+        "type": "object"
+      },
+      "AlertCheck": {
+        "description": "The check as the registry has it: a retired one's alerts outlive it.",
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "datasource": {
+            "title": "Datasource",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "disabled",
+              "retired"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "dataset",
+          "datasource",
+          "state"
+        ],
+        "title": "AlertCheck",
+        "type": "object"
+      },
+      "AlertDelivery": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "notifier": {
+            "title": "Notifier",
+            "type": "string"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "enum": [
+              "sent",
+              "pending",
+              "abandoned"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "notifier",
+          "status",
+          "attempts",
+          "sent_at"
+        ],
+        "title": "AlertDelivery",
+        "type": "object"
+      },
+      "AlertPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Alert"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AlertPage",
+        "type": "object"
+      },
       "BetweenCondition": {
         "properties": {
           "high": {
@@ -2146,6 +2334,140 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/alerts": {
+      "get": {
+        "description": "The project's state changes, newest first, with their deliveries.",
+        "operationId": "list_alerts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "failing",
+                      "erroring",
+                      "recovered"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid parameter"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "forbidden host"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not found"
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "method not allowed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "store unavailable"
+          }
+        },
+        "summary": "List Alerts"
+      }
+    },
     "/api/v1/checks": {
       "get": {
         "operationId": "list_checks",

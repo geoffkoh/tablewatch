@@ -24,6 +24,7 @@ from tablewatch.checks.model import ID_PATTERN, Check
 from tablewatch.config.loader import Project as LoadedProject
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.jsonvalues import utc
+from tablewatch.results.alerts import AlertKey, alerts_page
 from tablewatch.results.store import (
     PageKey,
     ResultStore,
@@ -37,6 +38,7 @@ log = logging.getLogger(__name__)
 
 OutcomeFilter = Literal["pass", "warn", "fail", "error", "skipped", "not_run"]
 StateFilter = Literal["active", "disabled", "retired"]
+EventFilter = Literal["failing", "erroring", "recovered"]
 RUN_ID = re.compile(r"^[0-9a-f]{32}$")
 MAX_CURSOR = 256
 
@@ -303,6 +305,28 @@ def get_check_source(context: Context, check_id: str) -> schemas.CheckSource:
     return schemas.CheckSource.of(check, context.loaded_at)
 
 
+@router.get("/alerts", response_model=schemas.AlertPage)
+def list_alerts(
+    context: Context,
+    event: Annotated[list[EventFilter] | None, Query()] = None,
+    limit: Limit = 50,
+    cursor: Cursor = None,
+) -> schemas.AlertPage:
+    """The project's state changes, newest first, with their deliveries."""
+    rows = alerts_page(
+        context.store,
+        context.name,
+        events=list(dict.fromkeys(event or ())),
+        limit=limit + 1,
+        before=_decode_alert_cursor(cursor),
+    )
+    page, more = rows[:limit], len(rows) > limit
+    return schemas.AlertPage(
+        items=[schemas.Alert.of(alert) for alert in page],
+        next_cursor=_encode_alert_cursor(page[-1].key) if more else None,
+    )
+
+
 @router.get("/runs", response_model=schemas.RunPage)
 def list_runs(
     context: Context, limit: Limit = 50, cursor: Cursor = None
@@ -365,3 +389,29 @@ def _bad_cursor() -> ApiError:
         "invalid_parameter",
         "invalid cursor — use next_cursor from a previous page",
     )
+
+
+def _encode_alert_cursor(key: AlertKey) -> str:
+    raw = f"{utc(key.started_at).isoformat()}|{key.run_id}|{key.result_id}".encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_alert_cursor(cursor: str | None) -> AlertKey | None:
+    if cursor is None:
+        return None
+    try:
+        raw = base64.b64decode(
+            cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True
+        )
+        when, run_id, result_id = raw.decode("ascii").split("|")
+        started_at = datetime.fromisoformat(when)
+        if (
+            started_at.tzinfo is None
+            or not RUN_ID.match(run_id)
+            or not result_id.isdigit()
+            or len(result_id) > 18
+        ):
+            raise ValueError("incomplete cursor")
+        return AlertKey(utc(started_at), run_id, int(result_id))
+    except (binascii.Error, UnicodeDecodeError, ValueError, OverflowError):
+        raise _bad_cursor() from None

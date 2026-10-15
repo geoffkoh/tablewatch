@@ -53,10 +53,6 @@ def test_s10_store_sql_needs_no_project(tmp_path: object) -> None:
 
 
 def test_s12_store_sql_from_the_last_revision(tmp_path: object) -> None:
-    code, out, _ = invoke(tmp_path, "store", "sql", "--from", "0008")  # type: ignore[arg-type]
-    assert code == 0
-    assert "-- Running upgrade 0008 -> 0009" in out
-    assert "0007" not in out and "CREATE TABLE tablewatch_runs" not in out
     code, out, _ = invoke(tmp_path, "store", "sql", "--from", _revisions()[-1])  # type: ignore[arg-type]
     assert code == 0
     assert (
@@ -65,14 +61,15 @@ def test_s12_store_sql_from_the_last_revision(tmp_path: object) -> None:
     )
 
 
-@pytest.mark.parametrize("since", ["0003", "0006", "0007"])
+@pytest.mark.parametrize("since", ["0003", "0006", "0007", "0008", "0009"])
 def test_s13_store_sql_refuses_a_revision_that_reads_rows(
     tmp_path: object, since: str
 ) -> None:
     code, out, err = invoke(tmp_path, "store", "sql", "--from", since)  # type: ignore[arg-type]
     assert code == 3
     assert out == ""
-    blamed = "0004" if since == "0003" else "0008"
+    # The first revision on the way that fills a table from history.
+    blamed = {"0003": "0004", "0006": "0008", "0007": "0008"}.get(since, "0010")
     assert err.strip() == (
         f"tablewatch: revision {blamed} reads existing rows and cannot be written "
         "as SQL — upgrade this store once with `tablewatch store migrate`"
@@ -146,7 +143,7 @@ def _older(ws: Workspace) -> None:
 
 
 MESSAGE_0008 = (
-    "results store: its schema is at revision 0008, this tablewatch needs 0009 — "
+    f"results store: its schema is at revision 0008, this tablewatch needs {_revisions()[-1]} — "
     "apply `tablewatch store sql --from 0008` or run `tablewatch store migrate`"
 )
 
@@ -191,7 +188,7 @@ def test_s16_store_migrate_upgrades_whatever_the_setting(workspace: Workspace) -
     _older(workspace)
     code, out, _ = invoke(workspace.root, "store", "migrate")
     assert (code, out) == (0, "results store: upgraded\n")
-    assert _version(workspace) == [("0009",)]
+    assert _version(workspace) == [(_revisions()[-1],)]
     code, out, _ = invoke(workspace.root, "store", "migrate")
     assert (code, out) == (0, "results store: already current\n")
     assert invoke(workspace.root, "run")[0] in (0, 1)

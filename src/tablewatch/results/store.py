@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, cast
 
 from alembic import command
 from alembic.config import Config
@@ -74,9 +74,16 @@ from tablewatch.results.models import (
     CheckRow,
     ClauseResultRow,
     RunRow,
+    StateChangeRow,
 )
 from tablewatch.results.registry import SyncReport, register_all
-from tablewatch.results.state import Entry, State, current_state
+from tablewatch.results.state import (
+    Entry,
+    EventName,
+    State,
+    Transition,
+    current_state,
+)
 
 log = logging.getLogger(__name__)
 
@@ -612,7 +619,7 @@ class ResultStore:
             register_all(session, run.project, run.results, row.results, now)
             attach_definitions(session, run.results, row.results, run.id, now)
             session.add(row)
-            record_heads(session, row.results, run.started_at)
+            record_heads(session, row.results, run.project, run.started_at)
 
     def sync(self, project: str, checks: Sequence[Check], now: datetime) -> SyncReport:
         """Bring `project`'s check registry in line with `checks`: every
@@ -621,7 +628,8 @@ class ResultStore:
             return registry.sync(session, project, checks, now)
 
     def rebuild_heads(self) -> int:
-        """Recompute every check's head from its history (spec 037).
+        """Recompute every check's head and state changes from its history
+        (specs 037, 041).
 
         The heads are a cache of history; this rebuilds them after results
         were changed by hand. It covers every project in the store, not one:
@@ -629,6 +637,7 @@ class ResultStore:
         number of checks with a head.
         """
         with Session(self.engine) as session, session.begin():
+            session.execute(delete(StateChangeRow))
             session.execute(delete(CheckHeadRow))
             ids = session.scalars(select(CheckResultRow.check_id).distinct()).all()
             for check_id in ids:
@@ -766,53 +775,26 @@ class ResultStore:
                 if check.check_hash not in loaded
             ]
 
-    def previous_results(
-        self,
-        project: str,
-        check_ids: Iterable[str],
-        before: PageKey,
-        *,
-        session: Session | None = None,
-    ) -> dict[str, list[Entry]]:
-        """Each check's results in this project before `before`, newest first.
-
-        Read only as deep as `transition` looks: down to and including the
-        newest `fail` or `pass`. Runs at or after `before` — this run, and
-        any run recorded concurrently after it — are left out. `session`
-        reads inside a writer's transaction (spec 035 D2).
-        """
-        wanted = list(dict.fromkeys(check_ids))
-        found: dict[str, list[Entry]] = {}
-        done: set[str] = set()
+    def changes_in_run(
+        self, project: str, run_id: str, *, session: Session | None = None
+    ) -> dict[str, Transition]:
+        """The state changes this run's results recorded, by public check id
+        (spec 041 D3): what its notifications tell. `session` reads inside a
+        writer's transaction (spec 035 D2)."""
+        statement = (
+            select(
+                CheckRow.check_hash,
+                StateChangeRow.event,
+                StateChangeRow.previous_outcome,
+            )
+            .join(CheckRow, StateChangeRow.check_id == CheckRow.id)
+            .where(StateChangeRow.project == project, StateChangeRow.run_id == run_id)
+        )
         with self._session(session) as session:
-            # In chunks: a database caps the parameters in one statement.
-            for start in range(0, len(wanted), _CHUNK):
-                statement = (
-                    select(
-                        CheckRow.check_hash,
-                        CheckResultRow.outcome,
-                        RunRow.started_at,
-                    )
-                    .join(RunRow, CheckResultRow.run_id == RunRow.id)
-                    .join(CheckRow, CheckResultRow.check_id == CheckRow.id)
-                    .where(
-                        RunRow.project == project,
-                        CheckRow.check_hash.in_(wanted[start : start + _CHUNK]),
-                        *_older_than(before),
-                    )
-                    .order_by(
-                        CheckRow.check_hash,
-                        RunRow.started_at.desc(),
-                        RunRow.id.desc(),
-                    )
-                )
-                for check, outcome, started_at in session.execute(statement):
-                    if check in done:
-                        continue
-                    found.setdefault(check, []).append(Entry(outcome, started_at))
-                    if outcome in (Outcome.FAIL, Outcome.PASS):
-                        done.add(check)
-        return found
+            return {
+                check: Transition(cast(EventName, event), previous)
+                for check, event, previous in session.execute(statement)
+            }
 
     def recorded_after(
         self,

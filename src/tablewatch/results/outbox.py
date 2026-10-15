@@ -48,7 +48,9 @@ def write_alerts(
     """Add the outbox rows for one dataset's results, inside its transaction.
 
     `rows` are the results' recorded rows, registered (their `check_id` is
-    the registry id). A change already sent for this run is not written
+    the registry id), with their heads and state changes recorded and
+    flushed: what each result changed is read back, never re-derived
+    (spec 041 D3). A change already sent for this run is not written
     again; a different one is — an `error` retried that now fails (D10).
     """
     notifying = [
@@ -57,7 +59,7 @@ def write_alerts(
     if not notifying:
         return
     ids = [r.check.id for r, _ in notifying]
-    previous = store.previous_results(project, ids, run, session=session)
+    changes = store.changes_in_run(project, run.run_id, session=session)
     # A resumed run sits in history at its first attempt's start: a run
     # recorded since is a check's current state, and has told its change.
     newer = (
@@ -75,8 +77,8 @@ def write_alerts(
     for result, row in notifying:
         if result.check.id in newer:
             continue
-        history = previous.get(result.check.id, [])
-        for name, change in alerts(str(result.outcome), result.check.notify, history):
+        recorded = changes.get(result.check.id)
+        for name, change in alerts(recorded, result.check.notify):
             if (row.check_id, name, change.event) in sent:
                 continue
             session.add(
