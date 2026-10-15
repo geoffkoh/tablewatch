@@ -34,7 +34,7 @@ from tablewatch.results.models import (
     RunRow,
 )
 from tablewatch.results.state import Evaluated
-from tablewatch.results.store import Latest, Retired
+from tablewatch.results.store import Latest, Retired, SchemaState
 from tablewatch.selection import Selection
 
 Outcome = Literal["pass", "warn", "fail", "error", "skipped"]
@@ -118,14 +118,15 @@ class Project(_Model):
     diagnostics: list[Diagnostic]
 
 
-StoreState = Literal["current", "empty", "older", "newer", "unavailable"]
+StoreState = SchemaState | Literal["unavailable"]
 
 
 class SettingsProject(_Model):
     name: str
     version: str
     loaded_at: Timestamp
-    checks_path: str
+    # Null when it points outside the project: no server path on the wire.
+    checks_path: str | None
 
 
 class SettingsDatasource(_Model):

@@ -897,7 +897,7 @@ export interface components {
         /** SettingsProject */
         SettingsProject: {
             /** Checks Path */
-            checks_path: string;
+            checks_path: string | null;
             /**
              * Loaded At
              * Format: date-time
@@ -925,11 +925,8 @@ export interface components {
             migrate: "auto" | "never";
             /** Revision */
             revision: string | null;
-            /**
-             * Schema
-             * @enum {string}
-             */
-            schema: "current" | "empty" | "older" | "newer" | "unavailable";
+            /** Schema */
+            schema: ("current" | "empty" | "older" | "newer") | "unavailable";
             /**
              * Sync
              * @enum {string}

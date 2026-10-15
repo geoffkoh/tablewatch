@@ -2037,8 +2037,15 @@
       "SettingsProject": {
         "properties": {
           "checks_path": {
-            "title": "Checks Path",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checks Path"
           },
           "loaded_at": {
             "format": "date-time",
@@ -2094,15 +2101,22 @@
             "title": "Revision"
           },
           "schema": {
-            "enum": [
-              "current",
-              "empty",
-              "older",
-              "newer",
-              "unavailable"
+            "anyOf": [
+              {
+                "enum": [
+                  "current",
+                  "empty",
+                  "older",
+                  "newer"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "unavailable",
+                "type": "string"
+              }
             ],
-            "title": "Schema",
-            "type": "string"
+            "title": "Schema"
           },
           "sync": {
             "enum": [

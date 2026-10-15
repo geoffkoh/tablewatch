@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import base64
 import binascii
+import logging
 import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -20,11 +22,18 @@ from fastapi import APIRouter, Depends, Query, Request
 from tablewatch._version import __version__
 from tablewatch.checks.model import ID_PATTERN, Check
 from tablewatch.config.loader import Project as LoadedProject
-from tablewatch.config.project import ENV_REFERENCE
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.jsonvalues import utc
-from tablewatch.results.store import PageKey, ResultStore, StoreError, schema_of
+from tablewatch.results.store import (
+    PageKey,
+    ResultStore,
+    StoreError,
+    known_revisions,
+    schema_of,
+)
 from tablewatch.server import schemas
+
+log = logging.getLogger(__name__)
 
 OutcomeFilter = Literal["pass", "warn", "fail", "error", "skipped", "not_run"]
 StateFilter = Literal["active", "disabled", "retired"]
@@ -119,23 +128,26 @@ def get_settings(context: Context) -> schemas.Settings:
     datasets = Counter(d.datasource for d in project.datasets)
     checks = Counter(c.dataset.datasource for c in project.checks)
     enabled = sum(c.enabled for c in project.checks)
+    known = known_revisions()
     retired: int | None = None
     revision: str | None = None
-    state: schemas.StoreState
+    state: schemas.StoreState = "unavailable"
     try:
-        revision, known = context.store.revisions()
-        state = schema_of(revision, known)
-        if state == "current":
+        found, known = context.store.revisions()
+        found_state = schema_of(found, known)
+        if found_state == "current":
             loaded = {c.id for c in project.checks}
             retired = len(context.store.retired_checks(context.name, loaded))
-    except StoreError:
-        state, known = "unavailable", context.store.known_revisions()
+        revision, state = found, found_state
+    except StoreError as exc:
+        # The text is masked already; the response says only "unavailable".
+        log.warning("settings: %s", exc)
     return schemas.Settings(
         project=schemas.SettingsProject(
             name=context.name,
             version=__version__,
             loaded_at=context.loaded_at,
-            checks_path=config.checks_path,
+            checks_path=_inside(config.checks_path),
         ),
         datasources=[
             schemas.SettingsDatasource(
@@ -148,7 +160,7 @@ def get_settings(context: Context) -> schemas.Settings:
         ],
         notifiers=[
             schemas.SettingsNotifier(
-                name=name, type=notifier.type, url_variable=_variable(notifier.url)
+                name=name, type=notifier.type, url_variable=notifier.variable
             )
             for name, notifier in config.notifiers.items()
         ],
@@ -166,10 +178,13 @@ def get_settings(context: Context) -> schemas.Settings:
     )
 
 
-def _variable(url: str) -> str:
-    # The config accepts only a whole `${env:NAME}` here (`_URLNotifier`).
-    match = ENV_REFERENCE.fullmatch(url)
-    return match.group(1) if match else ""
+def _inside(path: str) -> str | None:
+    """`checks_path` when it stays inside the project; None rather than
+    name a place elsewhere on the server's file system."""
+    relative = PurePosixPath(path.replace("\\", "/"))
+    if relative.is_absolute() or ".." in relative.parts or PureWindowsPath(path).drive:
+        return None
+    return path
 
 
 @router.get("/checks", response_model=schemas.CheckList)

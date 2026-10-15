@@ -313,8 +313,7 @@ def schema_sql(since: str | None = None) -> str:
 
     config = _alembic_config()
     scripts = ScriptDirectory.from_config(config)
-    known = [revision.revision for revision in scripts.walk_revisions()]
-    known.reverse()
+    known = known_revisions()
     head = known[-1]
     if since is not None:
         if since not in known:
@@ -399,6 +398,16 @@ def reading(engine: Engine) -> Iterator[None]:
 SchemaState = Literal["current", "empty", "older", "newer"]
 
 
+def known_revisions() -> list[str]:
+    """This version's schema revisions, oldest first; reads no store."""
+    from alembic.script import ScriptDirectory
+
+    scripts = ScriptDirectory.from_config(_alembic_config())
+    known = [revision.revision for revision in scripts.walk_revisions()]
+    known.reverse()  # walk_revisions starts at head
+    return known
+
+
 def schema_of(current: str | None, known: Sequence[str]) -> SchemaState:
     """A store's schema against this version's, from `ResultStore.revisions()`."""
     if current == known[-1]:
@@ -437,22 +446,12 @@ class ResultStore:
         """
         return schema_of(*self.revisions())
 
-    @staticmethod
-    def known_revisions() -> list[str]:
-        """This version's schema revisions, oldest first; reads no store."""
-        from alembic.script import ScriptDirectory
-
-        scripts = ScriptDirectory.from_config(_alembic_config())
-        known = [revision.revision for revision in scripts.walk_revisions()]
-        known.reverse()  # walk_revisions starts at head
-        return known
-
     def revisions(self) -> tuple[str | None, list[str]]:
         """The store's Alembic revision (None when empty), and this version's,
         oldest first. Raises `StoreError` when the store cannot be read."""
         from alembic.runtime.migration import MigrationContext
 
-        known = self.known_revisions()
+        known = known_revisions()
         with reading(self.engine), self.engine.connect() as connection:
             context = MigrationContext.configure(
                 connection, opts={"version_table": VERSION_TABLE}

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
 import tablewatch as tw
-from tablewatch.results.store import ResultStore
+from tablewatch.results.store import ResultStore, known_revisions
 from tablewatch.server.app import create_app
 from tablewatch.server.routes import ServerContext
 from tests.conftest import Recorded, invoke
@@ -52,7 +52,7 @@ def test_settings_of_the_retail_example(recorded: Recorded) -> None:  # S1
     results = body["results"]
     assert results["dialect"] == "sqlite"
     assert results["schema"] == "current"
-    assert results["revision"] == results["head"] == ResultStore.known_revisions()[-1]
+    assert results["revision"] == results["head"] == known_revisions()[-1]
     assert (results["migrate"], results["sync"]) == ("auto", "on_run")
     assert body["checks"] == {"active": 12, "disabled": 0, "retired": 0}
 
@@ -132,7 +132,7 @@ def test_an_unreadable_store_still_answers(recorded: Recorded) -> None:  # S4
         body = get(client, "/api/v1/settings")
     assert body["results"]["schema"] == "unavailable"
     assert body["results"]["revision"] is None
-    assert body["results"]["head"] == ResultStore.known_revisions()[-1]
+    assert body["results"]["head"] == known_revisions()[-1]
     assert body["checks"] == {"active": 12, "disabled": 0, "retired": None}
 
 
@@ -146,7 +146,7 @@ def test_a_newer_store(recorded: Recorded) -> None:  # S5
 
 
 def test_an_older_store(recorded: Recorded) -> None:
-    oldest = ResultStore.known_revisions()[0]
+    oldest = known_revisions()[0]
     with served(recorded.root) as client:
         _revision(recorded.root, oldest)
         body = get(client, "/api/v1/settings")
@@ -204,3 +204,26 @@ def test_settings_are_read_only(recorded: Recorded) -> None:  # S12
             assert_error(
                 client.request(method, "/api/v1/settings"), 405, "method_not_allowed"
             )
+
+
+@pytest.mark.parametrize(
+    ("checks_path", "served_as"),
+    [
+        ("checks", "checks"),
+        ("./checks", "./checks"),
+        ("{root}/checks", None),
+        ("../retail/checks", None),
+        ("checks/../checks", None),
+    ],
+)
+def test_checks_path_never_names_a_server_path(
+    recorded: Recorded, checks_path: str, served_as: str | None
+) -> None:
+    path = recorded.root / "tablewatch.yml"
+    written = checks_path.format(root=recorded.root.as_posix())
+    path.write_text(path.read_text() + f"\nchecks_path: '{written}'\n")
+    with served(recorded.root) as client:
+        response = client.get("/api/v1/settings")
+    assert response.status_code == 200, response.text
+    assert response.json()["project"]["checks_path"] == served_as
+    assert str(recorded.root) not in response.text
