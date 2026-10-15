@@ -10,6 +10,8 @@
  *
  * `/settings` and `/settings/` are the Settings page (spec 040).
  *
+ * `/alerts` and `/alerts/` are the Alerts page (spec 041).
+ *
  * A check path is `/checks/<id>` or `/checks/<id>/`, with exactly one
  * non-empty segment. The segment is decoded once, inside try/catch, and must
  * match the loader's id pattern (`config/loader.py` `ID_PATTERN`, at most 64
@@ -26,6 +28,7 @@ export type Route =
   | { page: "explorer" }
   | { page: "check"; id: string }
   | { page: "datasets" }
+  | { page: "alerts" }
   | { page: "settings" }
   | { page: "not-found" };
 
@@ -39,6 +42,7 @@ export function parseRoute(path: string): Route {
   if (path === "/" || path === "/index.html") return { page: "overview" };
   if (path === "/checks" || path === "/checks/") return { page: "explorer" };
   if (path === "/datasets" || path === "/datasets/") return { page: "datasets" };
+  if (path === "/alerts" || path === "/alerts/") return { page: "alerts" };
   if (path === "/settings" || path === "/settings/") return { page: "settings" };
   const match = /^\/checks\/([^/]+)\/?$/.exec(path);
   if (match === null) return { page: "not-found" };

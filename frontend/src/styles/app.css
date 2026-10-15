@@ -1712,3 +1712,77 @@ a {
 .chip:hover {
   background: var(--tw-bg);
 }
+
+/* Alerts page (spec 041): a list, never a table — it wraps to one column
+   at narrow widths instead of scrolling (P5). */
+
+.alerts-filter {
+  margin-bottom: 0.75rem;
+}
+
+.alerts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.alert-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--tw-border);
+  border-left: 4px solid transparent;
+}
+
+.alert-row[data-event="failing"] {
+  border-left-color: var(--tw-fail-fg);
+}
+
+.alert-row[data-event="erroring"] {
+  border-left-color: var(--tw-error-fg);
+}
+
+.alert-row[data-event="recovered"] {
+  border-left-color: var(--tw-pass-fg);
+}
+
+.alert-row__event {
+  font-weight: 600;
+}
+
+.alert-row__check {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.alert-row__where,
+.alert-row__previous {
+  color: var(--tw-text-muted);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.alert-row__deliveries {
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 0.125rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+  color: var(--tw-text-muted);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 48rem) {
+  .alert-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .alert-row__where,
+  .alert-row__previous {
+    white-space: normal;
+  }
+}

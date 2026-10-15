@@ -6,6 +6,8 @@
  * 'self'` only.
  */
 import type {
+  AlertEvent,
+  AlertPage,
   CheckDetailItem,
   CheckList,
   CheckSource,
@@ -182,4 +184,17 @@ export function getCheckSource(id: string): Promise<CheckSource> {
  */
 export function getDefinitions(id: string): Promise<DefinitionList> {
   return get<DefinitionList>(`/checks/${encodeURIComponent(id)}/definitions`);
+}
+
+/**
+ * `GET /api/v1/alerts[?event=…]&limit=N[&cursor=C]`: state changes, newest
+ * first, with their deliveries (spec 041 P4). `event` narrows to one of
+ * `failing`/`erroring`/`recovered`; omitted, every event.
+ */
+export function listAlerts(limit: number, event?: AlertEvent, cursor: string | null = null): Promise<AlertPage> {
+  const params: string[] = [];
+  if (event !== undefined) params.push(`event=${encodeURIComponent(event)}`);
+  params.push(`limit=${encodeURIComponent(String(limit))}`);
+  if (cursor !== null) params.push(`cursor=${encodeURIComponent(cursor)}`);
+  return get<AlertPage>(`/alerts?${params.join("&")}`);
 }

@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { parseRoute } from "./lib/route";
+import { Alerts } from "./pages/Alerts";
 import { CheckPage } from "./pages/CheckPage";
 import { Datasets } from "./pages/Datasets";
 import { Explorer } from "./pages/Explorer";
@@ -23,6 +24,8 @@ export function App({ path, search = "" }: { path: string; search?: string }): R
       return <CheckPage id={route.id} />;
     case "datasets":
       return <Datasets path={path} search={search} />;
+    case "alerts":
+      return <Alerts path={path} search={search} />;
     case "settings":
       return <Settings />;
     case "not-found":

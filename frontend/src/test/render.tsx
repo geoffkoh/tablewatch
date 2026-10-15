@@ -28,6 +28,8 @@ export const URLS = {
   problems: "/api/v1/checks?state=active&outcome=fail&outcome=error",
   /** The Settings page's own request (spec 040). */
   settings: "/api/v1/settings",
+  /** The Alerts page's default request, no filter (spec 041). */
+  alerts: "/api/v1/alerts?limit=50",
 } as const;
 
 /**

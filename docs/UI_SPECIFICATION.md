@@ -16,6 +16,7 @@ the UI does it: wording, layout, colour, and the rules behind them.
 | I-46 part 4 | `specs/037-check-state-table.md` | Retired checks in the web UI (S12, S13): the explorer's "Show retired" toggle (off by default, kept in the URL) adds a flat retired list below the tree; a retired check's own page gets a `RetiredIdentity` header ("Retired" badge, "Retired since …", its last known file) in place of `Identity`, with no SQL or source sections |
 | I-51 part 1 | `specs/039-app-shell-datasets.md` | The app shell (`components/AppShell.tsx`): every page wrapped in a top bar and a `<nav aria-label="Sections">` (Dashboard, Checks, Datasets), collapsible to an icon rail or opened as a drawer on narrow screens; the Checks link's "N failing or in error" badge; the one web-storage exception (`lib/navPreference.ts`); the Datasets page (`/datasets`, §4C); the explorer's `?dataset=` chip (§4B.3) |
 | I-51 part 2 | `specs/040-settings-page.md` | The Settings page (`/settings`, §4D): read-only project configuration — store, datasources, notifiers, results-store schema, check counts — never a credential or the store URL (S-D2); the nav's fourth section with a gear icon (`SettingsIcon`); `getSettings` in `api.ts` |
+| I-51 part 3 | `specs/041-alerts-page.md` | The Alerts page (`/alerts`, §4E): every recorded state change, newest first, with its deliveries (D5); the event filter (`?event=`) and "Load more" paging with a cursor; the nav's fifth section, after Datasets and before Settings, with a bell icon (`AlertsIcon`); `listAlerts` in `api.ts`, `lib/alerts.ts` |
 
 ## 1. Who it is for
 
@@ -100,17 +101,19 @@ It has no inline script or style and no absolute URL.
 frontend/src/
   main.tsx                 mounts <App path={location.pathname} search={location.search}>
   App.tsx                  parseRoute(path) -> Overview | Explorer | CheckPage | Datasets |
-                           Settings | NotFound
+                           Alerts | Settings | NotFound
   api/schema.gen.ts        GENERATED from docs/api/openapi.json; never edit
   api/types.ts             aliases into schema.gen.ts (Project, CheckSummary, CheckDetail,
                            RetiredCheckSummary, RecordedClause, CheckListItem, CheckState,
                            CheckDetailItem, Rule, Condition, HistoryEntry, HistoryPage, Run,
                            Unit, OutcomeFilter, Settings, SettingsProject, SettingsDatasource,
-                           SettingsNotifier, SettingsResults, SettingsChecks, ...)
+                           SettingsNotifier, SettingsResults, SettingsChecks, Alert, AlertPage,
+                           AlertCheck, AlertDelivery, AlertEvent, ...)
   api/api.ts               the ONE client: getProject, listChecks (optional `states` and
                            `outcomes` arrays, spec 039 P-D3), listRuns, getCheck (CheckDetail
                            | RetiredCheckSummary), getHistory, getCheckSql, getCheckSource,
-                           getSettings (spec 040 S-D1); failureOf, isNotFound
+                           getSettings (spec 040 S-D1), listAlerts (spec 041 P4); failureOf,
+                           isNotFound
   lib/route.ts             parseRoute(path), checkHref(id), EXPLORER_HREF, the id pattern
   lib/explorer.ts          the explorer's query (parse, to URL, including `retired` and
                            `dataset`, spec 039 P-D7), search, the status, tag, owner and
@@ -119,6 +122,10 @@ frontend/src/
                            search (isRetired, matchesRetiredText, filterRetired, spec 037 S12)
   lib/datasets.ts          the Datasets page's pure parts (spec 039 P-D6): buildDatasets,
                            sortDatasets, filterDatasets, hasProblems, datasetCountsText
+  lib/alerts.ts            the Alerts page's pure parts (spec 041 P5): the `?event=` filter
+                           (parseAlertsFilter, alertsSearch, alertsEventParam), ALERTS_LIMIT,
+                           and every wording (alertEventText, alertEventStatus, previousText,
+                           deliveryText, deliveriesText)
   lib/navProblems.ts       the nav's Checks badge: fetchNavProblems, navProblemsCount
   lib/navPreference.ts     the collapsed-rail preference in web storage (spec 039 P-D5); the
                            only module allowed to touch it
@@ -132,8 +139,8 @@ frontend/src/
   lib/selection.ts         how a run's selection reads
   lib/chart/               the chart's pure functions: scale, ticks, format, domain,
                            bands, series, labels, layout, legend, summary
-  components/              AppShell (spec 039/spec 040: the top bar, the nav, `<main>`), NavIcons
-                           (the nav's inline SVG icons, including SettingsIcon), Header, ProjectProblems, Summary,
+  components/              AppShell (spec 039/spec 040/spec 041: the top bar, the nav, `<main>`), NavIcons
+                           (the nav's inline SVG icons, including SettingsIcon and AlertsIcon), Header, ProjectProblems, Summary,
                            LatestRun, CheckTable, LatestResult (Result, When,
                            LastEvaluatedNote), HistoryTable, StatusIcon/StatusBadge, shapes
                            (status shapes), Time (Ago, Since), LoadError (useId heading id;
@@ -147,12 +154,15 @@ frontend/src/
                            NotFoundPanel, HistorySection, SqlSection, SourceSection;
                            useOlderHistory
                            (older pages, tagged with the load round, dropped on refresh)
+  components/alerts/       useOlderAlerts (spec 041 P5): the same "Load more" shape as
+                           useOlderHistory, dropped on refresh or on a changed event filter
   components/chart/        HistoryFigure (title, key, captions), HistoryChart (SVG and
                            interaction), ChartKey
   pages/Overview.tsx       the overview
   pages/Explorer.tsx       the check explorer: loads, filters in memory, keeps the URL
   pages/CheckPage.tsx      a check's page: decides which sections show from what loaded
   pages/Datasets.tsx       the Datasets page (spec 039 §4C)
+  pages/Alerts.tsx         the Alerts page (spec 041 §4E)
   pages/Settings.tsx       the Settings page (spec 040 §4D)
   pages/NotFound.tsx       "Page not found"
   styles/tokens.css        colour tokens, light and dark (status and chart)
@@ -181,9 +191,9 @@ frontend/src/
 - **The app shell** (spec 039, P-D2). `components/AppShell.tsx` wraps every
   page, including Not found: the top bar (`Header`: brand, project,
   Refresh, and "Menu" on narrow screens), a `<nav aria-label="Sections">`
-  of plain `<a href>` links (Dashboard, Checks, Datasets, Settings —
-  P-D1, spec 040 S-D6; a later section arrives only once it is built,
-  never as a dead link), and
+  of plain `<a href>` links (Dashboard, Checks, Datasets, Alerts, Settings —
+  P-D1, spec 040 S-D6, spec 041 P5; a later section arrives only once it is
+  built, never as a dead link), and
   `<main id="main">` holding the page's own content. The current page's
   link carries `aria-current="page"` (a check's own page marks Checks; Not
   found marks none). On wide screens (> 60rem) the nav is a left column,
@@ -218,6 +228,7 @@ frontend/src/
   | `/checks`, `/checks/` | the check explorer (§4B); `?q=`, `?status=`, `?tag=`, `?owner=`, `?datasource=`, `?dataset=` (spec 039 P-D7, §4B.3) and `?retired=1` (spec 037 S12, §4B.6) are read by the page |
   | `/checks/<id>`, `/checks/<id>/` | the check page, when `<id>` is one non-empty segment that decodes (once, inside try/catch) to a string matching `^[A-Za-z0-9][A-Za-z0-9_.:-]*$` of at most 64 characters (the loader's `ID_PATTERN` and the store's column width) |
   | `/datasets`, `/datasets/` | the Datasets page (§4C, spec 039 P-D6); `?q=` is read by the page |
+  | `/alerts`, `/alerts/` | the Alerts page (§4E, spec 041 P5); `?event=` is read by the page |
   | `/settings`, `/settings/` | the Settings page (§4D, spec 040 S-D6); read-only, no query |
   | anything else | "Page not found", and **no request is made**: `/checks//`, `/checks/a/b`, `/checks/..`, `/checks/%2e%2e`, `/checks/a%2Fb`, `/checks/a%3Fb`, a malformed `%`, 65 characters |
 
@@ -228,7 +239,10 @@ frontend/src/
   `results`, `problems`; the explorer: `project`, `checks`, `problems`; the
   check page: `project`, `check`, `history`, `runs`, `sql`, `source`,
   `definitions`, `problems`; the Datasets page: `project`, `checks`,
-  `problems`; the Settings page: `project`, `settings`, `problems`).
+  `problems`; the Settings page: `project`, `settings`, `problems`; the
+  Alerts page: `project`, `alerts`, `problems` — `alerts` is rebuilt
+  whenever the event filter changes, which reloads the slot and drops any
+  older pages, spec 041 P5).
   `problems` feeds only the shell's Checks badge (P-D3) on
   every page that has one; Not found has no slots at all (it makes no
   request). Each
@@ -1360,14 +1374,90 @@ when it is `null` (S-D3/S-D4: the retired count is read only when
 match this version's, and an empty or unavailable store has no registry to
 read at all).
 
-**Nav.** The fourth section, after Datasets, with a gear icon
+**Nav.** The fifth section, after Alerts, with a gear icon
 (`SettingsIcon` in `components/NavIcons.tsx`, under the chart's own icon
 rules — §3). `/settings` marks it `aria-current="page"`.
 
 **Non-goals** (spec 040). Editing anything; whether an environment variable
 is set (only its *name*); datasource connection details (host, database,
-user); a "test connection" button; Alerts, Dashboard panels, Runs (later
-parts); a nav count beside Settings.
+user); a "test connection" button; Dashboard panels, Runs (later parts); a
+nav count beside Settings.
+
+## 4E. The Alerts page (`/alerts`)
+
+Spec 041, P4/P5. "What changed overnight, and was anyone told?" for Sam
+(on-call): every recorded state change across the project, newest first,
+with whatever was (or was not) sent about it. An alert is exactly a
+recorded `results.state.transition` event — `failing`, `erroring` or
+`recovered` (P1) — the same event the notifiers already send, so the page
+and a Slack message never disagree; every check gets them, whether or not
+it has `notify:`. It reads `GET /api/v1/project` and
+`GET /api/v1/alerts?event=&limit=50[&cursor=]` through the shared hook, as
+two slots, plus the shell's `problems` slot (§3). The document title is
+"Alerts — *project*". The page's own `<h1>Alerts</h1>`.
+
+A list, not a table: `<ul aria-label="Alerts">` of `<li>` rows
+(`.alert-row`), each a CSS grid that collapses to one column under 48rem,
+the same mechanism as the explorer's tree rows (§4B.5) rather than a
+scrolling table. Each row (`AlertRow` in `pages/Alerts.tsx`):
+
+| Part | Content |
+| --- | --- |
+| Icon | the status icon (§5) the event means: `failing` → fail, `erroring` → error, `recovered` → pass (`alertEventStatus`) |
+| Event | "Started failing", "Started erroring", "Recovered" (`alertEventText`) |
+| Check | the name, linking to its page (`checkHref`); a retired check (`check.state === "retired"`) also shows the existing `RetiredBadge` — its alerts outlive it (P4) |
+| Where | `dataset` · `datasource` |
+| Previous | "was *previous*" from `previous_outcome` in the app's own continuous-verb words — `pass` "passing", `warn` "warning", `fail` "failing", `error` "erroring" (the word this page coins alongside "Started erroring", so the two never disagree), `skipped` "skipped" (`previousText`); omitted entirely, not even "was", when `previous_outcome` is `null` (D4: a first-ever `fail` or `error` has no previous) |
+| When | the age of `started_at` (`Ago`) |
+| Deliveries | one line per notifier, from `deliveries` (D5) |
+
+**Deliveries** (`deliveriesText`/`deliveryText` in `lib/alerts.ts`, D5):
+
+| `deliveries` | Reads |
+| --- | --- |
+| `null` | "Not recorded (run had no --run-key)" — the run was not keyed, so nothing is recorded at all (A9) |
+| `[]` | "No notification recorded" — keyed, but nothing recorded for this check |
+| `{status: "sent", ...}` | "Sent to *notifier*" |
+| `{status: "pending", attempts, ...}` | "Pending for *notifier* (*n* attempts)" (1 attempt singular) |
+| `{status: "abandoned", attempts > 0, ...}` | "Gave up on *notifier* after *n* attempts" (A8) |
+| `{status: "abandoned", attempts: 0, ...}` | "Gave up on *notifier* (no attempts sent)" (A8a) |
+
+A notifier is named exactly as the outbox row stored it, never looked up in
+the current `tablewatch.yml` (D5, A15): one later removed from the config
+still reads the same, with no lookup error.
+
+**The event filter.** A `<fieldset>` of four radio buttons — All, Failing,
+Erroring, Recovered (`ALERT_FILTERS`/`ALERT_FILTER_LABELS` in
+`lib/alerts.ts`) — kept in `?event=` the same way the explorer keeps its
+query (`history.replaceState`, no new entry; `parseAlertsFilter`,
+`alertsSearch`). Unlike the explorer's filters, this one narrows what the
+server sends rather than what is already loaded: changing it reloads the
+`alerts` slot with the new `?event=` and drops any older page loaded so
+far (`useOlderAlerts`, generation-tagged like the check page's
+`useOlderHistory`). "All" sends no `event` parameter.
+
+**Paging.** `next_cursor`, when not null, shows a **Load more** button
+below the list (the same shape as the check page's "Load older results",
+§4A.5): it fetches the next page with the cursor and appends it to the
+list. The cursor is never put in the URL. An answer that lands after a
+Refresh, or after the filter changes (both bump the load round), is
+dropped.
+
+**Empty and failed loads.** No state changes recorded at all: "No state
+changes recorded yet." `/alerts` or `/project` failing: the shared
+`LoadError` with **Try again** (§4.6), as every other page; no list or
+filter underneath for a page-level failure. A failed "Load more" is a
+section-scoped `LoadError` (`level={3}`) below the list, which stays on
+screen.
+
+**Nav.** The fourth section, after Datasets and before Settings, with a
+bell icon (`AlertsIcon` in `components/NavIcons.tsx`, under the chart's own
+icon rules — §3). `/alerts` marks it `aria-current="page"`. No count beside
+it (non-goal, like Settings').
+
+**Non-goals** (spec 041). Acknowledging or muting alerts (a later incident
+inbox); a count beside Alerts in the nav; resending; alerts for clauses;
+per-notifier filtering; Dashboard panels (a later part).
 
 ## 5. Status: label, icon, colour
 
@@ -1665,6 +1755,8 @@ a real-browser pass in both schemes are for the data-steward's VERIFY run.
 | `test/contrast.test.ts` | the palette and the chart tokens, both schemes (§5) |
 | `test/shell.test.tsx` | spec 039 N1–N7 and S2: the nav's order and `aria-current` on every page including Not found (no request); the Checks badge's count, accessible name, zero case, and a failing/slow `problems` slot leaving the rest of the page unaffected; collapsing to a rail and its persistence across a reload; storage that throws; an unrecognised stored value; the narrow-screen drawer (Escape, the close button, a click outside, focus moved in and returned to "Menu"); keyboard order |
 | `test/datasets.test.tsx` | spec 039 D1–D7: one row per dataset, problems first, with a disabled-only row; the same dataset on two datasources as two rows with the right links; following a Datasets link into the explorer (the chip, its removal); a never-run dataset; search, including a hostile query; empty and failed loads; a hostile dataset name or owner as text |
+| `test/alerts.test.tsx` | spec 041 A8–A15: the page's own requests and title; nav order and current page (A14); `LoadError` and the empty state (A13); deliveries wording, `null`/`[]`/sent/pending/abandoned including both abandonment reasons (A8, A8a), a removed notifier's name unchanged (A15); a retired check's alert (A10); event and "was &lt;previous&gt;" wording, including a null previous outcome; the event filter reloading `/alerts` with `?event=` kept, "Load more" appending a page with the cursor out of the URL, and a hostile check name rendering as text only (A12) |
+| `test/alertsLib.test.ts` | `lib/alerts.ts`'s pure parts: `parseAlertsFilter`/`alertsSearch` round-tripping (and an unknown value or literal `all` falling back), `alertsEventParam`, `alertEventText`/`alertEventStatus` for every event, `previousText` for every outcome and `null`, `deliveryText`/`deliveriesText` for every delivery status including the singular/plural attempt count and both abandonment wordings |
 | `test/lib.test.ts` | age boundaries and rounding, DST, absolute format, selection wording, status order and counts |
 | `test/api.test.ts` | the client: URLs, init, envelope errors, non-JSON, network failure |
 
@@ -1715,6 +1807,12 @@ behaviour particular to one metric here, unlike SQL/Source. `test/render.tsx`'s
 `CheckServer.definitions` follows `sql`/`source`'s 404 rule (`defaultDefinitions`),
 except it answers `{ items: [] }` rather than a captured body, and does not
 read `retiredCheck` into that rule (§4A.12).
+`test/fixtures/alerts.ts` (spec 041) builds `baseAlerts`, a small
+hand-built `AlertPage` of three events (recovered, erroring, failing),
+each a different check, covering a sent delivery, an unkeyed (`null`)
+delivery and an empty (`[]`) one; tests override its fields per scenario
+rather than capturing real bodies, since nothing here is particular to one
+metric.
 
 ## 11. Known limits and follow-ups
 

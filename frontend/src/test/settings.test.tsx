@@ -63,14 +63,14 @@ function sectionFor(heading: string): HTMLElement {
 }
 
 describe("S9: the nav on the Settings page", () => {
-  it("lists Dashboard, Checks, Datasets, Settings in order, and marks Settings current", async () => {
+  it("lists Dashboard, Checks, Datasets, Alerts, Settings in order, and marks Settings current", async () => {
     renderSettingsPage(baseSettings);
     await waitLoaded();
     const nav = screen.getByRole("navigation", { name: "Sections" });
     const hrefs = within(nav)
       .getAllByRole("link")
       .map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/", "/checks", "/datasets", "/settings"]);
+    expect(hrefs).toEqual(["/", "/checks", "/datasets", "/alerts", "/settings"]);
     const current = nav.querySelectorAll('a[aria-current="page"]');
     expect(current).toHaveLength(1);
     expect(current[0]?.getAttribute("href")).toBe("/settings");
@@ -105,7 +105,7 @@ describe("S11: /settings fails to load", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Project" })).toBeNull();
     const nav = screen.getByRole("navigation", { name: "Sections" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(4);
+    expect(within(nav).getAllByRole("link")).toHaveLength(5);
   });
 });
 

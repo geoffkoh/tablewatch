@@ -74,3 +74,12 @@ export type SettingsDatasource = Schemas["SettingsDatasource"];
 export type SettingsNotifier = Schemas["SettingsNotifier"];
 export type SettingsResults = Schemas["SettingsResults"];
 export type SettingsChecks = Schemas["SettingsChecks"];
+
+/** `GET /alerts`'s shape (spec 041): a result that changed its check's state, newest first. */
+export type Alert = Schemas["Alert"];
+export type AlertPage = Schemas["AlertPage"];
+/** The check as the registry has it: a retired one's alerts outlive it. */
+export type AlertCheck = Schemas["AlertCheck"];
+export type AlertDelivery = Schemas["AlertDelivery"];
+/** `failing`, `erroring` or `recovered` — `results.state.transition`'s events (P1). */
+export type AlertEvent = Alert["event"];
