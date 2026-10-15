@@ -37,12 +37,14 @@ up as a 503. C9's Settings section answers them read-only, without ever showing 
   `results.schema` is `ResultStore.schema()` — `current | empty | older | newer` — or
   `unavailable` when the store cannot be read; then `revision` and `checks.retired` are `null`
   and the endpoint still answers 200 (Settings is where you go when the store is down).
+  `checks.retired` is read only at `current` (an older or newer store's registry may not match
+  this version's); otherwise null.
   `revision` is the store's Alembic revision (null when empty); `head` this version's.
 - S-D4. `checks.active` / `disabled` count loaded checks by `enabled`; `retired` counts
   `ResultStore.retired_checks` (S-D3 for null). `datasources[].datasets` / `checks` count loaded
   datasets and checks per datasource (0 for a datasource no check uses).
-- S-D5. A new store method is not needed for `revision`: `ResultStore` gains a public
-  `revisions()` (today's `_revisions`), so the route never imports Alembic.
+- S-D5. `ResultStore` gains public `revisions()` (was `_revisions`), `known_revisions()` (reads no
+  store) and module-level `schema_of`, so the route never imports Alembic.
 - S-D6. Page `/settings`, in the nav after Datasets, gear icon (inline SVG under P-D5's rules).
   `<h1>Settings</h1>`, `document.title` "Settings — <project>". Sections, each a `<section>` with
   an `<h2>` and a two-column definition list or table:
