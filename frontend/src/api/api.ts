@@ -18,6 +18,7 @@ import type {
   OutcomeFilter,
   Project,
   RunPage,
+  Settings,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -114,6 +115,15 @@ async function get<T>(path: string): Promise<T> {
 /** `GET /api/v1/project`: the project as loaded at startup. */
 export function getProject(): Promise<Project> {
   return get<Project>("/project");
+}
+
+/**
+ * `GET /api/v1/settings`: the project's configuration as loaded at startup
+ * and one read of the results store (spec 040 S-D1) — never a credential, a
+ * resolved environment value, the store URL or the project root (S-D2).
+ */
+export function getSettings(): Promise<Settings> {
+  return get<Settings>("/settings");
 }
 
 /**

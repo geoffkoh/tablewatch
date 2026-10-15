@@ -5,6 +5,7 @@ import { Datasets } from "./pages/Datasets";
 import { Explorer } from "./pages/Explorer";
 import { NotFound } from "./pages/NotFound";
 import { Overview } from "./pages/Overview";
+import { Settings } from "./pages/Settings";
 
 /**
  * Routing without a router library (spec 004, decision 7): `lib/route.ts`
@@ -22,6 +23,8 @@ export function App({ path, search = "" }: { path: string; search?: string }): R
       return <CheckPage id={route.id} />;
     case "datasets":
       return <Datasets path={path} search={search} />;
+    case "settings":
+      return <Settings />;
     case "not-found":
       return <NotFound path={path} />;
   }

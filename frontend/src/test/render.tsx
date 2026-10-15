@@ -26,6 +26,8 @@ export const URLS = {
   checks: "/api/v1/checks",
   runs: "/api/v1/runs?limit=1",
   problems: "/api/v1/checks?state=active&outcome=fail&outcome=error",
+  /** The Settings page's own request (spec 040). */
+  settings: "/api/v1/settings",
 } as const;
 
 /**
