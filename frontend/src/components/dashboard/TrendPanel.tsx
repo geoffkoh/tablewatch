@@ -27,7 +27,9 @@ function TrendChart({ runs }: { runs: RunPage }): ReactElement {
     <svg
       className="dashboard-trend"
       viewBox={`0 0 ${String(WIDTH)} ${String(HEIGHT)}`}
-      role="img"
+      // A group, not an image: an image hides its children from screen
+      // readers, and each bar's label is the chart's content (K-D1).
+      role="group"
       aria-labelledby={`${titleId} ${descId}`}
       focusable="false"
     >
@@ -39,6 +41,7 @@ function TrendChart({ runs }: { runs: RunPage }): ReactElement {
           className={`dashboard-trend__bar dashboard-trend__bar--${bar.outcome}`}
           data-outcome={bar.outcome}
           tabIndex={0}
+          role="img"
           aria-label={bar.label}
         >
           <title>{bar.label}</title>

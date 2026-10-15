@@ -162,12 +162,6 @@ def test_other_projects_never_leak(store: ResultStore) -> None:  # K9
     ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="each source query orders only by time: among rows tied at the "
-    "limit's edge SQL keeps an arbitrary subset, so limit=k is not a prefix "
-    "of limit=50 (changes.py:58-80 lack an id tie-break)",
-)
 def test_a_small_limit_is_a_prefix_of_a_large_one(store: ResultStore) -> None:
     # One sync registers every check at the same instant.
     for i in range(12):

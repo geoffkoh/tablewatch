@@ -57,7 +57,7 @@ def check_changes(store: ResultStore, project: str, limit: int) -> list[CheckCha
     added = (
         select(CheckRow)
         .where(ours)
-        .order_by(CheckRow.registered_at.desc())
+        .order_by(CheckRow.registered_at.desc(), CheckRow.id.desc())
         .limit(limit)
     )
     # A state other than active, or active since after it was added: enabled
@@ -71,14 +71,14 @@ def check_changes(store: ResultStore, project: str, limit: int) -> list[CheckCha
                 CheckRow.state_since > CheckRow.registered_at,
             ),
         )
-        .order_by(CheckRow.state_since.desc())
+        .order_by(CheckRow.state_since.desc(), CheckRow.id.desc())
         .limit(limit)
     )
     redefined = (
         select(CheckDefinitionRow.version, CheckDefinitionRow.recorded_at, CheckRow)
         .join(CheckRow, CheckDefinitionRow.check_id == CheckRow.id)
         .where(ours, CheckDefinitionRow.version >= 2)
-        .order_by(CheckDefinitionRow.recorded_at.desc())
+        .order_by(CheckDefinitionRow.recorded_at.desc(), CheckRow.id.desc())
         .limit(limit)
     )
     found: list[CheckChange] = []
@@ -93,5 +93,7 @@ def check_changes(store: ResultStore, project: str, limit: int) -> list[CheckCha
             found.append(CheckChange(check, kind, utc(check.state_since), None))
         for version, recorded_at, check in session.execute(redefined):
             found.append(CheckChange(check, "redefined", utc(recorded_at), version))
+    # Ties broken by registry id, as each query does, so a smaller `limit`
+    # is always a prefix of a larger one.
     found.sort(key=lambda c: (c.at, _STORY[c.kind], c.check.id), reverse=True)
     return found[:limit]

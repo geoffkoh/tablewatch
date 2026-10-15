@@ -464,11 +464,9 @@ describe("trend: per-bar labels reach assistive technology (K-D1)", () => {
     vi.useRealTimers();
   });
 
-  // ARIA makes an `img`'s descendants presentational: the per-bar
-  // `aria-label`s (and their tabIndex=0 focus stops) inside `<svg role="img">`
-  // are never announced, so K-D1's per-run accessible label is lost.
-  // TrendPanel.tsx:29 needs a role that keeps children, or a hidden list.
-  it.fails("no labelled bar sits inside a role=img", async () => {
+  // ARIA makes an `img`'s descendants presentational: per-bar labels inside
+  // `<svg role="img">` were never announced (K-D1). The svg is a group now.
+  it("each bar is announced: no labelled bar sits inside a role=img", async () => {
     const runs = [
       makeRun({ id: "b", started_at: "2026-10-15T02:00:00Z" }),
       makeRun({ id: "a", started_at: "2026-10-14T02:00:00Z" }),
@@ -476,7 +474,13 @@ describe("trend: per-bar labels reach assistive technology (K-D1)", () => {
     await renderOverview(base(), {
       trend: ok({ items: runs, next_cursor: null }),
     });
-    const img = within(panelFor("Problems per run")).getByRole("img");
-    expect(img.querySelectorAll("[aria-label]")).toHaveLength(0);
+    const panel = panelFor("Problems per run");
+    const bars = within(panel).getAllByRole("img");
+    expect(bars).toHaveLength(2);
+    for (const bar of bars) {
+      expect(bar.getAttribute("aria-label")).toBeTruthy();
+      expect(bar.parentElement?.closest('[role="img"]')).toBeNull();
+    }
+    expect(within(panel).getByRole("group", { name: /Problems per run/ })).toBeTruthy();
   });
 });
