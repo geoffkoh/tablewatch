@@ -9,6 +9,7 @@ server. Opening one only to read never changes it: a newer laptop running
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 import time
@@ -422,13 +423,15 @@ class ResultStore:
 
     def __init__(self, engine: Engine, *, migrate: bool = True) -> None:
         self.engine = engine
-        if not migrate:
-            return
-        try:
-            self._migrate()
-        except BaseException:
-            engine.dispose()  # `with` never gets the chance to close it
-            raise
+        # Opening may create a SQLite store's file; once open, it must stay.
+        self._opened = False
+        if migrate:
+            try:
+                self._migrate()
+            except BaseException:
+                engine.dispose()  # `with` never gets the chance to close it
+                raise
+        self._opened = True
 
     @classmethod
     def open(
@@ -452,11 +455,31 @@ class ResultStore:
         from alembic.runtime.migration import MigrationContext
 
         known = known_revisions()
-        with reading(self.engine), self.engine.connect() as connection:
-            context = MigrationContext.configure(
-                connection, opts={"version_table": VERSION_TABLE}
-            )
-            return context.get_current_revision(), known
+        self._require_file()
+        try:
+            with reading(self.engine), self.engine.connect() as connection:
+                context = MigrationContext.configure(
+                    connection, opts={"version_table": VERSION_TABLE}
+                )
+                return context.get_current_revision(), known
+        except AlembicCommandError as exc:  # e.g. a version table with two rows
+            raise StoreError("results store: its schema version is unreadable") from exc
+
+    def _require_file(self) -> None:
+        """A SQLite store's file must still be there and readable.
+
+        A pooled connection keeps reading a file deleted or made unreadable
+        since it opened, and a new one would create an empty file: neither
+        is the store anyone recorded to (spec 040 S4).
+        """
+        url = self.engine.url
+        if not self._opened or url.get_backend_name() != "sqlite":
+            return
+        if url.database in (None, "", ":memory:"):
+            return
+        path = Path(url.database)
+        if not path.is_file() or not os.access(path, os.R_OK):
+            raise StoreError("results store: its file is gone or cannot be read")
 
     def require_current(
         self, oldest: str | None = None, *, managed: bool = False

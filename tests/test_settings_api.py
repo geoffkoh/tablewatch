@@ -158,6 +158,7 @@ def test_an_older_store(recorded: Recorded) -> None:
 def test_an_empty_store(retail: Path) -> None:  # S6
     project = tw.load(retail)
     (retail / ".tablewatch").mkdir()
+    sqlite3.connect(retail / STORE).close()  # a file with no tables
     store = ResultStore(create_engine(f"sqlite:///{retail / STORE}"), migrate=False)
     context = ServerContext(project=project, store=store, loaded_at=datetime.now(UTC))
     try:

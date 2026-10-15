@@ -54,11 +54,6 @@ def _context(root: Path, store: ResultStore) -> Iterator[TestClient]:
 # -- S4: the store goes away while serving ----------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="spec 040 S4: a deleted store reads as `current` — the pooled SQLite "
-    "connection still holds the unlinked file open",
-)
 def test_a_store_deleted_after_serve_started_is_unavailable(
     recorded: Recorded,
 ) -> None:  # S4
@@ -71,11 +66,6 @@ def test_a_store_deleted_after_serve_started_is_unavailable(
     assert body["checks"]["retired"] is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="spec 040 S4: once the pool reconnects, a deleted SQLite store is "
-    "re-created empty by a read-only endpoint and reported `empty`",
-)
 def test_a_deleted_store_is_not_recreated_by_a_read(recorded: Recorded) -> None:
     store = open_store("sqlite:///.tablewatch/results.db", recorded.root)
     with _context(recorded.root, store) as client:
@@ -87,11 +77,6 @@ def test_a_deleted_store_is_not_recreated_by_a_read(recorded: Recorded) -> None:
     assert not created
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="spec 040 S4: a store made unreadable (chmod 000) after start still "
-    "reads `current` through the pooled connection",
-)
 def test_a_store_made_unreadable_after_serve_started(recorded: Recorded) -> None:
     path = recorded.root / STORE
     with served(recorded.root) as client:
@@ -122,11 +107,6 @@ def test_a_locked_store_answers_unavailable(recorded: Recorded) -> None:
     assert after["results"]["schema"] == "current"  # nothing sticky
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a version table with two rows makes Alembic raise CommandError, "
-    "which is not a StoreError: 500 instead of `unavailable`",
-)
 def test_a_version_table_with_two_heads_is_unavailable(recorded: Recorded) -> None:
     with served(recorded.root) as client:
         db = sqlite3.connect(recorded.root / STORE)
@@ -374,6 +354,7 @@ def test_schema_of_every_state() -> None:
 
 
 def test_revisions_of_an_empty_store(tmp_path: Path) -> None:
+    sqlite3.connect(tmp_path / "empty.db").close()  # a file with no tables
     store = ResultStore(
         create_engine(f"sqlite:///{tmp_path / 'empty.db'}"), migrate=False
     )
