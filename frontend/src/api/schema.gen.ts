@@ -24,6 +24,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/check-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Check Changes
+         * @description Recent changes to the project's checks, newest first (spec 042).
+         */
+        get: operations["list_check_changes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/checks": {
         parameters: {
             query?: never;
@@ -289,6 +309,30 @@ export interface components {
             negated: boolean;
             /** Text */
             text: string;
+        };
+        /**
+         * CheckChange
+         * @description A recent change to a check, from the registry (spec 042).
+         */
+        CheckChange: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            check: components["schemas"]["AlertCheck"];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "added" | "redefined" | "disabled" | "retired" | "enabled";
+            /** Version */
+            version: number | null;
+        };
+        /** CheckChangeList */
+        CheckChangeList: {
+            /** Items */
+            items: components["schemas"]["CheckChange"][];
         };
         /**
          * CheckDetail
@@ -1050,6 +1094,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlertPage"];
+                };
+            };
+            /** @description invalid parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description forbidden host */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_check_changes: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckChangeList"];
                 };
             };
             /** @description invalid parameter */

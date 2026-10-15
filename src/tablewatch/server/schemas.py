@@ -28,10 +28,12 @@ from tablewatch.jsonvalues import JsonFloat, Timestamp
 from tablewatch.metrics.registry import get_metric
 from tablewatch.paths import scrub_paths
 from tablewatch.results.alerts import Alert as StoredAlert
+from tablewatch.results.changes import CheckChange as StoredCheckChange
 from tablewatch.results.models import (
     CHECK_METRIC,
     CheckDefinitionRow,
     CheckResultRow,
+    CheckRow,
     RunRow,
 )
 from tablewatch.results.state import Evaluated
@@ -648,6 +650,17 @@ class AlertCheck(_Model):
     datasource: str
     state: Literal["active", "disabled", "retired"]
 
+    @classmethod
+    def of(cls, check: CheckRow) -> AlertCheck:
+        state = check.state if check.state in ("active", "disabled") else "retired"
+        return cls(
+            id=check.check_hash,
+            name=check.name,
+            dataset=check.dataset,
+            datasource=check.datasource,
+            state=cast(Literal["active", "disabled", "retired"], state),
+        )
+
 
 class AlertDelivery(_Model):
     # The name the outbox stored, never looked up in the configuration.
@@ -671,15 +684,8 @@ class Alert(_Model):
 
     @classmethod
     def of(cls, alert: StoredAlert) -> Alert:
-        check = alert.check
         return cls(
-            check=AlertCheck(
-                id=check.check_hash,
-                name=check.name,
-                dataset=check.dataset,
-                datasource=check.datasource,
-                state=cast(Literal["active", "disabled", "retired"], check.state),
-            ),
+            check=AlertCheck.of(alert.check),
             run_id=alert.key.run_id,
             started_at=alert.key.started_at,
             event=cast(EventName, alert.event),
@@ -699,6 +705,28 @@ class Alert(_Model):
                 for d in alert.deliveries
             ],
         )
+
+
+class CheckChange(_Model):
+    """A recent change to a check, from the registry (spec 042)."""
+
+    check: AlertCheck
+    kind: Literal["added", "redefined", "disabled", "retired", "enabled"]
+    at: Timestamp
+    version: int | None  # the new definition version, for `redefined`
+
+    @classmethod
+    def of(cls, change: StoredCheckChange) -> CheckChange:
+        return cls(
+            check=AlertCheck.of(change.check),
+            kind=change.kind,
+            at=change.at,
+            version=change.version,
+        )
+
+
+class CheckChangeList(_Model):
+    items: list[CheckChange]
 
 
 class AlertPage(_Model):

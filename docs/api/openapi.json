@@ -223,6 +223,65 @@
         "title": "BetweenCondition",
         "type": "object"
       },
+      "CheckChange": {
+        "description": "A recent change to a check, from the registry (spec 042).",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "check": {
+            "$ref": "#/components/schemas/AlertCheck"
+          },
+          "kind": {
+            "enum": [
+              "added",
+              "redefined",
+              "disabled",
+              "retired",
+              "enabled"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "check",
+          "kind",
+          "at",
+          "version"
+        ],
+        "title": "CheckChange",
+        "type": "object"
+      },
+      "CheckChangeList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CheckChange"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CheckChangeList",
+        "type": "object"
+      },
       "CheckDetail": {
         "description": "One check with its rule: what `GET /checks/{id}` serves.",
         "properties": {
@@ -2466,6 +2525,99 @@
           }
         },
         "summary": "List Alerts"
+      }
+    },
+    "/api/v1/check-changes": {
+      "get": {
+        "description": "Recent changes to the project's checks, newest first (spec 042).",
+        "operationId": "list_check_changes",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckChangeList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid parameter"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "forbidden host"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not found"
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "method not allowed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "store unavailable"
+          }
+        },
+        "summary": "List Check Changes"
       }
     },
     "/api/v1/checks": {
