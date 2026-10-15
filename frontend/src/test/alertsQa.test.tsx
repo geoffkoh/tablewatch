@@ -57,7 +57,7 @@ function first(): Alert {
 
 describe("delivery wording edges", () => {
   // MAX_AGE can abandon a row after one failed send.
-  it.fails("abandoned after one attempt reads 'after 1 attempt', singular", () => {
+  it("abandoned after one attempt reads 'after 1 attempt', singular", () => {
     expect(deliveryText({ notifier: "hook", status: "abandoned", attempts: 1, sent_at: null })).toBe(
       "Gave up on hook after 1 attempt",
     );

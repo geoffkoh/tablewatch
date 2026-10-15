@@ -106,7 +106,7 @@ export function deliveryText(delivery: AlertDelivery): string {
       return `Pending for ${delivery.notifier} (${plural(delivery.attempts, "attempt")})`;
     case "abandoned":
       return delivery.attempts > 0
-        ? `Gave up on ${delivery.notifier} after ${String(delivery.attempts)} attempts`
+        ? `Gave up on ${delivery.notifier} after ${plural(delivery.attempts, "attempt")}`
         : `Gave up on ${delivery.notifier} (no attempts sent)`;
   }
 }

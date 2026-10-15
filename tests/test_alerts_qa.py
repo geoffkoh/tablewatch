@@ -186,11 +186,6 @@ def test_keyed_resume_after_a_newer_run_tells_nothing_new(
     assert _q(project, ORPHANS) == [(0,)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D5: deliveries match on (run, check), so a `failing` alert lists the "
-    "earlier attempt's sent `erroring` message as 'Sent to data-alerts'",
-)
 def test_deliveries_do_not_claim_a_message_of_another_event(
     project: Path, hook: Hook
 ) -> None:
@@ -229,11 +224,6 @@ def test_an_unknown_outcome_counts_as_error_everywhere(project: Path) -> None:
     ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="an event this version does not know (a newer tablewatch's) fails "
-    "response validation: 500 for the whole page, unlike unknown outcomes",
-)
 def test_an_unknown_event_does_not_break_the_page(project: Path) -> None:
     _seed(project, {"has_a": "fail"}, T0, "1" * 32)
     with closing(sqlite3.connect(project / DB)) as db, db:

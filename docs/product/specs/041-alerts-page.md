@@ -27,7 +27,7 @@ C9's Alerts section: state changes and their deliveries, newest first.
   `deliveries`: `null` when the run was not keyed (nothing is recorded), else
   `[{notifier, status: sent|pending|abandoned, attempts, sent_at}]` from `tablewatch_outbox`
   (an empty list: keyed, nothing recorded for the check — page "No notification recorded").
-  Outbox rows match on (run_id, check_id), not on the event (D5).
+  Outbox rows match on (run_id, check_id, event) (D5, changed in VERIFY).
 - P5. Page `/alerts`, nav after Datasets, before Settings (bell icon). A list (not a table on
   narrow screens): event as words with the status icon ("Started failing", "Started erroring",
   "Recovered"), check name linking to the check page, dataset · datasource, "was <previous>",
@@ -61,7 +61,8 @@ C9's Alerts section: state changes and their deliveries, newest first.
   instead of replaying `previous_results`. A keyed resume still skips a check recorded since.
 - D4 (Q4). Alert = `transition`, unchanged: `warn` never alerts; a first-ever `pass` is no event
   (A2a); a `recovered` after fail, error, pass reads "was failing".
-- D5 (Q5). Deliveries by (run_id, check_id). Wording: "Sent to ops", "Pending for hook
+- D5 (Q5). Deliveries by (run_id, check_id, event) — VERIFY: by (run, check) alone, a resumed
+  run's `failing` claimed the earlier attempt's sent `erroring`. Wording: "Sent to ops", "Pending for hook
   (2 attempts)", "Gave up on hook after 5 attempts" / "Gave up on hook (no attempts sent)",
   "Not recorded (run had no --run-key)", "No notification recorded". Notifier names are shown as
   stored, never looked up in the current config (A15).

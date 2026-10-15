@@ -27,6 +27,9 @@ from tablewatch.results.models import (
 from tablewatch.results.state import recorded
 from tablewatch.results.store import ResultStore, reading
 
+# The events this version describes (`state.EventName`).
+EVENTS = ("failing", "erroring", "recovered")
+
 
 class AlertKey(NamedTuple):
     """Where a newest-first page of state changes ends: the last one shown."""
@@ -72,7 +75,8 @@ def alerts_page(
         .join(CheckRow, change.check_id == CheckRow.id)
         .join(CheckResultRow, change.result_id == CheckResultRow.id)
         .join(RunRow, change.run_id == RunRow.id)
-        .where(change.project == project)
+        # An event a newer tablewatch wrote cannot be described here.
+        .where(change.project == project, change.event.in_(EVENTS))
         .order_by(
             change.started_at.desc(), change.run_id.desc(), change.result_id.desc()
         )
@@ -100,7 +104,9 @@ def alerts_page(
         )
     with reading(store.engine), Session(store.engine) as session:
         rows = session.execute(statement).all()
-        keyed = [(row[0].run_id, row[0].check_id) for row in rows if row[3]]
+        keyed = [
+            (row[0].run_id, row[0].check_id, row[0].event) for row in rows if row[3]
+        ]
         deliveries = _deliveries(session, keyed)
     return [
         Alert(
@@ -109,7 +115,7 @@ def alerts_page(
             event=found.event,
             outcome=recorded(outcome),
             previous_outcome=found.previous_outcome,
-            deliveries=deliveries.get((found.run_id, found.check_id), [])
+            deliveries=deliveries.get((found.run_id, found.check_id, found.event), [])
             if run_key
             else None,
         )
@@ -118,14 +124,18 @@ def alerts_page(
 
 
 def _deliveries(
-    session: Session, wanted: list[tuple[str, int]]
-) -> dict[tuple[str, int], list[Delivery]]:
-    """The outbox rows of these (run, check) pairs, by notifier name."""
-    found: dict[tuple[str, int], list[Delivery]] = {}
+    session: Session, wanted: list[tuple[str, int, str]]
+) -> dict[tuple[str, int, str], list[Delivery]]:
+    """The outbox rows of these (run, check, event)s, by notifier name.
+
+    The event too: a keyed run resumed after a newer run may have sent an
+    earlier attempt's change, which is not this one (spec 041 VERIFY).
+    """
+    found: dict[tuple[str, int, str], list[Delivery]] = {}
     if not wanted:
         return found
-    runs = sorted({run_id for run_id, _ in wanted})
-    checks = sorted({check_id for _, check_id in wanted})
+    runs = sorted({run_id for run_id, _, _ in wanted})
+    checks = sorted({check_id for _, check_id, _ in wanted})
     pairs = set(wanted)
     statement = (
         select(OutboxRow)
@@ -133,7 +143,8 @@ def _deliveries(
         .order_by(OutboxRow.notifier, OutboxRow.id)
     )
     for row in session.scalars(statement):
-        if (row.run_id, row.check_id) not in pairs:
+        key = (row.run_id, row.check_id, row.event)
+        if key not in pairs:
             continue
         status = (
             "sent"
@@ -142,7 +153,7 @@ def _deliveries(
             if row.abandoned_at is not None
             else "pending"
         )
-        found.setdefault((row.run_id, row.check_id), []).append(
+        found.setdefault(key, []).append(
             Delivery(
                 notifier=row.notifier,
                 status=status,
