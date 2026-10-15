@@ -160,6 +160,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The configuration as loaded at startup, and the store's schema.
+         *
+         *     Answers even when the store cannot be read: that is when someone looks.
+         */
+        get: operations["get_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -830,6 +852,90 @@ export interface components {
             /** Uses */
             uses: components["schemas"]["ScanColumn"][];
         };
+        /**
+         * Settings
+         * @description The served project's configuration, read-only and without credentials.
+         */
+        Settings: {
+            checks: components["schemas"]["SettingsChecks"];
+            /** Datasources */
+            datasources: components["schemas"]["SettingsDatasource"][];
+            /** Notifiers */
+            notifiers: components["schemas"]["SettingsNotifier"][];
+            project: components["schemas"]["SettingsProject"];
+            results: components["schemas"]["SettingsResults"];
+        };
+        /** SettingsChecks */
+        SettingsChecks: {
+            /** Active */
+            active: number;
+            /** Disabled */
+            disabled: number;
+            /** Retired */
+            retired: number | null;
+        };
+        /** SettingsDatasource */
+        SettingsDatasource: {
+            /** Checks */
+            checks: number;
+            /** Datasets */
+            datasets: number;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+        };
+        /** SettingsNotifier */
+        SettingsNotifier: {
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Url Variable */
+            url_variable: string;
+        };
+        /** SettingsProject */
+        SettingsProject: {
+            /** Checks Path */
+            checks_path: string;
+            /**
+             * Loaded At
+             * Format: date-time
+             */
+            loaded_at: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * SettingsResults
+         * @description The results store, never its URL: it may hold a password, and a
+         *     SQLite path names the server's file system (spec 040 S-D2).
+         */
+        SettingsResults: {
+            /** Dialect */
+            dialect: string;
+            /** Head */
+            head: string;
+            /**
+             * Migrate
+             * @enum {string}
+             */
+            migrate: "auto" | "never";
+            /** Revision */
+            revision: string | null;
+            /**
+             * Schema
+             * @enum {string}
+             */
+            schema: "current" | "empty" | "older" | "newer" | "unavailable";
+            /**
+             * Sync
+             * @enum {string}
+             */
+            sync: "on_run" | "manual";
+        };
     };
     responses: never;
     parameters: never;
@@ -1468,6 +1574,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description invalid parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description forbidden host */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
                 };
             };
             /** @description invalid parameter */

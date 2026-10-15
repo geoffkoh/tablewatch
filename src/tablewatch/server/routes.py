@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import binascii
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Literal
@@ -19,9 +20,10 @@ from fastapi import APIRouter, Depends, Query, Request
 from tablewatch._version import __version__
 from tablewatch.checks.model import ID_PATTERN, Check
 from tablewatch.config.loader import Project as LoadedProject
+from tablewatch.config.project import ENV_REFERENCE
 from tablewatch.engine.compiled import compile_dataset
 from tablewatch.jsonvalues import utc
-from tablewatch.results.store import PageKey, ResultStore
+from tablewatch.results.store import PageKey, ResultStore, StoreError, schema_of
 from tablewatch.server import schemas
 
 OutcomeFilter = Literal["pass", "warn", "fail", "error", "skipped", "not_run"]
@@ -105,6 +107,69 @@ def get_project(context: Context) -> schemas.Project:
         ),
         diagnostics=[schemas.Diagnostic.of(d) for d in project.diagnostics],
     )
+
+
+@router.get("/settings", response_model=schemas.Settings)
+def get_settings(context: Context) -> schemas.Settings:
+    """The configuration as loaded at startup, and the store's schema.
+
+    Answers even when the store cannot be read: that is when someone looks.
+    """
+    project, config = context.project, context.project.config
+    datasets = Counter(d.datasource for d in project.datasets)
+    checks = Counter(c.dataset.datasource for c in project.checks)
+    enabled = sum(c.enabled for c in project.checks)
+    retired: int | None = None
+    revision: str | None = None
+    state: schemas.StoreState
+    try:
+        revision, known = context.store.revisions()
+        state = schema_of(revision, known)
+        if state == "current":
+            loaded = {c.id for c in project.checks}
+            retired = len(context.store.retired_checks(context.name, loaded))
+    except StoreError:
+        state, known = "unavailable", context.store.known_revisions()
+    return schemas.Settings(
+        project=schemas.SettingsProject(
+            name=context.name,
+            version=__version__,
+            loaded_at=context.loaded_at,
+            checks_path=config.checks_path,
+        ),
+        datasources=[
+            schemas.SettingsDatasource(
+                name=name,
+                type=datasource.type,
+                datasets=datasets[name],
+                checks=checks[name],
+            )
+            for name, datasource in config.datasources.items()
+        ],
+        notifiers=[
+            schemas.SettingsNotifier(
+                name=name, type=notifier.type, url_variable=_variable(notifier.url)
+            )
+            for name, notifier in config.notifiers.items()
+        ],
+        results=schemas.SettingsResults(
+            dialect=context.store.engine.dialect.name,
+            schema=state,
+            revision=revision,
+            head=known[-1],
+            migrate=config.results.migrate,
+            sync=config.results.sync,
+        ),
+        checks=schemas.SettingsChecks(
+            active=enabled, disabled=len(project.checks) - enabled, retired=retired
+        ),
+    )
+
+
+def _variable(url: str) -> str:
+    # The config accepts only a whole `${env:NAME}` here (`_URLNotifier`).
+    match = ENV_REFERENCE.fullmatch(url)
+    return match.group(1) if match else ""
 
 
 @router.get("/checks", response_model=schemas.CheckList)

@@ -118,6 +118,60 @@ class Project(_Model):
     diagnostics: list[Diagnostic]
 
 
+StoreState = Literal["current", "empty", "older", "newer", "unavailable"]
+
+
+class SettingsProject(_Model):
+    name: str
+    version: str
+    loaded_at: Timestamp
+    checks_path: str
+
+
+class SettingsDatasource(_Model):
+    name: str
+    type: str
+    datasets: int
+    checks: int
+
+
+class SettingsNotifier(_Model):
+    name: str
+    type: str
+    # The NAME of the `${env:NAME}` the URL comes from; never its value.
+    url_variable: str
+
+
+class SettingsResults(_Model):
+    """The results store, never its URL: it may hold a password, and a
+    SQLite path names the server's file system (spec 040 S-D2)."""
+
+    dialect: str
+    # `schema` would shadow a BaseModel method: the wire name is an alias.
+    schema_: StoreState = Field(alias="schema")
+    revision: str | None
+    head: str
+    migrate: Literal["auto", "never"]
+    sync: Literal["on_run", "manual"]
+
+
+class SettingsChecks(_Model):
+    active: int
+    disabled: int
+    # Null unless the store is readable at this version's schema.
+    retired: int | None
+
+
+class Settings(_Model):
+    """The served project's configuration, read-only and without credentials."""
+
+    project: SettingsProject
+    datasources: list[SettingsDatasource]
+    notifiers: list[SettingsNotifier]
+    results: SettingsResults
+    checks: SettingsChecks
+
+
 class LastEvaluated(_Model):
     """What the data last showed, when the latest result could not be evaluated."""
 
